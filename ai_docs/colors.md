@@ -23,6 +23,14 @@ Cream:
 #f3e9d7
 
 
+### Variant 4
+#bdbcb2
+#30302e
+#2d79c5
+#7d4a38
+#d97757
+
+
 ## Secondary/Accent Colors
 
 Light Blue:
@@ -63,6 +71,29 @@ Blue-45:
 
 ## Tertiary Colors
 
+BinancePink:
+#ea0071
+
+BinanceGreen:
+#70a800
+
+BinanceBlue:
+#00b9e4
+
+BinanceYellow:
+#f3a712
+
+BinancePurple:
+#8347ff
+
+BinanceGrey1:
+#252d38
+
+BinanceGrey2:
+#12151c
+
+BinanceGrey3:
+#0a0e11
 
 
 

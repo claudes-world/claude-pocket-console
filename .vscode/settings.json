@@ -372,8 +372,8 @@
     "editorCursor.foreground": "#433884",
     "editorLineNumber.foreground": "#80808080",
     "editorLineNumber.activeForeground": "#433884",
-    "editorIndentGuide.background": "#A9CCE330",
-    "editorIndentGuide.activeBackground": "#DE7356",
+    "editorIndentGuide.background1": "#A9CCE330",
+    "editorIndentGuide.activeBackground1": "#DE7356",
     "editorWhitespace.foreground": "#A9CCE340",
     "editorRuler.foreground": "#A9CCE350",
     
@@ -424,12 +424,12 @@
     "terminalCursor.foreground": "#433884",
     
     // Diff Editor
-    "diffEditor.insertedTextBackground": "#DE735620",
+    "diffEditor.insertedTextBackground": "#86fe3b58",
     "diffEditor.removedTextBackground": "#d9775720",
-    "diffEditor.insertedLineBackground": "#DE735610",
+    "diffEditor.insertedLineBackground": "#addc913d",
     "diffEditor.removedLineBackground": "#d9775710",
     "diffEditor.border": "#A9CCE3",
-    "diffEditorGutter.insertedLineBackground": "#DE735630",
+    "diffEditorGutter.insertedLineBackground": "#B1A9E3",
     "diffEditorGutter.removedLineBackground": "#d9775730",
     "diffEditorOverview.insertedForeground": "#DE7356",
     "diffEditorOverview.removedForeground": "#d97757",
@@ -514,5 +514,5 @@
     "editorOverviewRuler.infoForeground": "#33B7FF",
     "editorOverviewRuler.bracketMatchForeground": "#433884"
   },
-  "peacock.remoteColor": "#DE7356"
+  "workbench.colorTheme": "Quiet Light"
 }
