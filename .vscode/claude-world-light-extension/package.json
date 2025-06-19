@@ -1,7 +1,7 @@
 {
-  "name": "claude-world-light-theme",
-  "displayName": "Claude's World Light Theme",
-  "description": "A beautiful light theme inspired by Claude AI's warm and professional color palette",
+  "name": "claude-world-themes",
+  "displayName": "Claude's World Themes",
+  "description": "A beautiful collection of themes inspired by Claude AI's warm and professional color palette - Light, Dark, and Hybrid variants",
   "version": "1.0.0",
   "publisher": "your-publisher-name",
   "engines": {
@@ -13,6 +13,8 @@
   "keywords": [
     "claude",
     "light",
+    "dark",
+    "hybrid",
     "theme",
     "warm",
     "professional"
@@ -23,12 +25,22 @@
         "label": "Claude's World Light",
         "uiTheme": "vs",
         "path": "./themes/claude-world-light.jsonc"
+      },
+      {
+        "label": "Claude's World Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/claude-world-dark.jsonc"
+      },
+      {
+        "label": "Claude's World Hybrid",
+        "uiTheme": "vs-dark",
+        "path": "./themes/claude-world-hybrid.jsonc"
       }
     ]
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/claude-world-light-theme"
+    "url": "https://github.com/your-username/claude-world-themes"
   },
   "author": {
     "name": "Your Name"
