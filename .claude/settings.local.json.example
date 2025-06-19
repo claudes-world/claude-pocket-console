@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__sequential-thinking__sequentialthinking"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "sequential-thinking",
+    "context7"
+  ],
+  "disabledMcpjsonServers": [
+    "convex"
+  ],
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "GH_TOKEN": "github_pat_12345abcde",
+    "GH_USERNAME": "Claude's world-agent-1",
+    "GH_EMAIL": "world@claude.do"
+  }
+}

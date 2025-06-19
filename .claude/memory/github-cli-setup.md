@@ -2,31 +2,38 @@
 
 ## Important: Always Source Environment File
 
-Before running any `gh` (GitHub CLI) commands in this project, you MUST first source the environment file:
+When running any `gh` (GitHub CLI) commands in this project, you MUST source the environment file in the same command:
 
 ```bash
-source .claude/.env
+source .claude/.env && gh <command>
 ```
 
-This file contains:
+## Examples
+
+```bash
+# Creating an issue
+source .claude/.env && gh issue create --title "feat: add feature" --body "Description"
+
+# Creating a PR
+source .claude/.env && gh pr create --title "feat: implement feature" --body "Description"
+
+# Adding a comment
+source .claude/.env && gh issue comment 1 --body "Progress update"
+```
+
+## Why This Is Required
+
+The `.claude/.env` file contains:
 - GitHub authentication tokens
 - Repository-specific configurations
 - Other environment variables needed for GitHub CLI operations
 
-## Why This Is Required
+These environment variables must be sourced in the same shell execution as the `gh` command for authentication to work properly.
 
-The `.claude/.env` file sets up the proper GitHub authentication and configuration that allows the CLI to:
-- Create issues and pull requests
-- Comment on existing issues
-- Access private repositories
-- Use the correct GitHub account
+## Important Notes
 
-## Reminder for LLM Agents
+- Simply running `source .claude/.env` separately won't work - the environment variables don't persist
+- Always use the `&&` pattern to ensure the env is sourced before the gh command runs
+- This allows you to use your own GitHub account for all operations
 
-**ALWAYS** run this command at the start of any session where you'll be using GitHub CLI:
-
-```bash
-source .claude/.env
-```
-
-Without this, GitHub CLI commands may fail with authentication errors or use incorrect credentials.
+Without this pattern, GitHub CLI commands may fail with authentication errors or use incorrect credentials.
