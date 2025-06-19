@@ -92,7 +92,7 @@ LICENSE
 
 # Data files
 *.csv
-*.json
+# *.json
 *.xml
 
 # Storybook

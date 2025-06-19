@@ -14,8 +14,30 @@
   "env": {
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
+
+    // needed for gh CLI
     "GH_TOKEN": "github_pat_12345abcde",
     "GH_USERNAME": "Claude's world-agent-1",
-    "GH_EMAIL": "world@claude.do"
+    "GH_EMAIL": "world@claude.do",
+
+    // for taskmaster-ai MCP
+    // recommended taskmaster-ai
+    "ANTHROPIC_API_KEY": "YOUR_ANTHROPIC_API_KEY_HERE",
+    "PERPLEXITY_API_KEY": "YOUR_PERPLEXITY_API_KEY_HERE",
+    // other taskmaster-ai
+    "OPENAI_API_KEY": "YOUR_OPENAI_KEY_HERE",
+    "GOOGLE_API_KEY": "YOUR_GOOGLE_KEY_HERE",
+    "MISTRAL_API_KEY": "YOUR_MISTRAL_KEY_HERE",
+    "OPENROUTER_API_KEY": "YOUR_OPENROUTER_KEY_HERE",
+    "XAI_API_KEY": "YOUR_XAI_KEY_HERE",
+    "AZURE_OPENAI_API_KEY": "YOUR_AZURE_KEY_HERE",
+    "OLLAMA_API_KEY": "YOUR_OLLAMA_API_KEY_HERE",
+
+    // for github MCP
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_ZsDpabcd",
+    "EXAMPLE_GITHUB_TOOLSETS": "actions,context,code_security,issues,notifications,pull_requests,repos,secret_protection,users,experiments",
+    "X_GITHUB_TOOLSETS": "all",
+    "GITHUB_DYNAMIC_TOOLSETS": "1",
+    "GITHUB_READ_ONLY": "0"
   }
 }
