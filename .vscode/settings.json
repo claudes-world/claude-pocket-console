@@ -158,5 +158,26 @@
   
   // Debugging Configuration
   "debug.javascript.autoAttachFilter": "disabled",
-  "debug.javascript.debugByLinkOptions": "on"
+  "debug.javascript.debugByLinkOptions": "on",
+  "workbench.colorCustomizations": {
+    "activityBar.activeBackground": "#e69681",
+    "activityBar.background": "#e69681",
+    "activityBar.foreground": "#15202b",
+    "activityBar.inactiveForeground": "#15202b99",
+    "activityBarBadge.background": "#1a8531",
+    "activityBarBadge.foreground": "#e7e7e7",
+    "commandCenter.border": "#33B7FF",
+    "commandCenter.background": "#f3e9d7",
+    "sash.hoverBorder": "#e69681",
+    "statusBar.background": "#de7356",
+    "statusBar.foreground": "#15202b",
+    "statusBarItem.hoverBackground": "#A9CCE3",
+    "statusBarItem.remoteBackground": "#f3e9d7",
+    "statusBarItem.remoteForeground": "#15202b",
+    "titleBar.activeBackground": "#de7356",
+    "titleBar.activeForeground": "#15202b",
+    "titleBar.inactiveBackground": "#de735699",
+    "titleBar.inactiveForeground": "#15202b99"
+  },
+  "peacock.remoteColor": "#DE7356"
 }
