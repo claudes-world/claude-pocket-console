@@ -1,0 +1,143 @@
+{
+	"name": "Pocket Console Monorepo",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+	// Forward ports for the applications
+	"forwardPorts": [
+		3000,  // Next.js web app
+		8000,  // FastAPI terminal server
+		5432,  // PostgreSQL
+		6379,  // Redis (if needed)
+		5173,  // Vite dev server (if used)
+		9229   // Node.js debugger
+	],
+
+	// Run commands after the container is created
+	"postCreateCommand": "bash -c 'pnpm install && pnpm build && .devcontainer/setup-ssh.sh || true'",
+
+	// Configure VS Code
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				// Core development
+				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
+				"streetsidesoftware.code-spell-checker",
+				"wayou.vscode-todo-highlight",
+				"gruntfuggly.todo-tree",
+				
+				// Git
+				"eamodio.gitlens",
+				"donjayamanne.githistory",
+				"GitHub.vscode-pull-request-github",
+				
+				// TypeScript/JavaScript
+				"ms-vscode.vscode-typescript-next",
+				"bradlc.vscode-tailwindcss",
+				"prisma.prisma",
+				"GraphQL.vscode-graphql",
+				"styled-components.vscode-styled-components",
+				
+				// Python
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-python.black-formatter",
+				"charliermarsh.ruff",
+				"ms-python.mypy-type-checker",
+				
+				// Docker
+				"ms-azuretools.vscode-docker",
+				"ms-vscode-remote.remote-containers",
+				
+				// Database
+				"mtxr.sqltools",
+				"mtxr.sqltools-driver-pg",
+				
+				// Markdown
+				"yzhang.markdown-all-in-one",
+				"DavidAnson.vscode-markdownlint",
+				
+				// Other utilities
+				"EditorConfig.EditorConfig",
+				"mikestead.dotenv",
+				"redhat.vscode-yaml",
+				"ms-vscode.live-server",
+				"ritwickdey.LiveServer",
+				"christian-kohler.path-intellisense",
+				"formulahendry.auto-rename-tag",
+				"naumovs.color-highlight",
+				"oderwat.indent-rainbow",
+				"PKief.material-icon-theme",
+				"zhuangtongfa.material-theme"
+			],
+			"settings": {
+				// Terminal
+				"terminal.integrated.defaultProfile.linux": "zsh",
+				"terminal.integrated.profiles.linux": {
+					"zsh": {
+						"path": "/bin/zsh"
+					}
+				},
+				
+				// Editor
+				"editor.formatOnSave": true,
+				"editor.codeActionsOnSave": {
+					"source.fixAll.eslint": "explicit",
+					"source.organizeImports": "explicit"
+				},
+				"editor.defaultFormatter": "esbenp.prettier-vscode",
+				
+				// Python
+				"python.defaultInterpreterPath": "/usr/bin/python3",
+				"python.linting.enabled": true,
+				"python.linting.pylintEnabled": false,
+				"python.linting.flake8Enabled": true,
+				"python.formatting.provider": "black",
+				"[python]": {
+					"editor.defaultFormatter": "ms-python.black-formatter"
+				},
+				
+				// TypeScript
+				"typescript.updateImportsOnFileMove.enabled": "always",
+				"typescript.preferences.includePackageJsonAutoImports": "on",
+				
+				// ESLint
+				"eslint.workingDirectories": [
+					{ "mode": "auto" }
+				],
+				
+				// Git
+				"git.autofetch": true,
+				"git.confirmSync": false,
+				
+				// Files
+				"files.exclude": {
+					"**/.git": true,
+					"**/.DS_Store": true,
+					"**/node_modules": true,
+					"**/__pycache__": true,
+					"**/.pytest_cache": true,
+					"**/.mypy_cache": true,
+					"**/.ruff_cache": true
+				}
+			}
+		}
+	},
+
+	// Use the non-root user
+	"remoteUser": "developer",
+
+	// Mount Docker socket for Docker-in-Docker
+	"mounts": [
+		"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+	],
+
+	// Environment variables
+	"remoteEnv": {
+		"NODE_ENV": "development",
+		"PYTHONDONTWRITEBYTECODE": "1",
+		"PYTHONUNBUFFERED": "1"
+	}
+}
