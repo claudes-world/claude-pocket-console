@@ -1,0 +1,3 @@
+please compare and contrast all the recommendations. highlight the pros and cons of each recommendation; then highlight the overlaps and divergence of the recommendations; then summarize what you think are the best parts of each recommendation. finally, give your top3 recommended hybrid approaches. justify each choice and describe why you chose it. explain what criteria you would use when choose one of the three approaches. based on your current sentiment, which of the three approaches would you choose right now?
+
+do not start coding or changing any files. please just give me your thoughts.
