@@ -1,0 +1,37 @@
+{
+  "name": "claude-world-light-theme",
+  "displayName": "Claude's World Light Theme",
+  "description": "A beautiful light theme inspired by Claude AI's warm and professional color palette",
+  "version": "1.0.0",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "keywords": [
+    "claude",
+    "light",
+    "theme",
+    "warm",
+    "professional"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Claude's World Light",
+        "uiTheme": "vs",
+        "path": "./themes/claude-world-light.jsonc"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/claude-world-light-theme"
+  },
+  "author": {
+    "name": "Your Name"
+  },
+  "license": "MIT"
+} 
