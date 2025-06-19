@@ -1,0 +1,81 @@
+{
+  "recommendations": [
+    // Essential Extensions
+    "dbaeumer.vscode-eslint",              // ESLint integration
+    "esbenp.prettier-vscode",              // Prettier code formatter
+    "bradlc.vscode-tailwindcss",           // Tailwind CSS IntelliSense
+    "ms-vscode.vscode-typescript-next",    // Latest TypeScript features
+    
+    // Python Development
+    "ms-python.python",                    // Python language support
+    "ms-python.vscode-pylance",           // Python language server
+    "charliermarsh.ruff",                 // Ruff Python linter/formatter
+    
+    // React/Next.js Development
+    "dsznajder.es7-react-js-snippets",    // React snippets
+    "burkeholland.simple-react-snippets",  // More React snippets
+    "pulkitgangwar.nextjs-snippets",      // Next.js snippets
+    
+    // Database/Backend
+    "mtxr.sqltools",                      // SQL tools
+    "rangav.vscode-thunder-client",       // REST API testing
+    
+    // Docker Support
+    "ms-azuretools.vscode-docker",        // Docker extension
+    "ms-vscode-remote.remote-containers",  // Dev containers
+    
+    // Git/GitHub
+    "eamodio.gitlens",                    // Git supercharged
+    "github.vscode-pull-request-github",   // GitHub Pull Requests
+    "github.copilot",                     // GitHub Copilot (if available)
+    
+    // Productivity
+    "streetsidesoftware.code-spell-checker", // Spell checker
+    "wayou.vscode-todo-highlight",         // TODO highlighting
+    "gruntfuggly.todo-tree",              // TODO tree view
+    "usernamehw.errorlens",               // Inline error messages
+    "wix.vscode-import-cost",             // Import cost display
+    
+    // Formatting/Linting
+    "rvest.vs-code-prettier-eslint",      // Prettier ESLint integration
+    "foxundermoon.shell-format",          // Shell script formatter
+    
+    // Markdown
+    "yzhang.markdown-all-in-one",         // Markdown tools
+    "bierner.markdown-mermaid",           // Mermaid diagram support
+    
+    // Environment Variables
+    "mikestead.dotenv",                   // .env file support
+    
+    // Testing
+    "vitest.explorer",                    // Vitest test explorer
+    "ms-python.python-test-adapter",      // Python test adapter
+    
+    // Optional but Useful
+    "christian-kohler.path-intellisense",  // Path autocomplete
+    "naumovs.color-highlight",            // Color highlighting
+    "oderwat.indent-rainbow",             // Indent visualization
+    "2gua.rainbow-brackets",              // Bracket pair colorization
+    "visualstudioexptteam.vscodeintellicode", // AI-assisted IntelliSense
+    "prisma.prisma",                      // Prisma support (if using)
+    "graphql.vscode-graphql",             // GraphQL support (if using)
+    
+    // Monorepo Support
+    "folke.vscode-monorepo-workspace",    // Monorepo workspace tools
+    
+    // Code Quality
+    "sonarsource.sonarlint-vscode",       // SonarLint code quality
+    
+    // Icons
+    "vscode-icons-team.vscode-icons"      // Better file icons
+  ],
+  
+  "unwantedRecommendations": [
+    // Extensions that might conflict or are replaced by others
+    "ms-vscode.vscode-typescript-tslint-plugin", // Replaced by ESLint
+    "hookyqr.beautify",                          // Replaced by Prettier
+    "ms-python.black-formatter",                 // Replaced by Ruff
+    "ms-python.flake8",                         // Replaced by Ruff
+    "ms-python.isort"                           // Replaced by Ruff
+  ]
+}

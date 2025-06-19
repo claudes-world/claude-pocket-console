@@ -1,0 +1,36 @@
+{
+  "name": "@cpc/shared-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types and Zod schemas for Claude Pocket Console",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@cpc/config": "workspace:*",
+    "@types/node": "^20.11.0",
+    "eslint": "^8.57.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

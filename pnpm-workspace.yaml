@@ -1,0 +1,12 @@
+# Claude Pocket Console Monorepo Workspace Configuration
+# This file defines which directories contain packages in our monorepo
+
+packages:
+  # Applications - deployable services
+  - 'apps/*'
+  
+  # Shared packages - internal libraries
+  - 'packages/*'
+  
+  # Infrastructure packages - deployment configs
+  - 'infrastructure/*'

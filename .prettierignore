@@ -1,0 +1,109 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production builds
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Testing
+coverage/
+htmlcov/
+
+# Caches
+.turbo/
+.cache/
+.parcel-cache/
+
+# Version control
+.git/
+
+# Package manager files
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Environment files
+.env*
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+
+# Generated files
+generated/
+.generated/
+
+# Convex
+.convex/
+
+# Documentation (optional - markdown files)
+# Uncomment if you don't want to format markdown
+# *.md
+
+# Config files that should not be formatted
+tsconfig.json
+tsconfig.*.json
+
+# Terraform
+*.tf
+*.tfvars
+*.tfstate*
+
+# Specific files
+CHANGELOG.md
+LICENSE
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Media
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.webp
+*.mp4
+*.mp3
+
+# Fonts
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Data files
+*.csv
+*.json
+*.xml
+
+# Storybook
+storybook-static/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

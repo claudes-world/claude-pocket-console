@@ -1,0 +1,98 @@
+# Claude Pocket Console - Secure Sandbox Container
+# This Dockerfile creates a highly isolated environment for user command execution
+# Following security best practices from ARCHITECTURE.md
+
+# Use distroless as base for minimal attack surface
+# Distroless provides only what's needed to run applications - no shell, package manager, etc.
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+
+# For building, we need a full environment
+FROM debian:12-slim AS builder
+
+# Security: Update packages and install only essential tools
+# We minimize the installed packages to reduce attack surface
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Basic utilities that users might need
+    busybox \
+    ca-certificates \
+    # Clean up to reduce image size
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create a non-root user for running containers
+# UID/GID 65532 is standard for nonroot in distroless
+RUN groupadd -g 65532 -r nonroot && \
+    useradd -u 65532 -r -g nonroot -d /home/nonroot -s /sbin/nologin nonroot && \
+    mkdir -p /home/nonroot && \
+    chown -R nonroot:nonroot /home/nonroot
+
+# Set up busybox symlinks for basic commands
+RUN mkdir -p /sandbox/bin && \
+    /bin/busybox --install -s /sandbox/bin
+
+# Final runtime image
+FROM gcr.io/distroless/cc-debian12:nonroot
+
+# Copy only the essentials from builder
+COPY --from=builder /sandbox/bin /sandbox/bin
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Security labels for container metadata
+LABEL maintainer="Claude Pocket Console Team"
+LABEL version="1.0.0"
+LABEL description="Secure sandbox environment with minimal attack surface"
+LABEL security.capabilities="none"
+LABEL security.network="disabled"
+
+# Environment configuration
+# Minimal PATH with only our sandbox binaries
+ENV PATH=/sandbox/bin
+ENV HOME=/home/nonroot
+ENV USER=nonroot
+
+# Use the nonroot user (UID 65532)
+# This is already set in distroless/nonroot but we make it explicit
+USER 65532:65532
+
+# Working directory
+WORKDIR /home/nonroot
+
+# Security: Set up read-only root filesystem
+# The container will run with a read-only root filesystem
+# Only /tmp and /home/nonroot will be writable (via tmpfs mounts)
+
+# Health check to ensure container is responsive
+# Simple check that doesn't require network access
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+    CMD ["/sandbox/bin/echo", "healthy"]
+
+# Default command - busybox sh provides a minimal shell
+# In production, this would be overridden by the terminal server
+ENTRYPOINT ["/sandbox/bin/sh"]
+
+# Security hardening notes for runtime:
+# - Run with --read-only flag to make root filesystem read-only
+# - Mount tmpfs at /tmp and /home/nonroot for writable areas
+# - Use --network none to disable all network access
+# - Set memory limits with -m flag (recommended: 256m)
+# - Set CPU limits with --cpus flag (recommended: 0.5)
+# - Drop all capabilities with --cap-drop ALL
+# - Add only required capabilities with --cap-add (if any needed)
+# - Use --security-opt no-new-privileges to prevent privilege escalation
+# - Set process limit with --pids-limit (recommended: 100)
+
+# Example run command with all security flags:
+# docker run --rm -it \
+#   --read-only \
+#   --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+#   --tmpfs /home/nonroot:rw,noexec,nosuid,size=64m \
+#   --network none \
+#   -m 256m \
+#   --memory-swap 256m \
+#   --cpus 0.5 \
+#   --pids-limit 100 \
+#   --cap-drop ALL \
+#   --security-opt no-new-privileges \
+#   --security-opt seccomp=default.json \
+#   --name cpc-sandbox \
+#   cpc/sandbox:latest

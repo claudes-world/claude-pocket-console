@@ -1,0 +1,88 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production builds
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Testing
+coverage/
+
+# Caches
+.turbo/
+.cache/
+.eslintcache
+
+# Environment files
+.env*
+
+# IDE
+.vscode/
+.idea/
+
+# Version control
+.git/
+
+# Package manager files
+pnpm-lock.yaml
+
+# Python files (not relevant for ESLint)
+*.py
+__pycache__/
+.venv/
+venv/
+
+# Docker files
+Dockerfile*
+
+# Convex
+.convex/
+
+# Generated files
+generated/
+.generated/
+
+# Config files
+*.config.js
+*.config.ts
+tailwind.config.ts
+postcss.config.js
+next.config.js
+
+# Terraform
+*.tf
+*.tfvars
+
+# Storybook
+storybook-static/
+.storybook/
+
+# Playwright
+playwright.config.ts
+e2e/
+
+# Public assets
+public/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Archives
+*.zip
+*.tar.gz
+
+# Documentation
+docs/
+
+# Specific files to ignore
+CHANGELOG.md
+LICENSE
+README.md

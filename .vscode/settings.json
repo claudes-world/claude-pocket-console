@@ -1,0 +1,162 @@
+{
+  // TypeScript SDK Configuration
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  
+  // Editor Settings
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": false,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "never"
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  
+  // File Associations
+  "files.associations": {
+    "*.css": "tailwindcss",
+    ".env*": "dotenv",
+    "turbo.json": "jsonc"
+  },
+  
+  // Language-Specific Settings
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  
+  // ESLint Configuration
+  "eslint.workingDirectories": [
+    { "mode": "auto" }
+  ],
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  
+  // Prettier Configuration
+  "prettier.requireConfig": true,
+  "prettier.useEditorConfig": true,
+  
+  // Python Configuration
+  "python.defaultInterpreterPath": "apps/terminal-server/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "[python]": {
+    "editor.formatOnType": true,
+    "editor.tabSize": 4
+  },
+  
+  // Tailwind CSS IntelliSense
+  "tailwindCSS.experimental.classRegex": [
+    ["cn\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"]
+  ],
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  
+  // Search Exclusions
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true,
+    "**/.turbo": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/htmlcov": true,
+    "**/.venv": true,
+    "**/pnpm-lock.yaml": true
+  },
+  
+  // Files Exclusions
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  
+  // Files to Watch
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/dist/**": true,
+    "**/.turbo/**": true,
+    "**/.venv/**": true
+  },
+  
+  // Terminal Configuration
+  "terminal.integrated.env.linux": {
+    "PNPM_HOME": "${workspaceFolder}/node_modules/.bin"
+  },
+  "terminal.integrated.env.osx": {
+    "PNPM_HOME": "${workspaceFolder}/node_modules/.bin"
+  },
+  
+  // Git Configuration
+  "git.ignoreLimitWarning": true,
+  
+  // Monorepo Support
+  "npm.packageManager": "pnpm",
+  
+  // Convex Extension Settings (if installed)
+  "convex.formatOnSave": true,
+  
+  // Docker Extension Settings (if installed)
+  "docker.containers.label": "com.cpc.container",
+  "docker.images.label": "com.cpc.image",
+  
+  // Thunder Client Settings (if installed for API testing)
+  "thunder-client.saveToWorkspace": true,
+  "thunder-client.workspaceRelativePath": ".thunder-client",
+  
+  // Spell Checker Settings (if installed)
+  "cSpell.words": [
+    "claude",
+    "convex",
+    "fastapi",
+    "pnpm",
+    "tailwindcss",
+    "tanstack",
+    "trpc",
+    "turborepo",
+    "uvicorn",
+    "websockets",
+    "xterm",
+    "zustand"
+  ],
+  
+  // Auto Import Settings
+  "typescript.preferences.includePackageJsonAutoImports": "auto",
+  "javascript.preferences.includePackageJsonAutoImports": "auto",
+  
+  // IntelliSense Settings
+  "typescript.suggest.autoImports": true,
+  "javascript.suggest.autoImports": true,
+  
+  // Debugging Configuration
+  "debug.javascript.autoAttachFilter": "disabled",
+  "debug.javascript.debugByLinkOptions": "on"
+}

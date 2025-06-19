@@ -1,0 +1,189 @@
+# Claude Pocket Console - Development Docker Compose Configuration
+# This file orchestrates all services for local development
+# For production deployment, see docker-compose.prod.yml
+
+version: '3.8'
+
+services:
+  # Web Console - Next.js frontend application
+  web:
+    container_name: cpc-web-dev
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+      args:
+        - NODE_ENV=development
+    ports:
+      # Next.js development server
+      - "3000:3000"
+      # Next.js HMR websocket
+      - "3001:3001"
+    volumes:
+      # Mount source code for hot reloading
+      - ./apps/web:/app
+      # Use named volume for node_modules to avoid conflicts
+      - web_node_modules:/app/node_modules
+      # Mount shared types package
+      - ./packages/shared-types:/packages/shared-types:ro
+    environment:
+      - NODE_ENV=development
+      # Convex deployment URL (update with your actual URL)
+      - NEXT_PUBLIC_CONVEX_URL=${CONVEX_DEPLOYMENT_URL:-https://your-deployment.convex.cloud}
+      # Terminal server WebSocket URL
+      - NEXT_PUBLIC_TERMINAL_SERVER_URL=ws://localhost:8000
+      # Development-specific settings
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      - terminal-server
+    networks:
+      - cpc-network
+    # Resource limits for development
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Terminal Server - FastAPI backend for container management
+  terminal-server:
+    container_name: cpc-terminal-server-dev
+    build:
+      context: ./apps/terminal-server
+      dockerfile: Dockerfile.dev
+    ports:
+      # FastAPI server
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reloading
+      - ./apps/terminal-server:/app
+      # Docker socket for container management (required)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount shared types
+      - ./packages/shared-types:/packages/shared-types:ro
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      # Convex deployment URL for session management
+      - CONVEX_URL=${CONVEX_DEPLOYMENT_URL:-https://your-deployment.convex.cloud}
+      # Security settings
+      - MAX_SESSIONS_PER_USER=5
+      - SESSION_TIMEOUT_MINUTES=30
+      - CONTAINER_MEMORY_LIMIT=256m
+      - CONTAINER_CPU_LIMIT=0.5
+      # Docker configuration
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - SANDBOX_IMAGE=cpc/sandbox:latest
+    depends_on:
+      - sandbox-builder
+    networks:
+      - cpc-network
+    # The terminal server needs privileged access to manage Docker
+    # In production, use more granular permissions
+    privileged: true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Sandbox Builder - Builds the secure sandbox image
+  # This runs once to build the image, then exits
+  sandbox-builder:
+    container_name: cpc-sandbox-builder
+    build:
+      context: ./infrastructure/docker
+      dockerfile: Dockerfile.sandbox
+    image: cpc/sandbox:latest
+    command: echo "Sandbox image built successfully"
+    networks:
+      - cpc-network
+
+  # Convex Backend (Local Development)
+  # Note: Convex typically runs in the cloud, but for local dev
+  # you might want to use their dev server
+  convex-dev:
+    container_name: cpc-convex-dev
+    # This is a placeholder - Convex doesn't provide official Docker images
+    # In development, you typically run `npx convex dev` locally
+    # This service is here for completeness and future use
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./infrastructure/convex:/app
+      - convex_node_modules:/app/node_modules
+    command: |
+      sh -c "
+        echo 'Convex typically runs via npx convex dev'
+        echo 'Run this command in ./infrastructure/convex:'
+        echo 'npx convex dev'
+        sleep infinity
+      "
+    environment:
+      - NODE_ENV=development
+    networks:
+      - cpc-network
+
+  # Development Database (Optional - for future use)
+  # Uncomment if you need a local database for development
+  # postgres:
+  #   container_name: cpc-postgres-dev
+  #   image: postgres:16-alpine
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_USER=cpc_dev
+  #     - POSTGRES_PASSWORD=dev_password
+  #     - POSTGRES_DB=pocket_console_dev
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - cpc-network
+
+  # Redis Cache (Optional - for session management)
+  # Uncomment if you need Redis for development
+  # redis:
+  #   container_name: cpc-redis-dev
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - cpc-network
+
+# Networks
+networks:
+  cpc-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes
+volumes:
+  # Named volumes for node_modules to improve performance
+  web_node_modules:
+    driver: local
+  convex_node_modules:
+    driver: local
+  # Uncomment if using optional services
+  # postgres_data:
+  #   driver: local
+  # redis_data:
+  #   driver: local
+
+# Health check configuration notes:
+# - Each service should implement proper health checks
+# - Use docker-compose ps to check service status
+# - Run docker-compose logs -f [service] to tail logs
+
+# Development workflow:
+# 1. Start all services: docker compose up -d
+# 2. Watch logs: docker compose logs -f
+# 3. Stop services: docker compose down
+# 4. Rebuild after changes: docker compose build [service]
+# 5. Clean everything: docker compose down -v

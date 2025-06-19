@@ -1,0 +1,73 @@
+{
+  // Base TypeScript configuration for Claude Pocket Console monorepo
+  // This configuration is designed to work with both Node.js and browser environments
+  // Individual packages can extend this base config and override as needed
+  
+  "compilerOptions": {
+    // Language and Environment
+    "target": "ES2022",                       // Modern JavaScript features for better performance
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], // Include DOM types for browser compatibility
+    "jsx": "react-jsx",                       // Modern React JSX transform (no React import needed)
+    "module": "ESNext",                       // Use ES modules for better tree-shaking
+    "moduleResolution": "bundler",            // Modern module resolution for bundlers
+    
+    // Emit
+    "declaration": true,                      // Generate .d.ts files for TypeScript consumers
+    "declarationMap": true,                   // Generate source maps for declarations
+    "sourceMap": true,                        // Generate source maps for debugging
+    "removeComments": false,                  // Keep comments for better documentation
+    "noEmitOnError": true,                    // Prevent emit on compilation errors
+    
+    // Interop Constraints
+    "isolatedModules": true,                  // Ensure each file can be transpiled independently
+    "allowSyntheticDefaultImports": true,     // Allow default imports from modules without default export
+    "esModuleInterop": true,                  // Enable interoperability between CommonJS and ES Modules
+    "forceConsistentCasingInFileNames": true, // Ensure consistent casing in file names
+    
+    // Type Checking
+    "strict": true,                           // Enable all strict type checking options
+    "noUnusedLocals": true,                   // Error on unused local variables
+    "noUnusedParameters": true,               // Error on unused parameters
+    "noFallthroughCasesInSwitch": true,      // Error on fallthrough cases in switch statements
+    "noUncheckedIndexedAccess": true,        // Add undefined to index signature results
+    "noImplicitReturns": true,                // Error on missing returns in functions
+    "noPropertyAccessFromIndexSignature": true, // Require indexed access for index signatures
+    "exactOptionalPropertyTypes": true,       // Differentiate between undefined and missing
+    
+    // Module Resolution
+    "baseUrl": ".",                           // Base directory for non-relative module names
+    "paths": {
+      "@cpc/*": ["packages/*/src"],           // Path mapping for monorepo packages
+      "@/*": ["src/*"]                         // Path mapping for local package imports
+    },
+    
+    // JavaScript Support
+    "allowJs": true,                          // Allow JavaScript files in the project
+    "checkJs": false,                         // Skip type checking for JavaScript files
+    
+    // Skip type checking of declaration files
+    "skipLibCheck": true,                     // Skip type checking of .d.ts files for faster builds
+    
+    // Experimental Options
+    "experimentalDecorators": true,           // Enable experimental decorators if needed
+    "emitDecoratorMetadata": true,            // Emit design-type metadata for decorators
+    
+    // Other Options
+    "resolveJsonModule": true,                // Allow importing JSON files
+    "allowImportingTsExtensions": false,      // Disallow importing .ts files directly
+    "verbatimModuleSyntax": true              // Use exact module syntax for better ESM compatibility
+  },
+  
+  // Exclude common directories from compilation
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".turbo",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.spec.tsx",
+    "**/*.test.tsx"
+  ]
+}

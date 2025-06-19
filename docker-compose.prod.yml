@@ -1,0 +1,239 @@
+# Claude Pocket Console - Production Docker Compose Configuration
+# This file defines the production deployment configuration
+# Security hardened with strict resource limits and access controls
+
+version: '3.8'
+
+services:
+  # Web Console - Production Next.js frontend
+  web:
+    container_name: cpc-web
+    image: ${REGISTRY_URL}/cpc/web:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      # Only expose the necessary port
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_CONVEX_URL=${CONVEX_DEPLOYMENT_URL}
+      - NEXT_PUBLIC_TERMINAL_SERVER_URL=${TERMINAL_SERVER_URL}
+      # Security headers and settings
+      - NEXT_TELEMETRY_DISABLED=1
+    networks:
+      - cpc-frontend
+    # Security: Run as non-root user
+    user: "1000:1000"
+    # Security: Read-only root filesystem
+    read_only: true
+    # Writable directories via tmpfs
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/.next/cache:noexec,nosuid,size=200m
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits - adjust based on your needs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+          pids: 100
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Terminal Server - Production FastAPI backend
+  terminal-server:
+    container_name: cpc-terminal-server
+    image: ${REGISTRY_URL}/cpc/terminal-server:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Docker socket - required for container management
+      # In production, consider using Docker-in-Docker or remote Docker API
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - CONVEX_URL=${CONVEX_DEPLOYMENT_URL}
+      # Security settings - stricter for production
+      - MAX_SESSIONS_PER_USER=3
+      - SESSION_TIMEOUT_MINUTES=15
+      - CONTAINER_MEMORY_LIMIT=256m
+      - CONTAINER_CPU_LIMIT=0.5
+      - CONTAINER_PIDS_LIMIT=100
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=60
+      # Sandbox configuration
+      - SANDBOX_IMAGE=${REGISTRY_URL}/cpc/sandbox:${SANDBOX_VERSION:-latest}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    networks:
+      - cpc-backend
+      - cpc-docker
+    # Security: Custom user that's part of docker group
+    # You'll need to ensure this user exists in the image
+    user: "1001:999"  # 999 is typically the docker group
+    # Note: Can't use read_only with Docker socket access
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+    # Capabilities needed for Docker management
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+          pids: 200
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Nginx Reverse Proxy - Production gateway
+  nginx:
+    container_name: cpc-nginx
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Nginx configuration
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL certificates - ensure these are properly managed
+      - ./infrastructure/nginx/ssl:/etc/nginx/ssl:ro
+      # Static file cache
+      - nginx_cache:/var/cache/nginx
+    networks:
+      - cpc-frontend
+    depends_on:
+      - web
+      - terminal-server
+    # Security: Run as non-root
+    user: "101:101"  # nginx user
+    # Read-only filesystem
+    read_only: true
+    # Writable directories
+    tmpfs:
+      - /var/run:noexec,nosuid,size=10m
+      - /var/log/nginx:noexec,nosuid,size=100m
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+          pids: 50
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring - Prometheus node exporter (optional)
+  node-exporter:
+    container_name: cpc-node-exporter
+    image: prom/node-exporter:v1.7.0
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    networks:
+      - cpc-monitoring
+    # Security settings
+    user: "65534:65534"  # nobody user
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Minimal resources
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+
+# Networks - Segregated for security
+networks:
+  cpc-frontend:
+    driver: bridge
+    internal: false
+  cpc-backend:
+    driver: bridge
+    internal: true  # Backend network is internal only
+  cpc-docker:
+    driver: bridge
+    internal: true  # Docker network is internal only
+  cpc-monitoring:
+    driver: bridge
+    internal: true  # Monitoring network is internal only
+
+# Volumes
+volumes:
+  nginx_cache:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=100m,mode=0755
+
+# Production deployment notes:
+# 1. Build and push images to your registry:
+#    docker build -t ${REGISTRY_URL}/cpc/web:${VERSION} ./apps/web
+#    docker push ${REGISTRY_URL}/cpc/web:${VERSION}
+#
+# 2. Set environment variables:
+#    export REGISTRY_URL=your-registry.com
+#    export VERSION=1.0.0
+#    export CONVEX_DEPLOYMENT_URL=https://your-app.convex.cloud
+#    export TERMINAL_SERVER_URL=wss://your-domain.com/terminal
+#
+# 3. Deploy:
+#    docker compose -f docker-compose.prod.yml up -d
+#
+# 4. Monitor:
+#    docker compose -f docker-compose.prod.yml logs -f
+#    docker compose -f docker-compose.prod.yml ps
+#
+# 5. Update:
+#    docker compose -f docker-compose.prod.yml pull
+#    docker compose -f docker-compose.prod.yml up -d
+#
+# Security checklist:
+# - [ ] All services run as non-root users
+# - [ ] Read-only root filesystems where possible
+# - [ ] Resource limits applied to all services
+# - [ ] Network segregation implemented
+# - [ ] Security options and capability dropping configured
+# - [ ] Health checks implemented for all services
+# - [ ] SSL/TLS properly configured in nginx
+# - [ ] Environment variables don't contain secrets (use Docker secrets)
+# - [ ] Regular security updates applied to base images

@@ -1,0 +1,19 @@
+{
+  "name": "@cpc/convex",
+  "version": "0.1.0",
+  "description": "Convex backend for Claude Pocket Console",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "lint": "echo 'No linting for Convex files'",
+    "type-check": "echo 'No type checking for Convex files'"
+  },
+  "dependencies": {
+    "convex": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
