@@ -40,7 +40,9 @@
     "editor.codeActionsOnSave": {
       "source.fixAll": "explicit",
       "source.organizeImports": "explicit"
-    }
+    },
+    "editor.formatOnType": true,
+    "editor.tabSize": 4
   },
   
   // ESLint Configuration
@@ -55,16 +57,12 @@
   ],
   
   // Prettier Configuration
-  "prettier.requireConfig": true,
+  "prettier.requireConfig": false,
   "prettier.useEditorConfig": true,
   
   // Python Configuration
   "python.defaultInterpreterPath": "apps/terminal-server/.venv/bin/python",
   "python.terminal.activateEnvironment": true,
-  "[python]": {
-    "editor.formatOnType": true,
-    "editor.tabSize": 4
-  },
   
   // Tailwind CSS IntelliSense
   "tailwindCSS.experimental.classRegex": [

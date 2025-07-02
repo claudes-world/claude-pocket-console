@@ -160,6 +160,21 @@ When implementing terminal features:
 - Subagents should sign off with a unique identifier (e.g., " -- Task Subagent Phase 2C")
 - Keep GitHub comments short (1-4 sentences) with personality
 
+## Documentation Strategy
+
+**Root Documentation** (for humans):
+- `README.md` - Project overview and quick start
+- `docs/ARCHITECTURE.md` - System design and specifications
+- `docs/DEVELOPMENT.md` - Human setup and debugging guides
+- `docs/DEPLOYMENT.md` - Infrastructure and deployment
+
+**LLM Agent Documentation** (in `docs/`):
+- `docs/AGENT_ORCHESTRATION.md` - Detailed agent coordination instructions
+- `docs/MULTI_AGENT_SETUP.md` - Human-readable multi-agent setup guide
+- This `CLAUDE.md` file - Core development instructions for Claude Code agents
+
+**Principle**: Keep root docs concise for human consumption. Detailed LLM instructions and context belong in `docs/` directory.
+
 ## Key File Locations
 
 - Package configs: `packages/config/` (ESLint, TypeScript, Prettier)
@@ -169,6 +184,8 @@ When implementing terminal features:
 - Convex functions: `infrastructure/convex/`
 - Terminal WebSocket handler: `apps/terminal-server/src/websocket.py`
 - Next.js API routes: `apps/web/src/app/api/`
+- Agent scripts: `scripts/agents/` (setup, cleanup, monitoring)
+- Agent templates: `scripts/agents/templates/`
 
 ## Environment Variables
 
@@ -506,6 +523,271 @@ gh issue close 201
 ```
 
 This workflow ensures every change is traceable, well-documented, and contributes to the historical record of the Claude's World project.
+
+## Multi-Agent Workflow
+
+Support for multiple AI agents working simultaneously on the same repository using git worktrees with optimized resource sharing.
+
+### Architecture: Git Worktrees + pnpm + Turborepo
+
+**Git Worktrees** provide isolated working directories sharing the same `.git` repository:
+- Each agent gets a complete copy of the monorepo on different branches
+- Shared git history, branches, and commits across all agents
+- Independent file systems prevent agent conflicts
+
+**pnpm Global Store** provides efficient package sharing:
+- All `node_modules` directories use hard links to `~/.pnpm-store`
+- ~90% space savings compared to independent installations
+- Automatic deduplication of package versions
+
+**Turborepo Independent Caches** ensure build isolation:
+- Each agent maintains separate `.turbo/` cache directory
+- Prevents cache corruption from concurrent builds
+- Still benefits from monorepo task orchestration
+
+### Directory Structure
+
+```bash
+pocket-console/
+├── .git/                         # Shared git repository
+├── .turbo/                       # Main workspace cache
+├── apps/web/                     # Main development workspace
+├── packages/shared-types/
+├── agent-workspaces/             # Multi-agent worktrees
+│   ├── agent-alpha/              # Agent Alpha's workspace
+│   │   ├── apps/web/             # Full monorepo copy
+│   │   ├── packages/
+│   │   ├── node_modules/         # Hard links to pnpm store
+│   │   ├── .turbo/               # Independent cache
+│   │   └── .env.local            # Agent-specific config
+│   └── agent-beta/               # Agent Beta's workspace
+│       ├── apps/web/
+│       ├── packages/
+│       ├── node_modules/         # Hard links to pnpm store
+│       ├── .turbo/               # Independent cache
+│       └── .env.local
+└── scripts/
+    ├── setup-agent-workspace.sh
+    └── cleanup-agent-workspace.sh
+```
+
+### Agent Workspace Setup
+
+```bash
+# 1. Create agent workspace directory
+mkdir -p agent-workspaces
+
+# 2. Create git worktree for agent
+git worktree add agent-workspaces/agent-alpha -b feat/123-websocket-feature
+
+# 3. Set up agent workspace
+cd agent-workspaces/agent-alpha
+
+# 4. Install dependencies (uses pnpm global store automatically)
+pnpm install
+
+# 5. Configure agent-specific environment
+cat > .env.local << EOF
+# Agent Alpha Configuration
+AGENT_ID=agent-alpha
+DEV_PORT_BASE=3100
+DOCKER_CONTAINER_PREFIX=alpha-
+AGENT_WORKSPACE_PATH=agent-workspaces/agent-alpha
+EOF
+
+# 6. Start development with agent-specific ports
+pnpm dev --port 3100
+```
+
+### Resource Allocation Strategy
+
+**Port Allocation:**
+- Agent Alpha: 3100-3199 (web: 3100, api: 3101, etc.)
+- Agent Beta: 3200-3299 (web: 3200, api: 3201, etc.)
+- Agent Gamma: 3300-3399 (web: 3300, api: 3301, etc.)
+
+**Docker Container Naming:**
+- Alpha: `alpha-terminal-session-{id}`, `alpha-sandbox-{id}`
+- Beta: `beta-terminal-session-{id}`, `beta-sandbox-{id}`
+
+**Environment Variables:**
+```bash
+# agent-alpha/.env.local
+AGENT_ID=agent-alpha
+DEV_PORT_BASE=3100
+DOCKER_CONTAINER_PREFIX=alpha-
+API_PORT=3101
+WEBSOCKET_PORT=3102
+
+# agent-beta/.env.local  
+AGENT_ID=agent-beta
+DEV_PORT_BASE=3200
+DOCKER_CONTAINER_PREFIX=beta-
+API_PORT=3201
+WEBSOCKET_PORT=3202
+```
+
+### Agent Development Workflow
+
+```bash
+# Agent starts work on assigned issue
+cd agent-workspaces/agent-alpha
+
+# Create feature branch (already done during worktree creation)
+git status  # Shows: On branch feat/123-websocket-feature
+
+# Regular development cycle
+pnpm dev --port 3100        # Start services on agent ports
+# ... make changes ...
+pnpm lint && pnpm type-check # Quality gates
+pnpm test                    # Independent test runs
+
+# Commit with micro-blogging
+git add .
+git commit -m "feat(websocket): add reconnection logic
+
+Implements exponential backoff reconnection strategy.
+Connection attempts: 1s, 2s, 4s, 8s, 16s, 30s (max).
+
+refs #123"
+
+gh issue comment 123 --body "🔧 **Progress Update - Agent Alpha**
+
+Implemented basic reconnection logic with exponential backoff. 
+Testing shows reliable reconnection after network interruptions.
+
+**Key decisions:**
+- Using setTimeout rather than setInterval for backoff
+- Capping max delay at 30 seconds to prevent excessive waits
+- Tracking connection state internally vs relying on WebSocket.readyState
+
+**Next:** Adding connection status UI indicator
+
+-- Agent Alpha 🤖"
+
+# Create PR when feature complete
+gh pr create --title "feat: WebSocket reconnection with exponential backoff" \
+  --body "Implements automatic WebSocket reconnection as specified in #123.
+
+## Changes
+- Added reconnection logic with exponential backoff
+- Internal connection state tracking  
+- Comprehensive test suite
+
+## Testing
+- [x] Unit tests pass (agent-alpha workspace)
+- [x] Manual testing completed on ports 3100-3102
+- [x] Integration tests pass
+- [x] No conflicts with other agent work
+
+## Agent Info
+- Developed by: Agent Alpha
+- Workspace: agent-workspaces/agent-alpha  
+- Ports used: 3100-3102
+- Branch: feat/123-websocket-feature
+
+Closes #123"
+
+# After PR approval and merge, cleanup workspace
+cd ../..
+git worktree remove agent-workspaces/agent-alpha
+```
+
+### Turborepo Cache Strategy
+
+**Each agent maintains independent `.turbo/` cache directories** to prevent conflicts:
+
+```bash
+# Agent Alpha builds @cpc/shared-types
+cd agent-workspaces/agent-alpha
+pnpm build --filter @cpc/shared-types
+# Cache stored in: agent-workspaces/agent-alpha/.turbo/
+
+# Agent Beta builds same package (different feature)
+cd agent-workspaces/agent-beta  
+pnpm build --filter @cpc/shared-types
+# Cache stored in: agent-workspaces/agent-beta/.turbo/
+```
+
+**Why independent caches:**
+- **Prevents corruption**: Different features may have different build outputs
+- **Maintains isolation**: Agent builds don't interfere with each other
+- **Still efficient**: pnpm's package sharing provides the major space savings
+
+**Performance benefits:**
+- **Package installation**: ~90% space savings via pnpm global store
+- **Build speed**: Turborepo parallelization within each agent workspace
+- **Task orchestration**: Full monorepo benefits (dependency graphing, etc.)
+
+### Multi-Agent Coordination
+
+**Branch Management:**
+```bash
+# List all agent worktrees
+git worktree list
+
+# Check which agents are working on what
+git branch -r | grep -E "(feat|fix|research)/"
+
+# See all agent activity
+gh pr list --author agent-alpha,agent-beta,agent-gamma
+```
+
+**Resource Monitoring:**
+```bash
+# Check port usage
+lsof -i :3100-3399
+
+# Monitor Docker containers by agent
+docker ps --filter "name=alpha-"
+docker ps --filter "name=beta-"
+
+# Check disk usage by workspace
+du -sh agent-workspaces/*/
+```
+
+**Conflict Prevention:**
+- Each agent works on separate GitHub issues
+- Independent git branches via worktrees
+- Isolated port ranges and Docker naming
+- Separate environment configurations
+- Independent build caches
+
+### Agent Workspace Management Commands
+
+```bash
+# Create new agent workspace
+./scripts/setup-agent-workspace.sh agent-delta feat/456-auth-system
+
+# List active agent workspaces  
+./scripts/list-agent-workspaces.sh
+
+# Clean up completed workspace
+./scripts/cleanup-agent-workspace.sh agent-alpha
+
+# Health check all agent workspaces
+./scripts/health-check-agents.sh
+```
+
+### Integration with Existing Workflow
+
+The multi-agent workflow **extends** the existing Enhanced GitHub Flow:
+
+1. **Issue Creation**: Same process, but include agent assignment
+2. **Branch Creation**: Handled automatically via `git worktree add`
+3. **Development**: Each agent follows same quality gates in their workspace
+4. **Micro-blogging**: Enhanced with agent signatures for multi-agent coordination
+5. **Pull Requests**: Include agent workspace info in PR descriptions
+6. **Merge & Cleanup**: Standard process + worktree cleanup
+
+**Agent Assignment in Issues:**
+```bash
+gh issue create --title "[AGENT-ALPHA] Add WebSocket reconnection" \
+  --assignee agent-alpha \
+  --label "agent-alpha,feature"
+```
+
+This multi-agent approach enables true parallel development while maintaining code quality, historical documentation, and efficient resource usage.
 
 ## MCP Server Plans
 
