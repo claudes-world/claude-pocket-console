@@ -2,9 +2,44 @@
 name: 🏗️ Infrastructure & DevOps
 about: Infrastructure, deployment, tooling, and DevOps improvements
 title: '[INFRA] '
-labels: ['infrastructure', 'devops', 'needs-triage']
+labels: ['infrastructure', 'devops', 'needs-triage', 'agent-ready']
 assignees: ''
 ---
+
+<!-- 🤖 AGENT ASSIGNMENT & COORDINATION -->
+## 🤖 Agent Assignment
+
+**Primary Agent:**
+<!-- Infrastructure work typically requires specialized agents -->
+- [ ] Infrastructure Specialist (recommended for DevOps)
+- [ ] Claude Code (simple infrastructure changes)
+- [ ] Security Agent (security-focused changes)
+- [ ] Performance Agent (optimization focus)
+- [ ] Custom: _____________
+
+**Agent Workspace:**
+- Infrastructure branch: `infra/<issue-number>-<change-type>`
+- Config location: `/.github/`, `/docker/`, `/terraform/`, `/k8s/`
+- Access requirements: Docker, cloud resources, CI/CD systems
+
+## 🔗 Agent Coordination
+
+**Multi-Agent Considerations:**
+- [ ] Isolated infrastructure change
+- [ ] Affects multiple development agents
+- [ ] Requires coordination with deployment
+- [ ] Impacts security or compliance
+
+**Resource Requirements:**
+- Infrastructure access: [ ] Docker [ ] GCP [ ] GitHub Actions [ ] Monitoring
+- Service dependencies: [ ] Database [ ] External APIs [ ] Storage [ ] Network
+- Deployment coordination: [ ] Zero-downtime [ ] Maintenance window [ ] Rollback ready
+
+**Coordination Notes:**
+<!-- How does this infrastructure change affect other agents? -->
+- Affects agents: List agents that depend on this infrastructure
+- Deployment timing: Coordinate with ongoing development work
+- Communication: Notify relevant agents of changes
 
 ## 🎯 Infrastructure Goal
 
@@ -138,6 +173,46 @@ What documentation needs to be updated?
 
 *How does this infrastructure improvement support autonomous AI operations?*
 
+## 🤖 Agent Infrastructure Workflow
+
+**Expected Infrastructure Process:**
+```bash
+# Agent infrastructure pattern:
+git checkout -b infra/<issue-number>-<change-type>
+# 1. Assess current infrastructure
+# 2. Plan changes with minimal disruption
+# 3. Implement with proper testing
+# 4. Deploy with monitoring
+# 5. Verify and document
+```
+
+**Agent Success Criteria:**
+- [ ] Infrastructure change implemented
+- [ ] Testing completed (staging/production)
+- [ ] Monitoring and alerting configured
+- [ ] Documentation updated
+- [ ] Rollback plan verified
+- [ ] Other agents notified of changes
+
+**Infrastructure Handoff:**
+- [ ] Configuration changes documented
+- [ ] Access/permissions updated
+- [ ] Monitoring baselines established
+- [ ] Team knowledge transfer completed
+
 ---
 
-**For Claude Agents:** Document your infrastructure decisions, trade-offs, and lessons learned through micro-blogging. Include details about why certain approaches were chosen over alternatives.
+**For Claude Agents:** Document your infrastructure decisions, trade-offs, and lessons learned through micro-blogging. Include:
+- Current state analysis and limitations
+- Proposed changes and alternatives considered
+- Implementation approach and reasoning
+- Testing results and validation
+- Deployment process and outcomes
+- Impact on other agents and services
+
+**Agent Micro-Blog Format:**
+```
+[Timestamp] [Agent-ID] [Infra-Phase]: Infrastructure update with rationale
+```
+
+Include details about why certain approaches were chosen over alternatives, especially for future infrastructure decisions.

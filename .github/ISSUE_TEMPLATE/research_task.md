@@ -2,9 +2,44 @@
 name: 🔬 Research Task
 about: Investigation, analysis, or exploration work
 title: '[RESEARCH] '
-labels: ['research', 'investigation']
+labels: ['research', 'investigation', 'agent-ready']
 assignees: ''
 ---
+
+<!-- 🤖 AGENT ASSIGNMENT & COORDINATION -->
+## 🤖 Agent Assignment
+
+**Primary Agent:**
+<!-- Research tasks typically suit specific agent types -->
+- [ ] Research Agent (primary choice for analysis)
+- [ ] Claude Code (quick technical research)
+- [ ] Task Specialist (complex multi-phase research)
+- [ ] Domain Specialist: _____________ (specify expertise area)
+- [ ] Custom: _____________
+
+**Agent Workspace:**
+- Research branch: `research/<issue-number>-<topic>`
+- Documentation location: `.taskmaster/docs/research/`
+- Deliverable format: Markdown, presentation, code examples
+
+## 🔗 Agent Coordination
+
+**Multi-Agent Considerations:**
+- [ ] Solo research (independent investigation)
+- [ ] Collaborative research (multiple perspectives)
+- [ ] Sequential research (builds on other findings)
+- [ ] Feeds into development work (specify agents)
+
+**Resource Requirements:**
+- Research tools: [ ] Web search [ ] Code analysis [ ] External APIs [ ] Documentation
+- Data access: [ ] Codebase [ ] Logs [ ] Metrics [ ] External resources
+- Collaboration: [ ] Expert consultation [ ] Stakeholder input [ ] Peer review
+
+**Coordination Notes:**
+<!-- How does this research relate to other work? -->
+- Informs: List tasks/agents that will use these findings
+- Depends on: List prerequisite research or data
+- Timeline alignment: How this fits with other agent work
 
 ## 🎯 Research Question
 
@@ -113,6 +148,45 @@ What outputs should this research produce?
 2. Hypothesis 2
 3. Hypothesis 3
 
+## 🤖 Agent Research Workflow
+
+**Expected Research Process:**
+```bash
+# Agent research pattern:
+git checkout -b research/<issue-number>-<topic>
+mkdir -p .taskmaster/docs/research/
+# 1. Define research questions
+# 2. Gather information
+# 3. Analyze findings
+# 4. Document insights
+# 5. Provide recommendations
+```
+
+**Agent Success Criteria:**
+- [ ] Research questions answered
+- [ ] Key findings documented
+- [ ] Recommendations provided
+- [ ] Next steps identified
+- [ ] Knowledge transferred to relevant agents
+
+**Research Deliverables:**
+- [ ] Research notes in `.taskmaster/docs/research/`
+- [ ] Summary report with key findings
+- [ ] Recommendations for action
+- [ ] Updated documentation (if applicable)
+
 ---
 
-**Research Micro-blogging:** Use this issue to document your research journey, discoveries, insights, dead ends, and "aha!" moments. Future historians will want to understand not just what you found, but how you found it and what you learned along the way.
+**Research Micro-blogging:** Use this issue to document your research journey, discoveries, insights, dead ends, and "aha!" moments. Include:
+- Research methodology and approach
+- Key discoveries and insights
+- Dead ends and why they didn't work
+- Connections to other project areas
+- Final recommendations and next steps
+
+**Agent Micro-Blog Format:**
+```
+[Timestamp] [Agent-ID] [Research-Phase]: Discovery or insight (1-4 sentences)
+```
+
+Future historians (and agents) will want to understand not just what you found, but how you found it and what you learned along the way.
