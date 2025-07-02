@@ -1,3 +1,8 @@
+---
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(gh issue view:*), Bash(gh issue create:*), Bash(gh issue list:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh pr comment:*)
+description: GitHub Issue → Branch → PR Workflow
+---
+
 # GitHub Issue → Branch → PR Workflow
 
 > Purpose: Provide a lightweight, token-efficient guide that LLM agents can follow to properly manage code changes using GitHub's issue-driven development workflow.
@@ -19,6 +24,7 @@ Never: Commit directly to main or force push shared branches
 ## 1. Open an Issue (the **source of truth**)
 
 ### Before Creating
+
 ```bash
 # Check for existing similar issues
 gh issue list --search "keywords"
@@ -31,36 +37,44 @@ gh issue list --label "bug"
 `<type>: <short verb-phrase>` (≤ 60 chars, lowercase after prefix)
 
 **Types:**
+
 - `feat:` - New capability or feature
-- `fix:` - Bug fix in production code  
+- `fix:` - Bug fix in production code
 - `refactor:` - Code improvement without behavior change
 - `docs:` - Documentation only changes
 - `chore:` - Build, tooling, or dependency updates
 
 **Template:**
+
 ```md
 ### Problem
+
 _One paragraph. Plain language. Link to logs/design/docs._
 
 ### Goal / Definition of Done
+
 - [ ] Specific measurable outcome
 - [ ] Another verifiable goal
 
 ### Proposed Approach
+
 _Brief outline or "TBD" if exploring_
 
 ### Context/Links
+
 - Related issues: #XX, #YY
 - Design doc: [link]
 - Discussion: [link]
 ```
 
 **Command:**
+
 ```bash
 gh issue create --title "feat: add user authentication" --body "$(cat issue-body.md)"
 ```
 
 ### Post-Creation
+
 - Add labels: `type/feature`, `area/auth`, `priority/high`
 - Add to project board if applicable
 - Assign milestone for release tracking
@@ -88,11 +102,13 @@ git checkout -b <prefix>/<issue-number>-<kebab-description>
 ## 3. Commit Guidelines
 
 ### Rules
+
 - Atomic commits: ≤ 100 LOC or one logical change
 - Reference issue number in every commit
 - Use conventional commit format
 
 ### Format
+
 ```
 <type>(#<issue>): <imperative summary ≤ 50 chars>
 
@@ -105,6 +121,7 @@ git checkout -b <prefix>/<issue-number>-<kebab-description>
 ### Examples
 
 **✅ Good:**
+
 ```
 feat(#42): add GitHub OAuth provider
 
@@ -115,6 +132,7 @@ Co-authored-by: TeamMember <email>
 ```
 
 **❌ Bad:**
+
 ```
 feat: updated files              # Too vague
 feat(#42): big auth changes      # Not specific
@@ -126,6 +144,7 @@ Added authentication             # Missing type and issue
 ## 4. Pull Request Process
 
 ### Create PR Early
+
 ```bash
 # Create draft PR immediately after first commit
 gh pr create --draft \
@@ -135,40 +154,49 @@ gh pr create --draft \
 ```
 
 ### PR Template
+
 ```md
 Resolves #<issue-number>
 
 ## Summary
+
 _One paragraph overview of what and why_
 
 ## Changes
+
 - Implemented OAuth2 flow with GitHub provider
 - Added session management with JWT tokens
 - Created auth middleware for protected routes
 
 ## Testing
+
 - [ ] Unit tests added/updated
 - [ ] Integration tests pass
 - [ ] Manual testing completed
 
 ## Verification Steps
+
 1. Run `pnpm dev`
 2. Navigate to /login
 3. Click "Sign in with GitHub"
 4. Verify redirect and session creation
 
 ## Screenshots/Recordings
+
 _If UI changes_
 
 ## Performance Impact
+
 _If relevant: benchmarks, load tests_
 
 ## Notes
+
 - Decided against Passport.js due to bundle size
 - JWT expiry set to 24h per security review
 ```
 
 ### PR Management
+
 ```bash
 # Convert to ready when done
 gh pr ready <number>
@@ -191,7 +219,7 @@ When responding to review comments:
 
 > @reviewer: "Why not use refresh tokens?"
 
-Good point. Added refresh token support in commit abc123. 
+Good point. Added refresh token support in commit abc123.
 Tokens now rotate every 7 days with 30-day absolute expiry.
 
 > @reviewer: "Performance concern with N+1 queries"
@@ -212,19 +240,23 @@ Add periodic updates to the issue:
 ### Status Update (2024-01-15)
 
 **Progress:**
+
 - ✅ OAuth flow implemented
 - ✅ Session management complete
 - 🏗️ Working on role-based permissions
 
 **Blockers:**
+
 - Waiting on security review for JWT implementation
 
 **Next Steps:**
+
 - Complete RBAC implementation
 - Add comprehensive test suite
 ```
 
 ### In PRs
+
 - Push commits regularly (triggers CI)
 - Comment on significant decisions
 - Link to discussions: `See discussion in #42 (comment)`
@@ -235,6 +267,7 @@ Add periodic updates to the issue:
 ## 7. Merge Strategy
 
 ### Pre-Merge Checklist
+
 ```bash
 # Update branch
 git checkout feat/42-auth
@@ -248,11 +281,13 @@ gh pr view <number>
 ```
 
 ### Merge Decision Tree
+
 - Single commit or clear story? → **Rebase and merge**
 - Multiple messy commits? → **Squash and merge**
 - Multiple important commits? → **Create merge commit**
 
 ### Post-Merge
+
 ```bash
 # Delete remote branch (usually automatic)
 git push origin --delete feat/42-auth
@@ -268,6 +303,7 @@ git branch -d feat/42-auth
 GitHub auto-closes issue when PR merges with `Resolves #X`.
 
 Add final summary to issue:
+
 ```md
 ### Completed in #<PR-number>
 
@@ -276,6 +312,7 @@ Add final summary to issue:
 🚀 Will be included in v2.1.0 release
 
 Follow-up tasks:
+
 - #95 Add rate limiting to auth endpoints
 - #96 Implement social login providers
 ```
@@ -284,21 +321,22 @@ Follow-up tasks:
 
 ## Common Pitfalls to Avoid
 
-| ❌ Don't | ✅ Do Instead |
-|----------|---------------|
-| Include secrets in commits | Use environment variables |
-| Force push shared branches | Use rebase locally only |
-| Create huge PRs | Break into smaller chunks |
-| Ignore CI failures | Fix before requesting review |
-| Use vague commit messages | Be specific and reference issues |
-| Work on main directly | Always use feature branches |
-| Mix multiple fixes in one PR | One issue = one PR |
+| ❌ Don't                     | ✅ Do Instead                    |
+| ---------------------------- | -------------------------------- |
+| Include secrets in commits   | Use environment variables        |
+| Force push shared branches   | Use rebase locally only          |
+| Create huge PRs              | Break into smaller chunks        |
+| Ignore CI failures           | Fix before requesting review     |
+| Use vague commit messages    | Be specific and reference issues |
+| Work on main directly        | Always use feature branches      |
+| Mix multiple fixes in one PR | One issue = one PR               |
 
 ---
 
 ## Automation Tips
 
 ### GitHub CLI Aliases
+
 ```bash
 # Add to shell config
 alias ghi="gh issue create"
@@ -307,6 +345,7 @@ alias ghis="gh issue status"
 ```
 
 ### Useful Queries
+
 ```bash
 # My open issues
 gh issue list --assignee @me --state open
