@@ -15,6 +15,7 @@ Claude Pocket Console provides developers with instant access to secure, isolate
 | **Clear boundaries** | `apps/` for deployables, `packages/` for shared libs, `infrastructure/` for IaC |
 | **Security first** | Every terminal session runs in a rootless Docker sandbox with strict isolation |
 | **Type safety** | Zod schemas in `packages/shared-types` generate both TypeScript and JSON schemas |
+| **Multi-agent ready** | Git worktrees + pnpm sharing enable parallel AI agent development |
 | **Mobile ready** | Progressive Web App with Capacitor wrapper for native app distribution |
 
 ## Quick Start
@@ -81,6 +82,7 @@ claude-pocket-console/
 
 - **[Architecture Guide](docs/ARCHITECTURE.md)** - System design, service specifications, and API reference
 - **[Development Guide](docs/DEVELOPMENT.md)** - Detailed setup, debugging, and local development workflows  
+- **[Multi-Agent Setup](docs/MULTI_AGENT_SETUP.md)** - Parallel AI agent development with git worktrees
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Infrastructure, CI/CD pipelines, and production deployment
 - **[Contributing](/.github/CONTRIBUTING.md)** - Guidelines for contributing to the project
 

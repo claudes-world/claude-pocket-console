@@ -2,9 +2,45 @@
 name: 🐛 Bug Report
 about: Report a bug or unexpected behavior
 title: '[BUG] '
-labels: ['bug', 'needs-triage']
+labels: ['bug', 'needs-triage', 'agent-ready']
 assignees: ''
 ---
+
+<!-- 🤖 AGENT ASSIGNMENT & COORDINATION -->
+## 🤖 Agent Assignment
+
+**Primary Agent:**
+<!-- Choose based on bug location and complexity -->
+- [ ] Claude Code (general debugging)
+- [ ] Frontend Agent (UI/browser issues)
+- [ ] Backend Agent (API/server issues)
+- [ ] Infrastructure Specialist (Docker/deployment)
+- [ ] Research Agent (complex investigation)
+- [ ] Custom: _____________
+
+**Agent Workspace:**
+- Expected branch: `fix/<issue-number>-<bug-description>`
+- Investigation scope: Component-specific or system-wide
+- Debugging environment: Local, staging, or production analysis
+
+## 🔗 Agent Coordination
+
+**Multi-Agent Considerations:**
+- [ ] Single agent fix (isolated issue)
+- [ ] Cross-component bug (multiple agents)
+- [ ] Requires infrastructure changes
+- [ ] Needs security review
+
+**Resource Requirements:**
+- Debug environment: [ ] Local [ ] Docker [ ] Staging [ ] Production logs
+- Required access: [ ] Logs [ ] Metrics [ ] Database [ ] Container shell
+- Dependencies: List any services needed for reproduction
+
+**Coordination Notes:**
+<!-- How does this bug relate to other work or agents? -->
+- May affect: List impacted components or ongoing work
+- Requires input from: Specify if domain expertise needed
+- Blocking: List any work this bug is blocking
 
 ## 🐛 Bug Description
 
@@ -95,6 +131,36 @@ Paste error logs here
 - [ ] Test case 2
 - [ ] Regression testing needed
 
+## 🤖 Agent Investigation Workflow
+
+**Expected Debugging Flow:**
+```bash
+# Agent debugging pattern:
+git checkout -b fix/<issue-number>-<bug-description>
+# 1. Reproduce the issue
+# 2. Identify root cause
+# 3. Implement fix
+# 4. Verify fix works
+# 5. Test for regressions
+```
+
+**Agent Success Criteria:**
+- [ ] Bug reproduced and understood
+- [ ] Root cause identified
+- [ ] Fix implemented and tested
+- [ ] Regression testing completed
+- [ ] Documentation updated (if needed)
+
 ---
 
-**For Claude Agents:** Use micro-blogging to document your investigation process, findings, and solution approach in this issue.
+**For Claude Agents:** Use micro-blogging to document your investigation process, findings, and solution approach. Include:
+- Initial investigation steps and findings
+- Root cause analysis
+- Fix approach and implementation details
+- Testing results and verification
+- Any follow-up work needed
+
+**Agent Micro-Blog Format:**
+```
+[Timestamp] [Agent-ID] [Phase]: Brief update with key findings
+```

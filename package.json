@@ -27,7 +27,11 @@
     "clean": "turbo clean && rm -rf node_modules",
     "prepare": "husky",
     "convex:push": "pnpm --filter convex push",
-    "docker:build": "docker build -f infrastructure/docker/Dockerfile.sandbox -t cpc/sandbox:latest infrastructure/docker"
+    "docker:build": "docker build -f infrastructure/docker/Dockerfile.sandbox -t cpc/sandbox:latest infrastructure/docker",
+    "agent:create": "./scripts/agents/setup-workspace.sh",
+    "agent:list": "./scripts/agents/list-workspaces.sh",
+    "agent:cleanup": "./scripts/agents/cleanup-workspace.sh",
+    "agent:health": "./scripts/agents/health-check.sh"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-pocket-console.dev/schemas/agent-config.json",
+  "title": "Claude Pocket Console Agent Configuration",
+  "description": "Configuration template for agent workspace setup and management",
+  "type": "object",
+  "required": [
+    "agentInfo",
+    "portAllocation",
+    "dockerSettings",
+    "workspacePaths",
+    "resourceLimits"
+  ],
+  "properties": {
+    "agentInfo": {
+      "type": "object",
+      "description": "Basic information about this agent instance",
+      "required": ["id", "name", "role", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this agent",
+          "pattern": "^agent-[a-z0-9-]+$",
+          "example": "{{AGENT_ID}}"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for the agent",
+          "minLength": 1,
+          "maxLength": 50,
+          "example": "{{AGENT_NAME}}"
+        },
+        "role": {
+          "type": "string",
+          "description": "Primary role/specialization of this agent",
+          "enum": ["terminal", "ui", "api", "testing", "deployment", "research", "full-stack"],
+          "example": "{{AGENT_ROLE}}"
+        },
+        "version": {
+          "type": "string",
+          "description": "Agent configuration version",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "example": "{{AGENT_VERSION}}"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of agent's purpose and capabilities",
+          "maxLength": 500,
+          "example": "{{AGENT_DESCRIPTION}}"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags for categorizing and filtering agents",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "example": ["{{AGENT_TAG_1}}", "{{AGENT_TAG_2}}"]
+        }
+      }
+    },
+    "portAllocation": {
+      "type": "object",
+      "description": "Port assignments for agent services",
+      "required": ["basePort", "apiPort", "websocketPort"],
+      "properties": {
+        "basePort": {
+          "type": "integer",
+          "description": "Base port for this agent (increment by 100 per agent)",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{DEV_PORT_BASE}}"
+        },
+        "apiPort": {
+          "type": "integer",
+          "description": "Port for API server",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{API_PORT}}"
+        },
+        "websocketPort": {
+          "type": "integer",
+          "description": "Port for WebSocket connections",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{WEBSOCKET_PORT}}"
+        },
+        "viteDevPort": {
+          "type": "integer",
+          "description": "Port for Vite development server",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{VITE_DEV_PORT}}"
+        },
+        "storybookPort": {
+          "type": "integer",
+          "description": "Port for Storybook development server",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{STORYBOOK_PORT}}"
+        },
+        "healthCheckPort": {
+          "type": "integer",
+          "description": "Port for health check endpoint",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{HEALTH_CHECK_PORT}}"
+        },
+        "metricsPort": {
+          "type": "integer",
+          "description": "Port for metrics collection",
+          "minimum": 3000,
+          "maximum": 65535,
+          "example": "{{METRICS_PORT}}"
+        },
+        "dynamicPortRange": {
+          "type": "object",
+          "description": "Range for dynamic port allocation",
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 3000,
+              "example": "{{PORT_RANGE_START}}"
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 3000,
+              "example": "{{PORT_RANGE_END}}"
+            }
+          }
+        }
+      }
+    },
+    "dockerSettings": {
+      "type": "object",
+      "description": "Docker configuration for agent containers",
+      "required": ["containerPrefix", "networkName", "projectName"],
+      "properties": {
+        "containerPrefix": {
+          "type": "string",
+          "description": "Prefix for Docker container names",
+          "pattern": "^[a-z0-9-]+$",
+          "example": "{{DOCKER_CONTAINER_PREFIX}}"
+        },
+        "networkName": {
+          "type": "string",
+          "description": "Docker network for agent isolation",
+          "pattern": "^[a-z0-9-]+$",
+          "example": "{{DOCKER_NETWORK_NAME}}"
+        },
+        "projectName": {
+          "type": "string",
+          "description": "Docker Compose project name",
+          "pattern": "^[a-z0-9-]+$",
+          "example": "{{COMPOSE_PROJECT_NAME}}"
+        },
+        "resourceLimits": {
+          "type": "object",
+          "description": "Resource constraints for containers",
+          "properties": {
+            "memoryLimit": {
+              "type": "string",
+              "description": "Memory limit (e.g., '512m', '1g')",
+              "pattern": "^\\d+[kmg]?$",
+              "example": "{{DOCKER_MEMORY_LIMIT}}"
+            },
+            "cpuLimit": {
+              "type": "string",
+              "description": "CPU limit (e.g., '0.5', '1.0')",
+              "pattern": "^\\d+(\\.\\d+)?$",
+              "example": "{{DOCKER_CPU_LIMIT}}"
+            }
+          }
+        },
+        "security": {
+          "type": "object",
+          "description": "Security settings for containers",
+          "properties": {
+            "userUid": {
+              "type": "integer",
+              "description": "User UID for rootless containers",
+              "minimum": 1000,
+              "example": "{{DOCKER_USER_UID}}"
+            },
+            "userGid": {
+              "type": "integer",
+              "description": "User GID for rootless containers",
+              "minimum": 1000,
+              "example": "{{DOCKER_USER_GID}}"
+            },
+            "noPrivilegedMode": {
+              "type": "boolean",
+              "description": "Disable privileged mode for security",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+    "workspacePaths": {
+      "type": "object",
+      "description": "File system paths for agent workspace",
+      "required": ["workspacePath", "monorepoRoot"],
+      "properties": {
+        "workspacePath": {
+          "type": "string",
+          "description": "Absolute path to agent workspace directory",
+          "example": "{{AGENT_WORKSPACE_PATH}}"
+        },
+        "monorepoRoot": {
+          "type": "string",
+          "description": "Absolute path to monorepo root",
+          "example": "{{MONOREPO_ROOT}}"
+        },
+        "relativePaths": {
+          "type": "object",
+          "description": "Relative paths within workspace",
+          "properties": {
+            "logsDir": {
+              "type": "string",
+              "default": "logs",
+              "example": "{{AGENT_LOGS_DIR}}"
+            },
+            "tempDir": {
+              "type": "string",
+              "default": "temp",
+              "example": "{{AGENT_TEMP_DIR}}"
+            },
+            "configDir": {
+              "type": "string",
+              "default": "config",
+              "example": "{{AGENT_CONFIG_DIR}}"
+            }
+          }
+        },
+        "sharedPaths": {
+          "type": "object",
+          "description": "Shared monorepo paths",
+          "properties": {
+            "appsDir": {
+              "type": "string",
+              "default": "apps",
+              "example": "{{APPS_DIR}}"
+            },
+            "packagesDir": {
+              "type": "string",
+              "default": "packages",
+              "example": "{{PACKAGES_DIR}}"
+            },
+            "scriptsDir": {
+              "type": "string",
+              "default": "scripts",
+              "example": "scripts"
+            }
+          }
+        }
+      }
+    },
+    "resourceLimits": {
+      "type": "object",
+      "description": "Resource allocation and limits for agent",
+      "properties": {
+        "maxMemoryUsage": {
+          "type": "string",
+          "description": "Maximum memory usage (e.g., '1g', '512m')",
+          "example": "{{MAX_MEMORY_USAGE}}"
+        },
+        "maxCpuUsage": {
+          "type": "number",
+          "description": "Maximum CPU usage (0.0 to 1.0)",
+          "minimum": 0.1,
+          "maximum": 1.0,
+          "example": "{{MAX_CPU_USAGE}}"
+        },
+        "maxDiskUsage": {
+          "type": "string",
+          "description": "Maximum disk usage (e.g., '10g', '1g')",
+          "example": "{{MAX_DISK_USAGE}}"
+        },
+        "maxConcurrentTasks": {
+          "type": "integer",
+          "description": "Maximum concurrent tasks/operations",
+          "minimum": 1,
+          "maximum": 100,
+          "example": "{{MAX_CONCURRENT_TASKS}}"
+        },
+        "rateLimits": {
+          "type": "object",
+          "description": "API and operation rate limits",
+          "properties": {
+            "requestsPerMinute": {
+              "type": "integer",
+              "minimum": 1,
+              "example": "{{RATE_LIMIT_REQUESTS_PER_MINUTE}}"
+            },
+            "burstSize": {
+              "type": "integer",
+              "minimum": 1,
+              "example": "{{RATE_LIMIT_BURST_SIZE}}"
+            }
+          }
+        }
+      }
+    },
+    "monitoringConfig": {
+      "type": "object",
+      "description": "Monitoring and observability configuration",
+      "properties": {
+        "healthCheck": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "path": {
+              "type": "string",
+              "default": "/health",
+              "example": "{{HEALTH_CHECK_PATH}}"
+            },
+            "intervalSeconds": {
+              "type": "integer",
+              "minimum": 5,
+              "default": 30
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "example": "{{METRICS_ENABLED}}"
+            },
+            "path": {
+              "type": "string",
+              "default": "/metrics",
+              "example": "{{METRICS_PATH}}"
+            },
+            "collectInterval": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 60
+            }
+          }
+        },
+        "logging": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": ["error", "warn", "info", "debug", "trace"],
+              "example": "{{AGENT_LOG_LEVEL}}"
+            },
+            "format": {
+              "type": "string",
+              "enum": ["json", "text"],
+              "default": "json"
+            },
+            "retention": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 30
+                },
+                "maxSizeMB": {
+                  "type": "integer",
+                  "minimum": 10,
+                  "default": 100
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "githubIntegration": {
+      "type": "object",
+      "description": "GitHub integration settings",
+      "properties": {
+        "repository": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "example": "{{GITHUB_OWNER}}"
+            },
+            "name": {
+              "type": "string",
+              "example": "{{GITHUB_REPO}}"
+            }
+          }
+        },
+        "issueManagement": {
+          "type": "object",
+          "properties": {
+            "autoAssign": {
+              "type": "boolean",
+              "example": "{{GITHUB_AUTO_ASSIGN}}"
+            },
+            "defaultLabels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "example": ["{{GITHUB_LABEL_1}}", "{{GITHUB_LABEL_2}}"]
+            },
+            "milestoneTracking": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "branchManagement": {
+          "type": "object",
+          "properties": {
+            "defaultBranch": {
+              "type": "string",
+              "default": "main",
+              "example": "{{DEFAULT_BRANCH}}"
+            },
+            "featureBranchPrefix": {
+              "type": "string",
+              "default": "feat/",
+              "example": "{{FEATURE_BRANCH_PREFIX}}"
+            },
+            "autoDeleteBranches": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "environmentSettings": {
+      "type": "object",
+      "description": "Environment-specific configuration",
+      "properties": {
+        "nodeEnv": {
+          "type": "string",
+          "enum": ["development", "production", "test"],
+          "example": "{{NODE_ENV}}"
+        },
+        "devMode": {
+          "type": "boolean",
+          "description": "Enable development features",
+          "example": "{{AGENT_DEV_MODE}}"
+        },
+        "debugMode": {
+          "type": "boolean",
+          "description": "Enable debug logging and features",
+          "default": false
+        },
+        "hotReload": {
+          "type": "boolean",
+          "description": "Enable hot reloading for development",
+          "example": "{{ENABLE_HOT_RELOAD}}"
+        },
+        "sourceMaps": {
+          "type": "boolean",
+          "description": "Generate source maps",
+          "example": "{{ENABLE_SOURCE_MAPS}}"
+        }
+      }
+    },
+    "featureFlags": {
+      "type": "object",
+      "description": "Feature toggles for experimental functionality",
+      "properties": {
+        "experimentalFeatures": {
+          "type": "boolean",
+          "example": "{{ENABLE_EXPERIMENTAL_FEATURES}}"
+        },
+        "terminalSharing": {
+          "type": "boolean",
+          "example": "{{ENABLE_TERMINAL_SHARING}}"
+        },
+        "realTimeCollaboration": {
+          "type": "boolean",
+          "example": "{{ENABLE_REAL_TIME_COLLABORATION}}"
+        },
+        "advancedDebugging": {
+          "type": "boolean",
+          "example": "{{ENABLE_ADVANCED_DEBUGGING}}"
+        }
+      }
+    },
+    "backupConfig": {
+      "type": "object",
+      "description": "Backup and recovery configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "example": "{{BACKUP_ENABLED}}"
+        },
+        "interval": {
+          "type": "string",
+          "description": "Backup interval (e.g., '1h', '6h', '1d')",
+          "example": "{{BACKUP_INTERVAL}}"
+        },
+        "retentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "example": "{{BACKUP_RETENTION_DAYS}}"
+        },
+        "autoRecovery": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "example": "{{AUTO_RECOVERY_ENABLED}}"
+            },
+            "maxAttempts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "example": "{{MAX_RECOVERY_ATTEMPTS}}"
+            }
+          }
+        }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "description": "Tracking timestamps for agent lifecycle",
+      "properties": {
+        "created": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this configuration was created",
+          "example": "{{CREATED_TIMESTAMP}}"
+        },
+        "lastModified": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this configuration was last modified",
+          "example": "{{LAST_MODIFIED_TIMESTAMP}}"
+        },
+        "lastActive": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this agent was last active",
+          "example": "{{LAST_ACTIVE_TIMESTAMP}}"
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "description": "Current status and state of the agent",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["inactive", "starting", "active", "stopping", "error"],
+          "default": "inactive"
+        },
+        "health": {
+          "type": "string",
+          "enum": ["healthy", "degraded", "unhealthy", "unknown"],
+          "default": "unknown"
+        },
+        "version": {
+          "type": "string",
+          "description": "Currently running version",
+          "example": "{{RUNNING_VERSION}}"
+        },
+        "uptime": {
+          "type": "integer",
+          "description": "Uptime in seconds",
+          "minimum": 0
+        },
+        "lastError": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "critical"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
