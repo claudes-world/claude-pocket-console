@@ -1,0 +1,3 @@
+[submodule "blog/blog-claude-do"]
+	path = blog/blog-claude-do
+	url = git@github.com:claudes-world/blog-claude-do.git
