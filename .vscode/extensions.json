@@ -14,10 +14,7 @@
     // React/Next.js Development
     "dsznajder.es7-react-js-snippets",    // React snippets
     "burkeholland.simple-react-snippets",  // More React snippets
-    "pulkitgangwar.nextjs-snippets",      // Next.js snippets
-    
-    // Database/Backend
-    "mtxr.sqltools",                      // SQL tools
+    "mtxr.sqltools", // SQL tools
     "rangav.vscode-thunder-client",       // REST API testing
     
     // Docker Support

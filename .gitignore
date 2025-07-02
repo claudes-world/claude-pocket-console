@@ -45,6 +45,7 @@ test-results/
 !.vscode/extensions.json
 !.vscode/launch.json
 !.vscode/tasks.json
+!.vscode/themes
 .idea/
 *.swp
 *.swo
