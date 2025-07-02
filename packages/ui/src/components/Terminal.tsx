@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
 import { clsx } from 'clsx';
+import React, { useState, useRef, useEffect } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 /**
@@ -88,10 +88,10 @@ export const Terminal: React.FC<TerminalProps> = ({
 }) => {
   const [lines, setLines] = useState<TerminalLine[]>(initialLines);
   const [currentInput, setCurrentInput] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  // TODO: Implement command history management
+  // const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  // TODO: Implement command history navigation
+  // const [historyIndex, setHistoryIndex] = useState(-1);
   
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -122,16 +122,19 @@ export const Terminal: React.FC<TerminalProps> = ({
     }
   }, [lines]);
   
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!currentInput.trim()) return;
+    if (!currentInput.trim()) {
+      return;
+    }
     
     // TODO: Add command to lines
     // TODO: Add to command history
     // TODO: Call onCommand callback
     // TODO: Clear current input
     
+    // eslint-disable-next-line no-console
     console.log('Command submitted:', currentInput);
     if (onCommand) {
       // Will be implemented when integrating with backend
@@ -152,6 +155,13 @@ export const Terminal: React.FC<TerminalProps> = ({
       className={classes}
       style={{ height }}
       onClick={() => inputRef.current?.focus()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          inputRef.current?.focus();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       {/* Terminal lines */}
       <div className="space-y-1">
@@ -177,7 +187,10 @@ export const Terminal: React.FC<TerminalProps> = ({
       
       {/* Input line */}
       {!readOnly && (
-        <form onSubmit={handleSubmit} className="flex items-center mt-2">
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit(e);
+        }} className="flex items-center mt-2">
           <span className="mr-1">{prompt}</span>
           <input
             ref={inputRef}
@@ -186,7 +199,8 @@ export const Terminal: React.FC<TerminalProps> = ({
             onChange={(e) => setCurrentInput(e.target.value)}
             onKeyDown={handleKeyDown}
             className="flex-1 bg-transparent outline-none"
-            autoFocus
+            // Remove autoFocus for accessibility
+            // autoFocus
           />
         </form>
       )}
