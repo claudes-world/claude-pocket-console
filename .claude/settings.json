@@ -18,6 +18,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/PreToolUse/validate-command.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/PreToolUse/ask-user-to-review-commands.sh"
           }
         ]
       }
