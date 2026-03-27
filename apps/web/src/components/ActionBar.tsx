@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { getAuthHeaders } from "../lib/telegram";
+
 interface Action {
   label: string;
   endpoint: string;
@@ -10,15 +13,23 @@ const ACTIONS: Action[] = [
 ];
 
 export function ActionBar() {
+  const [status, setStatus] = useState<string | null>(null);
+
   const handleAction = async (action: Action) => {
+    setStatus(`Running ${action.label}...`);
     try {
-      const res = await fetch(action.endpoint, { method: "POST" });
+      const res = await fetch(action.endpoint, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) {
-        console.error("Action failed:", data);
+        setStatus(`Failed: ${data.error || "unknown error"}`);
+      } else {
+        setStatus(data.output || `${action.label}: OK`);
       }
     } catch (err) {
-      console.error("Action error:", err);
+      setStatus(`Error: ${err}`);
     }
   };
 
@@ -52,6 +63,21 @@ export function ActionBar() {
           {action.label}
         </button>
       ))}
+      {status && (
+        <span
+          style={{
+            fontSize: 11,
+            color: "#7aa2f7",
+            alignSelf: "center",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: 200,
+          }}
+        >
+          {status}
+        </span>
+      )}
     </div>
   );
 }

@@ -1,9 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Terminal } from "./components/Terminal";
 import { ActionBar } from "./components/ActionBar";
+import { getTelegramWebApp } from "./lib/telegram";
 
 export function App() {
   const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const tg = getTelegramWebApp();
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
