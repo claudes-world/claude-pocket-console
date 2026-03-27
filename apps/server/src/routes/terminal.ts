@@ -12,6 +12,7 @@ export function terminalRoute(c: any) {
       let interval: ReturnType<typeof setInterval>;
 
       const sendPaneContent = () => {
+        // Capture with ANSI colors
         const capture = spawn("tmux", [
           "capture-pane",
           "-t", TMUX_SESSION,
@@ -25,10 +26,12 @@ export function terminalRoute(c: any) {
         });
 
         capture.on("close", () => {
-          // Only send if content changed
           if (output !== lastContent) {
             lastContent = output;
-            ws.send(JSON.stringify({ type: "pane", content: output }));
+            // Prepend cursor-home escape so xterm.js overwrites from top-left
+            // \x1b[H = cursor home, \x1b[J = clear from cursor to end
+            const framed = `\x1b[H\x1b[J${output}`;
+            ws.send(JSON.stringify({ type: "pane", content: framed }));
           }
         });
 
@@ -37,10 +40,7 @@ export function terminalRoute(c: any) {
         });
       };
 
-      // Send initial content
       sendPaneContent();
-
-      // Poll every 500ms for updates
       interval = setInterval(sendPaneContent, 500);
 
       (ws as any)._cleanup = () => {

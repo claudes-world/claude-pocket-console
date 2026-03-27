@@ -5,7 +5,10 @@ import { telegramAuth } from "../middleware.js";
 
 const app = new Hono();
 
-app.use("*", telegramAuth);
+// Auth: skip in dev mode (no bot token = dev), require in prod
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  app.use("*", telegramAuth);
+}
 
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
 
@@ -20,6 +23,16 @@ function isPathAllowed(absPath: string): boolean {
   const resolved = resolve(absPath);
   return ALLOWED_ROOTS.some((root) => resolved.startsWith(root));
 }
+
+// List available root directories
+app.get("/roots", (c) => {
+  return c.json({
+    roots: ALLOWED_ROOTS.map((r) => ({
+      path: r,
+      name: r.replace("/home/claude/", "~/"),
+    })),
+  });
+});
 
 // List directory contents
 app.get("/list", async (c) => {

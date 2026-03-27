@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getAuthHeaders } from "../lib/telegram";
+import { MarkdownViewer } from "./MarkdownViewer";
 
 interface FileEntry {
   name: string;
@@ -204,7 +205,12 @@ export function FileViewer({ onClose }: FileViewerProps) {
       )}
 
       {/* File content view */}
-      {fileContent !== null && !loading && (
+      {fileContent !== null && !loading && fileName.endsWith(".md") && (
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <MarkdownViewer content={fileContent} fileName={fileName} />
+        </div>
+      )}
+      {fileContent !== null && !loading && !fileName.endsWith(".md") && (
         <div
           style={{
             flex: 1,

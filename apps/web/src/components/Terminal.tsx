@@ -63,12 +63,10 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "pane") {
-          // Clear and rewrite the full pane content
-          term.reset();
+          // Content includes cursor-home + clear escape codes
           term.write(msg.content);
         }
       } catch {
-        // Fallback for raw text
         term.write(event.data);
       }
     };
