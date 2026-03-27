@@ -9,8 +9,10 @@ type Tab = "terminal" | "files";
 export function App() {
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("terminal");
+  const [reconnectKey, setReconnectKey] = useState(0);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
+  const onReconnect = useCallback(() => setReconnectKey((k) => k + 1), []);
 
   useEffect(() => {
     const tg = getTelegramWebApp();
@@ -80,7 +82,7 @@ export function App() {
       {/* Content area */}
       <div style={{ flex: 1, minHeight: 0 }}>
         {activeTab === "terminal" && (
-          <Terminal onConnectionChange={onConnectionChange} />
+          <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
         )}
         {activeTab === "files" && (
           <FileViewer onClose={() => setActiveTab("terminal")} />
@@ -88,7 +90,7 @@ export function App() {
       </div>
 
       {/* Action bar */}
-      <ActionBar />
+      <ActionBar onReconnect={onReconnect} />
     </div>
   );
 }

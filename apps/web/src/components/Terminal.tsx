@@ -62,9 +62,18 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === "pane") {
-          // Content includes cursor-home + clear escape codes
-          term.write(msg.content);
+        if (msg.type === "dimensions") {
+          // Info only — we let xterm keep its own size and reflow with -J
+          console.log(`[tmux pane] ${msg.cols}x${msg.rows}`);
+        } else if (msg.type === "pane") {
+          // Clear screen and write from top
+          term.write("\x1b[2J\x1b[H");
+          // Write each line, trimming trailing whitespace
+          const lines = msg.content.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            term.write(lines[i].trimEnd());
+            if (i < lines.length - 1) term.write("\r\n");
+          }
         }
       } catch {
         term.write(event.data);

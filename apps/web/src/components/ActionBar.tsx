@@ -12,7 +12,11 @@ const ACTIONS: Action[] = [
   { label: "Git Status", endpoint: "/api/actions/git-status" },
 ];
 
-export function ActionBar() {
+interface ActionBarProps {
+  onReconnect?: () => void;
+}
+
+export function ActionBar({ onReconnect }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
 
   const handleAction = async (action: Action) => {
@@ -45,6 +49,24 @@ export function ActionBar() {
         overflowX: "auto",
       }}
     >
+      {onReconnect && (
+        <button
+          onClick={onReconnect}
+          style={{
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 500,
+            background: "#1a3a2a",
+            color: "#9ece6a",
+            border: "1px solid #2d5a3d",
+            borderRadius: 6,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Reconnect
+        </button>
+      )}
       {ACTIONS.map((action) => (
         <button
           key={action.endpoint}
