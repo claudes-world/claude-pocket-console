@@ -8,7 +8,10 @@ type Tab = "terminal" | "files";
 
 export function App() {
   const [connected, setConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("terminal");
+  const initialTab = (window.location.hash.replace("#", "").split("&")[0] || "terminal") as Tab;
+  const [activeTab, setActiveTab] = useState<Tab>(
+    ["terminal", "files"].includes(initialTab) ? initialTab : "terminal"
+  );
   const [reconnectKey, setReconnectKey] = useState(0);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
