@@ -41,7 +41,7 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
   return (
     <div
       style={{
-        padding: "8px 12px",
+        padding: "10px 12px calc(16px + env(safe-area-inset-bottom, 8px))",
         borderTop: "1px solid #2a2b3d",
         display: "flex",
         gap: "8px",
