@@ -17,6 +17,7 @@ const ALLOWED_ROOTS = [
   "/home/claude/claudes-world",
   "/home/claude/code",
   "/home/claude/bin",
+  "/home/claude/.claude",
 ];
 
 function isPathAllowed(absPath: string): boolean {
@@ -47,7 +48,11 @@ app.get("/list", async (c) => {
     const entries = await readdir(resolved, { withFileTypes: true });
     const items = await Promise.all(
       entries
-        .filter((e) => !e.name.startsWith("."))
+        .filter((e) => {
+          // Show dotfiles when inside a dotfile root (like .claude/)
+          if (resolved.includes("/.")) return true;
+          return !e.name.startsWith(".");
+        })
         .map(async (e) => {
           const fullPath = join(resolved, e.name);
           try {

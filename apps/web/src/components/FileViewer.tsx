@@ -190,6 +190,44 @@ export function FileViewer({ onClose }: FileViewerProps) {
         </button>
       </div>
 
+      {/* Root directory shortcuts */}
+      {fileContent === null && (
+        <div
+          style={{
+            padding: "6px 12px",
+            display: "flex",
+            gap: 6,
+            flexShrink: 0,
+            overflowX: "auto",
+            borderBottom: "1px solid #1e1f2e",
+          }}
+        >
+          {[
+            { label: "claudes-world", path: "/home/claude/claudes-world" },
+            { label: "code", path: "/home/claude/code" },
+            { label: "bin", path: "/home/claude/bin" },
+            { label: ".claude", path: "/home/claude/.claude" },
+          ].map((root) => (
+            <button
+              key={root.path}
+              onClick={() => loadDirectory(root.path)}
+              style={{
+                padding: "4px 10px",
+                fontSize: 11,
+                background: currentPath.startsWith(root.path) ? "#2a2b3d" : "transparent",
+                color: currentPath.startsWith(root.path) ? "#7aa2f7" : "#565f89",
+                border: "1px solid #2a2b3d",
+                borderRadius: 4,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {root.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div style={{ padding: 12, color: "#f7768e", fontSize: 13 }}>
