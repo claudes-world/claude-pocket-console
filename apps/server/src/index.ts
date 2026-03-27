@@ -21,8 +21,10 @@ function loadEnv(path: string) {
       const val = trimmed.slice(eq + 1);
       if (!process.env[key]) process.env[key] = val;
     }
-  } catch {
-    // File doesn't exist, skip
+  } catch (e: any) {
+    if (e.code !== "ENOENT") {
+      console.error(`[loadEnv] Error reading ${path}:`, e.message);
+    }
   }
 }
 

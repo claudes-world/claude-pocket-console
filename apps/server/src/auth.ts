@@ -35,7 +35,7 @@ export function validateTelegramInitData(
     const user = JSON.parse(userStr) as TelegramUser;
     return { valid: true, user };
   } catch {
-    return { valid: true };
+    return { valid: false };
   }
 }
 

@@ -29,7 +29,8 @@ export function ActionBar() {
         setStatus(data.output || `${action.label}: OK`);
       }
     } catch (err) {
-      setStatus(`Error: ${err}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setStatus(`Error: ${message}`);
     }
   };
 

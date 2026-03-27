@@ -23,11 +23,17 @@ export async function telegramAuth(c: Context, next: Next) {
     return c.json({ error: "Invalid Telegram auth" }, 401);
   }
 
-  if (user) {
-    const allowed = getAllowedUsers();
-    if (allowed.size > 0 && !allowed.has(String(user.id))) {
+  const allowed = getAllowedUsers();
+  if (allowed.size > 0) {
+    if (!user) {
+      return c.json({ error: "User identification is required" }, 403);
+    }
+    if (!allowed.has(String(user.id))) {
       return c.json({ error: "User not authorized" }, 403);
     }
+  }
+
+  if (user) {
     c.set("telegramUser", user);
   }
 
