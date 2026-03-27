@@ -5,10 +5,8 @@ import { telegramAuth } from "../middleware.js";
 
 const app = new Hono();
 
-// Auth: skip in dev mode (no bot token = dev), require in prod
-if (process.env.TELEGRAM_BOT_TOKEN) {
-  app.use("*", telegramAuth);
-}
+// Always require auth — the middleware handles missing token gracefully
+app.use("*", telegramAuth);
 
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
 
