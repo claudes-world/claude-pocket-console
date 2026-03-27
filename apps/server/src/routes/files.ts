@@ -18,6 +18,7 @@ const ALLOWED_ROOTS = [
   "/home/claude/code",
   "/home/claude/bin",
   "/home/claude/.claude",
+  "/home/claude/claudes-world/.claude",
 ];
 
 function isPathAllowed(absPath: string): boolean {

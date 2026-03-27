@@ -206,7 +206,8 @@ export function FileViewer({ onClose }: FileViewerProps) {
             { label: "claudes-world", path: "/home/claude/claudes-world" },
             { label: "code", path: "/home/claude/code" },
             { label: "bin", path: "/home/claude/bin" },
-            { label: ".claude", path: "/home/claude/.claude" },
+            { label: "\ud83c\udfe0 .claude", path: "/home/claude/claudes-world/.claude" },
+            { label: "\ud83c\udf10 .claude", path: "/home/claude/.claude" },
           ].map((root) => (
             <button
               key={root.path}
