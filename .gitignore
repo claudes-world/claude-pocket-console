@@ -339,3 +339,6 @@ __marimo__/
 
 .turbo/
 .pnpmrc.json
+
+test-results/
+

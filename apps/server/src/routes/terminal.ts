@@ -8,16 +8,7 @@ export function terminalRoute(c: any) {
     onOpen(_event: Event, ws: WSContext) {
       console.log("[ws] client connected");
 
-      // Attach to tmux session in read-only mode
-      const tmux = spawn("tmux", [
-        "capture-pane",
-        "-t", TMUX_SESSION,
-        "-p",
-        "-S", "-",
-      ]);
-
-      // For live streaming, use tmux pipe-pane or a pty approach
-      // For v1, we'll poll the tmux pane content
+      let lastContent = "";
       let interval: ReturnType<typeof setInterval>;
 
       const sendPaneContent = () => {
@@ -34,7 +25,11 @@ export function terminalRoute(c: any) {
         });
 
         capture.on("close", () => {
-          ws.send(output);
+          // Only send if content changed
+          if (output !== lastContent) {
+            lastContent = output;
+            ws.send(JSON.stringify({ type: "pane", content: output }));
+          }
         });
 
         capture.on("error", (err: Error) => {
@@ -48,10 +43,8 @@ export function terminalRoute(c: any) {
       // Poll every 500ms for updates
       interval = setInterval(sendPaneContent, 500);
 
-      // Store cleanup in ws context
       (ws as any)._cleanup = () => {
         clearInterval(interval);
-        tmux.kill();
       };
     },
 
@@ -59,7 +52,6 @@ export function terminalRoute(c: any) {
       try {
         const msg = JSON.parse(event.data.toString());
         if (msg.type === "resize") {
-          // Could resize the tmux pane if needed
           console.log(`[ws] resize: ${msg.cols}x${msg.rows}`);
         }
       } catch {

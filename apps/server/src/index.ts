@@ -7,6 +7,7 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
 import { terminalRoute } from "./routes/terminal.js";
 import { actionsRoute } from "./routes/actions.js";
+import { filesRoute } from "./routes/files.js";
 
 // Load env from secrets file if not already set
 function loadEnv(path: string) {
@@ -41,6 +42,9 @@ app.get("/api/health", (c) => c.json({ status: "ok" }));
 // Protected API routes
 app.use("/api/actions/*", telegramAuth);
 app.route("/api/actions", actionsRoute);
+
+// Files routes
+app.route("/api/files", filesRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)
 app.get("/ws/terminal", upgradeWebSocket(terminalRoute));

@@ -37,7 +37,7 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
         white: "#a9b1d6",
       },
       disableStdin: true,
-      scrollback: 5000,
+      scrollback: 0,
     });
 
     const fit = new FitAddon();
@@ -56,13 +56,21 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
 
     ws.onopen = () => {
       onConnectionChange(true);
-      term.writeln("\x1b[32m[connected to tmux session]\x1b[0m\r\n");
-      // Send initial terminal size
       ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
     };
 
     ws.onmessage = (event) => {
-      term.write(event.data);
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "pane") {
+          // Clear and rewrite the full pane content
+          term.reset();
+          term.write(msg.content);
+        }
+      } catch {
+        // Fallback for raw text
+        term.write(event.data);
+      }
     };
 
     ws.onclose = () => {
