@@ -51,7 +51,9 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
 
     // Connect to WebSocket
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal`;
+    const initData = window.Telegram?.WebApp?.initData || "";
+    const authParam = initData ? `?auth=${encodeURIComponent(initData)}` : "";
+    const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
