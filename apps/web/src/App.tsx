@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Terminal } from "./components/Terminal";
 import { FileViewer } from "./components/FileViewer";
 import { ActionBar } from "./components/ActionBar";
 import { getTelegramWebApp } from "./lib/telegram";
 
 type Tab = "terminal" | "files";
+const TABS: Tab[] = ["terminal", "files"];
+const SWIPE_THRESHOLD = 50;
 
 export function App() {
   const [connected, setConnected] = useState(false);
@@ -19,6 +21,29 @@ export function App() {
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => setReconnectKey((k) => k + 1), []);
+
+  // Swipe gesture handling
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only swipe if horizontal movement is dominant
+    if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      const currentIdx = TABS.indexOf(activeTab);
+      if (dx < 0 && currentIdx < TABS.length - 1) {
+        setActiveTab(TABS[currentIdx + 1]);
+      } else if (dx > 0 && currentIdx > 0) {
+        setActiveTab(TABS[currentIdx - 1]);
+      }
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const tg = getTelegramWebApp();
@@ -85,8 +110,12 @@ export function App() {
         </span>
       </header>
 
-      {/* Content area */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      {/* Content area — swipeable */}
+      <div
+        style={{ flex: 1, minHeight: 0 }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {activeTab === "terminal" && (
           <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
         )}
