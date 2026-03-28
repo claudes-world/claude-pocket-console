@@ -12,6 +12,12 @@ const LINKS: LinkItem[] = [
     icon: "📝",
     description: "Tech terms for STT accuracy",
   },
+  {
+    title: "Edit Links",
+    url: "https://github.com/claudes-world/claude-pocket-console/edit/feat/file-viewer-and-terminal-fix/apps/web/src/components/Links.tsx",
+    icon: "✏️",
+    description: "Add or edit links via GitHub",
+  },
 ];
 
 interface LinksProps {
