@@ -15,7 +15,7 @@ export function App() {
   const initialFile = hashParams.match(/file=([^&]+)/)?.[1] ? decodeURIComponent(hashParams.match(/file=([^&]+)/)![1]) : null;
   const initialTab = initialFile ? "files" : (hashParams.split("&")[0] || "terminal") as Tab;
   const [activeTab, setActiveTab] = useState<Tab>(
-    ["terminal", "files"].includes(initialTab) ? initialTab : "terminal"
+    TABS.includes(initialTab as Tab) ? initialTab : "terminal"
   );
   const [reconnectKey, setReconnectKey] = useState(0);
   const [initialFilePath] = useState<string | null>(initialFile);
@@ -69,7 +69,7 @@ export function App() {
         }}
       >
         <div style={{ display: "flex", gap: 0 }}>
-          {(["terminal", "files"] as Tab[]).map((tab) => (
+          {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
