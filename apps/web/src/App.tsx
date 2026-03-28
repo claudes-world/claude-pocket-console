@@ -8,11 +8,14 @@ type Tab = "terminal" | "files";
 
 export function App() {
   const [connected, setConnected] = useState(false);
-  const initialTab = (window.location.hash.replace("#", "").split("&")[0] || "terminal") as Tab;
+  const hashParams = window.location.hash.replace("#", "");
+  const initialFile = hashParams.match(/file=([^&]+)/)?.[1] ? decodeURIComponent(hashParams.match(/file=([^&]+)/)![1]) : null;
+  const initialTab = initialFile ? "files" : (hashParams.split("&")[0] || "terminal") as Tab;
   const [activeTab, setActiveTab] = useState<Tab>(
     ["terminal", "files"].includes(initialTab) ? initialTab : "terminal"
   );
   const [reconnectKey, setReconnectKey] = useState(0);
+  const [initialFilePath] = useState<string | null>(initialFile);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => setReconnectKey((k) => k + 1), []);
@@ -88,7 +91,7 @@ export function App() {
           <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
         )}
         {activeTab === "files" && (
-          <FileViewer onClose={() => setActiveTab("terminal")} />
+          <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} />
         )}
       </div>
 

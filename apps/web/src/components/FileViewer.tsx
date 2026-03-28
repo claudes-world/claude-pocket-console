@@ -12,6 +12,7 @@ interface FileEntry {
 
 interface FileViewerProps {
   onClose: () => void;
+  initialFile?: string | null;
 }
 
 const EXT_LANG: Record<string, string> = {
@@ -44,7 +45,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export function FileViewer({ onClose }: FileViewerProps) {
+export function FileViewer({ onClose, initialFile }: FileViewerProps) {
   const [currentPath, setCurrentPath] = useState("/home/claude/claudes-world");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -101,7 +102,12 @@ export function FileViewer({ onClose }: FileViewerProps) {
   }, []);
 
   useEffect(() => {
-    loadDirectory(currentPath);
+    if (initialFile) {
+      const name = initialFile.split("/").pop() || "file";
+      loadFile(initialFile, name);
+    } else {
+      loadDirectory(currentPath);
+    }
   }, []);
 
   const handleEntry = (entry: FileEntry) => {
