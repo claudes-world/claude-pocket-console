@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Terminal } from "./components/Terminal";
 import { FileViewer } from "./components/FileViewer";
+import { Links } from "./components/Links";
 import { ActionBar } from "./components/ActionBar";
 import { getTelegramWebApp } from "./lib/telegram";
 
-type Tab = "terminal" | "files";
-const TABS: Tab[] = ["terminal", "files"];
+type Tab = "terminal" | "files" | "links";
+const TABS: Tab[] = ["terminal", "files", "links"];
 const SWIPE_THRESHOLD = 50;
 
 export function App() {
@@ -121,6 +122,9 @@ export function App() {
         )}
         {activeTab === "files" && (
           <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} />
+        )}
+        {activeTab === "links" && (
+          <Links onClose={() => setActiveTab("terminal")} />
         )}
       </div>
 
