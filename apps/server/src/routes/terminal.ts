@@ -17,6 +17,20 @@ function getPaneDimensions(): { cols: number; rows: number } {
   }
 }
 
+function resizePane(cols: number, rows: number) {
+  const safeCols = Math.max(2, Math.floor(cols));
+  const safeRows = Math.max(1, Math.floor(rows));
+
+  try {
+    execSync(
+      `tmux resize-window -t ${TMUX_SESSION} -x ${safeCols} -y ${safeRows}`,
+      { stdio: "ignore" },
+    );
+  } catch (error) {
+    console.error("[tmux] resize-window error:", error);
+  }
+}
+
 export function terminalRoute(c: any) {
   // Auth check: initData passed as query param
   const initData = c.req.query("auth") || "";
@@ -40,11 +54,13 @@ export function terminalRoute(c: any) {
       ws.send(JSON.stringify({ type: "dimensions", cols: dims.cols, rows: dims.rows }));
 
       const sendPaneContent = () => {
-        // -J joins wrapped lines so they reflow to client width
+        // -e preserves ANSI colors and -J joins wrapped lines so they reflow
+        // to the client width.
         const capture = spawn("tmux", [
           "capture-pane",
           "-t", TMUX_SESSION,
           "-p",
+          "-e",
           "-J",
         ]);
 
@@ -78,6 +94,7 @@ export function terminalRoute(c: any) {
         const msg = JSON.parse(event.data.toString());
         if (msg.type === "resize") {
           console.log(`[ws] resize: ${msg.cols}x${msg.rows}`);
+          resizePane(msg.cols, msg.rows);
         }
       } catch {
         // Ignore non-JSON messages

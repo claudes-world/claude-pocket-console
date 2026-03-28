@@ -9,13 +9,14 @@ interface TerminalProps {
 }
 
 export function Terminal({ onConnectionChange }: TerminalProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!wrapperRef.current || !mountRef.current) return;
 
     const term = new XTerm({
       cursorBlink: false,
@@ -43,8 +44,7 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
-    term.open(containerRef.current);
-    fit.fit();
+    term.open(mountRef.current);
 
     termRef.current = term;
     fitRef.current = fit;
@@ -56,9 +56,21 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;
     const ws = new WebSocket(wsUrl);
 
+    const syncTerminalSize = () => {
+      fit.fit();
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      }
+    };
+
+    syncTerminalSize();
+    const frameId = window.requestAnimationFrame(() => {
+      syncTerminalSize();
+    });
+
     ws.onopen = () => {
       onConnectionChange(true);
-      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      syncTerminalSize();
     };
 
     ws.onmessage = (event) => {
@@ -95,14 +107,12 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
-      fit.fit();
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      }
+      syncTerminalSize();
     });
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(mountRef.current);
 
     return () => {
+      window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       ws.close();
       term.dispose();
@@ -111,8 +121,22 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
 
   return (
     <div
-      ref={containerRef}
-      style={{ width: "100%", height: "100%", padding: "4px" }}
-    />
+      ref={wrapperRef}
+      data-testid="terminal-wrapper"
+      style={{
+        width: "100%",
+        height: "100%",
+        minWidth: 0,
+        minHeight: 0,
+        padding: "4px",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        ref={mountRef}
+        data-testid="terminal-mount"
+        style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }}
+      />
+    </div>
   );
 }
