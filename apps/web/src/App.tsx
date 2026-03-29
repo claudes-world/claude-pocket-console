@@ -7,7 +7,7 @@ import { getTelegramWebApp } from "./lib/telegram";
 
 type Tab = "terminal" | "files" | "links";
 const TABS: Tab[] = ["terminal", "files", "links"];
-const SWIPE_THRESHOLD = 200;
+const SWIPE_THRESHOLD = 160;
 
 export function App() {
   const [connected, setConnected] = useState(false);
