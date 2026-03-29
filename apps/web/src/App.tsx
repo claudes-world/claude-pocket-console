@@ -23,20 +23,50 @@ export function App() {
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => setReconnectKey((k) => k + 1), []);
 
-  // Swipe gesture handling
+  // Swipe gesture state
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
+  const isDragging = useRef(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const activeIdx = TABS.indexOf(activeTab);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
+    isDragging.current = false;
+    setIsAnimating(false);
+    setDragOffset(0);
   }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - touchStartX.current;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    // Only track horizontal swipes where horizontal is dominant
+    if (!isDragging.current && Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    if (!isDragging.current) {
+      if (Math.abs(dx) > Math.abs(dy) * 1.2) {
+        isDragging.current = true;
+      } else {
+        return;
+      }
+    }
+    // Clamp: can't swipe past first/last tab
+    const currentIdx = TABS.indexOf(activeTab);
+    const clampedDx =
+      (dx < 0 && currentIdx >= TABS.length - 1) ? Math.min(0, dx * 0.2) :
+      (dx > 0 && currentIdx <= 0) ? Math.max(0, dx * 0.2) :
+      dx;
+    setDragOffset(clampedDx);
+  }, [activeTab]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    // Only swipe if horizontal movement is dominant
-    if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    setIsAnimating(true);
+    setDragOffset(0);
+    if (isDragging.current && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
       const currentIdx = TABS.indexOf(activeTab);
       if (dx < 0 && currentIdx < TABS.length - 1) {
         setActiveTab(TABS[currentIdx + 1]);
@@ -44,6 +74,7 @@ export function App() {
         setActiveTab(TABS[currentIdx - 1]);
       }
     }
+    isDragging.current = false;
   }, [activeTab]);
 
   useEffect(() => {
@@ -54,9 +85,15 @@ export function App() {
     }
   }, []);
 
+  // The strip is (TABS.length * 100vw) wide. To show tab N we shift by -(N * 100vw).
+  // Expressed as % of the strip: -(N * 100% / TABS.length).
+  // dragOffset is in px (finger delta) and should also be expressed relative to strip width,
+  // but since we just want pixel-accurate dragging we use a calc mix.
+  const stripShift = `calc(${(-activeIdx * 100) / TABS.length}% + ${dragOffset / TABS.length}px)`;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Header with tabs */}
+      {/* Header with tabs — stop propagation so swipe doesn't fire from tab bar */}
       <header
         style={{
           padding: "0 12px",
@@ -67,6 +104,7 @@ export function App() {
           flexShrink: 0,
           height: 40,
         }}
+        onTouchStart={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", gap: 0 }}>
           {TABS.map((tab) => (
@@ -111,25 +149,41 @@ export function App() {
         </span>
       </header>
 
-      {/* Content area — swipeable */}
+      {/* Content area — swipeable viewport */}
       <div
-        style={{ flex: 1, minHeight: 0 }}
+        style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {activeTab === "terminal" && (
-          <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
-        )}
-        {activeTab === "files" && (
-          <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} />
-        )}
-        {activeTab === "links" && (
-          <Links onClose={() => setActiveTab("terminal")} />
-        )}
+        {/* Sliding strip of all tab contents */}
+        <div
+          style={{
+            display: "flex",
+            width: `${TABS.length * 100}%`,
+            height: "100%",
+            transform: `translateX(${stripShift})`,
+            transition: isAnimating ? "transform 300ms ease-out" : "none",
+            willChange: "transform",
+          }}
+          onTransitionEnd={() => setIsAnimating(false)}
+        >
+          <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
+            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
+          </div>
+          <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
+            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} />
+          </div>
+          <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
+            <Links onClose={() => setActiveTab("terminal")} />
+          </div>
+        </div>
       </div>
 
-      {/* Action bar */}
-      <ActionBar onReconnect={onReconnect} />
+      {/* Action bar — stop propagation so swipe doesn't fire from action buttons */}
+      <div onTouchStart={(e) => e.stopPropagation()}>
+        <ActionBar onReconnect={onReconnect} />
+      </div>
     </div>
   );
 }

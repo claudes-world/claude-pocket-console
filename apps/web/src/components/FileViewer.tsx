@@ -265,28 +265,6 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
               {root.label}
             </button>
           ))}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            style={{
-              padding: "4px 10px",
-              fontSize: 11,
-              background: "#1a3a2a",
-              color: "#9ece6a",
-              border: "1px solid #2d5a3d",
-              borderRadius: 4,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {uploading ? "Uploading..." : "Upload"}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleUpload}
-            style={{ display: "none" }}
-          />
         </div>
       )}
 
@@ -413,6 +391,34 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
               )}
             </div>
           ))}
+          {/* Upload area */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              display: "block",
+              width: "calc(100% - 16px)",
+              padding: "14px 12px",
+              background: "transparent",
+              color: uploading ? "#565f89" : "#4a6a4a",
+              border: "none",
+              cursor: uploading ? "not-allowed" : "pointer",
+              fontSize: 12,
+              textAlign: "center" as const,
+              outline: "2px dashed #2a3a2a",
+              outlineOffset: -8,
+              margin: 8,
+              borderRadius: 6,
+            }}
+          >
+            {uploading ? "Uploading..." : "+ Upload file"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleUpload}
+            style={{ display: "none" }}
+          />
         </div>
       )}
     </div>
