@@ -91,8 +91,25 @@ export function App() {
   // but since we just want pixel-accurate dragging we use a calc mix.
   const stripShift = `calc(${(-activeIdx * 100) / TABS.length}% + ${dragOffset / TABS.length}px)`;
 
+  const isDev = window.location.hostname.includes("cpc-dev");
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Dev mode banner */}
+      {isDev && (
+        <div style={{
+          background: "#f59e0b",
+          color: "#000",
+          textAlign: "center",
+          fontSize: 11,
+          fontWeight: 700,
+          padding: "2px 0",
+          letterSpacing: "0.1em",
+          flexShrink: 0,
+        }}>
+          DEVELOPMENT
+        </div>
+      )}
       {/* Header with tabs — stop propagation so swipe doesn't fire from tab bar */}
       <header
         style={{
