@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
 
@@ -54,6 +54,39 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedRanges, setCollapsedRanges] = useState<Set<number>>(new Set());
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("dir", currentPath);
+
+      const res = await fetch("/api/files/upload", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Upload failed");
+      } else {
+        // Refresh directory listing
+        loadDirectory(currentPath);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const loadDirectory = useCallback(async (path: string) => {
     setLoading(true);
@@ -232,6 +265,28 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
               {root.label}
             </button>
           ))}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              padding: "4px 10px",
+              fontSize: 11,
+              background: "#1a3a2a",
+              color: "#9ece6a",
+              border: "1px solid #2d5a3d",
+              borderRadius: 4,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {uploading ? "Uploading..." : "Upload"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleUpload}
+            style={{ display: "none" }}
+          />
         </div>
       )}
 

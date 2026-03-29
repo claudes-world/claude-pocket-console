@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { telegramAuth } from "../middleware.js";
 
@@ -150,6 +150,53 @@ app.get("/read", async (c) => {
       content,
       size: st.size,
       modified: st.mtime.toISOString(),
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// Upload file to current directory
+app.post("/upload", async (c) => {
+  const body = await c.req.parseBody();
+  const file = body["file"];
+  const dir = (body["dir"] as string) || BASE_DIR;
+
+  if (!file || typeof file === "string") {
+    return c.json({ error: "No file provided" }, 400);
+  }
+
+  const resolved = resolve(dir);
+  if (!isPathAllowed(resolved)) {
+    return c.json({ error: "Access denied" }, 403);
+  }
+
+  try {
+    const fileName = (file as File).name || "uploaded-file";
+    const destPath = join(resolved, fileName);
+
+    // Don't overwrite existing files — add suffix
+    let finalPath = destPath;
+    let counter = 1;
+    try {
+      while (await stat(finalPath)) {
+        const ext = fileName.includes(".") ? "." + fileName.split(".").pop() : "";
+        const base = fileName.includes(".") ? fileName.slice(0, fileName.lastIndexOf(".")) : fileName;
+        finalPath = join(resolved, `${base}-${counter}${ext}`);
+        counter++;
+      }
+    } catch {
+      // File doesn't exist — good, use this path
+    }
+
+    const arrayBuffer = await (file as File).arrayBuffer();
+    await writeFile(finalPath, Buffer.from(arrayBuffer));
+
+    return c.json({
+      ok: true,
+      path: finalPath,
+      name: finalPath.split("/").pop(),
+      size: arrayBuffer.byteLength,
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
