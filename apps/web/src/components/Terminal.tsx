@@ -131,6 +131,11 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
         padding: "4px",
         overflow: "hidden",
       }}
+      onTouchEnd={() => {
+        // Prevent mobile keyboard from appearing on tap — blur xterm's hidden textarea
+        const ta = wrapperRef.current?.querySelector("textarea");
+        if (ta) ta.blur();
+      }}
     >
       <div
         ref={mountRef}
