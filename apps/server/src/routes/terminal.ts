@@ -17,19 +17,10 @@ function getPaneDimensions(): { cols: number; rows: number } {
   }
 }
 
-function resizePane(cols: number, rows: number) {
-  const safeCols = Math.max(2, Math.floor(cols));
-  const safeRows = Math.max(1, Math.floor(rows));
-
-  try {
-    execSync(
-      `tmux resize-window -t ${TMUX_SESSION} -x ${safeCols} -y ${safeRows}`,
-      { stdio: "ignore" },
-    );
-  } catch (error) {
-    console.error("[tmux] resize-window error:", error);
-  }
-}
+// NOTE: Do NOT resize tmux from the mini app. The mini app is a read-only
+// viewer using capture-pane. Resizing tmux to the mini app's viewport breaks
+// the user's SSH terminal which may have a different size.
+// The mini app adapts to whatever tmux size exists via -J (join wrapped lines).
 
 export function terminalRoute(c: any) {
   // Auth check: initData passed as query param
@@ -93,8 +84,7 @@ export function terminalRoute(c: any) {
       try {
         const msg = JSON.parse(event.data.toString());
         if (msg.type === "resize") {
-          console.log(`[ws] resize: ${msg.cols}x${msg.rows}`);
-          resizePane(msg.cols, msg.rows);
+          console.log(`[ws] resize request ignored (read-only viewer): ${msg.cols}x${msg.rows}`);
         }
       } catch {
         // Ignore non-JSON messages
