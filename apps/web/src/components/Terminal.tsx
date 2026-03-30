@@ -77,8 +77,13 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "dimensions") {
-          // Info only — we let xterm keep its own size and reflow with -J
+          // Match xterm cols to tmux pane width so text aligns correctly.
+          // We DON'T resize tmux (that breaks SSH), instead we resize xterm
+          // to match what tmux is already using.
           console.log(`[tmux pane] ${msg.cols}x${msg.rows}`);
+          if (msg.cols > 0 && msg.rows > 0) {
+            term.resize(msg.cols, msg.rows);
+          }
         } else if (msg.type === "pane") {
           // Clear screen and write from top
           term.write("\x1b[2J\x1b[H");
