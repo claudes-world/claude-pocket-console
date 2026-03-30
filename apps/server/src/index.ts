@@ -36,14 +36,15 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 app.use("*", cors());
 
-// Health check (no auth)
-app.get("/api/health", (c) => c.json({ status: "ok" }));
+// Public routes (no auth)
+app.get("/api/public/health", (c) => c.json({ status: "ok" }));
+app.get("/api/health", (c) => c.json({ status: "ok" })); // backward compat
 
-// Protected API routes
-app.use("/api/actions/*", telegramAuth);
+// Auth middleware for all other /api/* routes
+app.use("/api/*", telegramAuth);
+
+// Protected routes
 app.route("/api/actions", actionsRoute);
-
-// Files routes
 app.route("/api/files", filesRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)

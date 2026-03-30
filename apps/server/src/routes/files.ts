@@ -1,12 +1,8 @@
 import { Hono } from "hono";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { telegramAuth } from "../middleware.js";
 
 const app = new Hono();
-
-// Always require auth — the middleware handles missing token gracefully
-app.use("*", telegramAuth);
 
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
 
