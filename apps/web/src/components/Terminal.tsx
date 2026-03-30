@@ -142,11 +142,7 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
         minHeight: 0,
         padding: "4px",
         overflow: "hidden",
-      }}
-      onTouchEnd={() => {
-        // Prevent mobile keyboard from appearing on tap — blur xterm's hidden textarea
-        const ta = wrapperRef.current?.querySelector("textarea");
-        if (ta) ta.blur();
+        position: "relative",
       }}
     >
       <div
@@ -154,6 +150,20 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
         data-testid="terminal-mount"
         style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }}
       />
+      {/* Invisible overlay to block all touch/click events on the read-only terminal.
+          Prevents xterm's hidden textarea from capturing focus and triggering mobile keyboard. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 10,
+        }}
+        onTouchStart={(e) => e.preventDefault()}
+        onClick={(e) => e.preventDefault()}
+      />
+      <style>{`
+        .xterm textarea { pointer-events: none !important; }
+      `}</style>
     </div>
   );
 }
