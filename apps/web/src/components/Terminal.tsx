@@ -21,7 +21,7 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     const term = new XTerm({
       cursorBlink: false,
       cursorStyle: "bar",
-      fontSize: 13,
+      fontSize: 12,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
       theme: {
         background: "#1a1b26",
