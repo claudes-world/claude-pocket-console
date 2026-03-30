@@ -206,26 +206,47 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
                 fontFamily: "inherit",
               }}
             />
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button
-                onClick={() => {
-                  const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
-                  const notes = continuityNotes.trim()
-                    ? ` Additional context from user: "${continuityNotes.trim()}".`
-                    : "";
-                  sendCompactCommand(`${base}${notes} Then run /compact.`);
-                }}
-                style={{
-                  ...btnStyle,
-                  flex: 1,
-                  background: "#1a3a2a",
-                  color: "#9ece6a",
-                  border: "1px solid #2d5a3d",
-                  padding: "10px 16px",
-                }}
-              >
-                Send & Compact
-              </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => {
+                    const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
+                    const notes = continuityNotes.trim()
+                      ? ` Additional context from user: "${continuityNotes.trim()}".`
+                      : "";
+                    sendCompactCommand(`${base}${notes}`);
+                  }}
+                  style={{
+                    ...btnStyle,
+                    flex: 1,
+                    background: "#1a3a2a",
+                    color: "#9ece6a",
+                    border: "1px solid #2d5a3d",
+                    padding: "10px 16px",
+                  }}
+                >
+                  Just Send
+                </button>
+                <button
+                  onClick={() => {
+                    const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
+                    const notes = continuityNotes.trim()
+                      ? ` Additional context from user: "${continuityNotes.trim()}".`
+                      : "";
+                    sendCompactCommand(`${base}${notes} Then run /compact.`);
+                  }}
+                  style={{
+                    ...btnStyle,
+                    flex: 1,
+                    background: "#2d3a5a",
+                    color: "#7aa2f7",
+                    border: "1px solid #3d4a6a",
+                    padding: "10px 16px",
+                  }}
+                >
+                  Send & Compact
+                </button>
+              </div>
               <button
                 onClick={() => setCompactModal("confirm")}
                 style={{
@@ -234,6 +255,7 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
                   color: "#f7768e",
                   border: "1px solid #5a3d3d",
                   padding: "10px 16px",
+                  width: "100%",
                 }}
               >
                 Back
