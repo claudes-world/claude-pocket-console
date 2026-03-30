@@ -21,7 +21,10 @@ export function App() {
   const [initialFilePath] = useState<string | null>(initialFile);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
-  const onReconnect = useCallback(() => setReconnectKey((k) => k + 1), []);
+  const onReconnect = useCallback(() => {
+    fetch("/api/actions/resize-terminal", { method: "POST" }).catch(() => {});
+    setReconnectKey((k) => k + 1);
+  }, []);
 
   // Swipe gesture state
   const touchStartX = useRef(0);
@@ -199,7 +202,7 @@ export function App() {
 
       {/* Action bar — stop propagation so swipe doesn't fire from action buttons */}
       <div onTouchStart={(e) => e.stopPropagation()}>
-        <ActionBar onReconnect={onReconnect} />
+        <ActionBar onReconnect={onReconnect} connected={connected} />
       </div>
     </div>
   );

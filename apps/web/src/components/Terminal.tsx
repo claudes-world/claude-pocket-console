@@ -56,21 +56,13 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;
     const ws = new WebSocket(wsUrl);
 
-    const syncTerminalSize = () => {
-      fit.fit();
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      }
-    };
-
-    syncTerminalSize();
+    fit.fit();
     const frameId = window.requestAnimationFrame(() => {
-      syncTerminalSize();
+      fit.fit();
     });
 
     ws.onopen = () => {
       onConnectionChange(true);
-      syncTerminalSize();
     };
 
     ws.onmessage = (event) => {
@@ -108,7 +100,6 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
 
     ws.onclose = () => {
       onConnectionChange(false);
-      term.writeln("\r\n\x1b[31m[disconnected]\x1b[0m");
     };
 
     ws.onerror = () => {
@@ -117,9 +108,9 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
 
     wsRef.current = ws;
 
-    // Handle resize
+    // Handle viewport resize — just refit xterm to container
     const resizeObserver = new ResizeObserver(() => {
-      syncTerminalSize();
+      fit.fit();
     });
     resizeObserver.observe(mountRef.current);
 

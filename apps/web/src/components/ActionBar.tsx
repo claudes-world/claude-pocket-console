@@ -13,13 +13,15 @@ const ACTIONS: Action[] = [
 
 interface ActionBarProps {
   onReconnect?: () => void;
+  connected?: boolean;
 }
 
-type CompactModal = null | "confirm" | "continuity-notes";
+type CompactModal = null | "confirm" | "compact-focus" | "continuity-notes";
 
-export function ActionBar({ onReconnect }: ActionBarProps) {
+export function ActionBar({ onReconnect, connected }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [compactModal, setCompactModal] = useState<CompactModal>(null);
+  const [compactFocus, setCompactFocus] = useState("");
   const [continuityNotes, setContinuityNotes] = useState("");
 
   const handleAction = async (action: Action) => {
@@ -106,7 +108,10 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <button
-                onClick={() => sendCompactCommand("/compact")}
+                onClick={() => {
+                  setCompactFocus("");
+                  setCompactModal("compact-focus");
+                }}
                 style={{
                   ...btnStyle,
                   background: "#2d3a5a",
@@ -151,6 +156,90 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compact focus modal */}
+      {compactModal === "compact-focus" && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: 16,
+          }}
+          onClick={() => setCompactModal("confirm")}
+        >
+          <div
+            style={{
+              background: "#1a1b26",
+              border: "1px solid #2a2b3d",
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 320,
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>
+              Compact Focus
+            </div>
+            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>
+              Optionally steer what the compact summary focuses on:
+            </div>
+            <textarea
+              value={compactFocus}
+              onChange={(e) => setCompactFocus(e.target.value)}
+              placeholder="e.g. Focus on the auth refactor and voice recorder plan..."
+              style={{
+                width: "100%",
+                height: 80,
+                background: "#24283b",
+                color: "#c0caf5",
+                border: "1px solid #3b3d57",
+                borderRadius: 6,
+                padding: 10,
+                fontSize: 13,
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button
+                onClick={() => setCompactModal("confirm")}
+                style={{
+                  ...btnStyle,
+                  flex: 1,
+                  background: "#3a2a2a",
+                  color: "#f7768e",
+                  border: "1px solid #5a3d3d",
+                  padding: "10px 16px",
+                }}
+              >
+                Back
+              </button>
+              <button
+                onClick={() => {
+                  const focus = compactFocus.trim();
+                  sendCompactCommand(focus ? `/compact ${focus}` : "/compact");
+                }}
+                style={{
+                  ...btnStyle,
+                  flex: 1,
+                  background: "#2d3a5a",
+                  color: "#7aa2f7",
+                  border: "1px solid #3d4a6a",
+                  padding: "10px 16px",
+                }}
+              >
+                Compact
               </button>
             </div>
           </div>
@@ -206,59 +295,38 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
                 fontFamily: "inherit",
               }}
             />
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => {
-                    const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
-                    const notes = continuityNotes.trim()
-                      ? ` Additional context from user: "${continuityNotes.trim()}".`
-                      : "";
-                    sendCompactCommand(`${base}${notes}`);
-                  }}
-                  style={{
-                    ...btnStyle,
-                    flex: 1,
-                    background: "#1a3a2a",
-                    color: "#9ece6a",
-                    border: "1px solid #2d5a3d",
-                    padding: "10px 16px",
-                  }}
-                >
-                  Just Send
-                </button>
-                <button
-                  onClick={() => {
-                    const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
-                    const notes = continuityNotes.trim()
-                      ? ` Additional context from user: "${continuityNotes.trim()}".`
-                      : "";
-                    sendCompactCommand(`${base}${notes} Then run /compact.`);
-                  }}
-                  style={{
-                    ...btnStyle,
-                    flex: 1,
-                    background: "#2d3a5a",
-                    color: "#7aa2f7",
-                    border: "1px solid #3d4a6a",
-                    padding: "10px 16px",
-                  }}
-                >
-                  Send & Compact
-                </button>
-              </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button
                 onClick={() => setCompactModal("confirm")}
                 style={{
                   ...btnStyle,
+                  flex: 1,
                   background: "#3a2a2a",
                   color: "#f7768e",
                   border: "1px solid #5a3d3d",
                   padding: "10px 16px",
-                  width: "100%",
                 }}
               >
                 Back
+              </button>
+              <button
+                onClick={() => {
+                  const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
+                  const notes = continuityNotes.trim()
+                    ? ` Additional context from user: "${continuityNotes.trim()}".`
+                    : "";
+                  sendCompactCommand(`${base}${notes}`);
+                }}
+                style={{
+                  ...btnStyle,
+                  flex: 1,
+                  background: "#1a3a2a",
+                  color: "#9ece6a",
+                  border: "1px solid #2d5a3d",
+                  padding: "10px 16px",
+                }}
+              >
+                Send
               </button>
             </div>
           </div>
@@ -268,45 +336,43 @@ export function ActionBar({ onReconnect }: ActionBarProps) {
       {/* Action bar */}
       <div
         style={{
-          padding: "10px 12px calc(16px + env(safe-area-inset-bottom, 8px))",
+          padding: "10px 12px 8px",
           borderTop: "1px solid #2a2b3d",
-          display: "flex",
-          gap: "8px",
           flexShrink: 0,
-          overflowX: "auto",
         }}
       >
-        {onReconnect && (
-          <button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}>
-            Reconnect
-          </button>
-        )}
-        {ACTIONS.map((action) => (
-          <button key={action.endpoint} onClick={() => handleAction(action)} style={btnStyle}>
-            {action.label}
-          </button>
-        ))}
-        <button
-          onClick={() => setCompactModal("confirm")}
-          style={{ ...btnStyle, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
-        >
-          Compact
-        </button>
-        {status && (
-          <span
-            style={{
-              fontSize: 11,
-              color: "#7aa2f7",
-              alignSelf: "center",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              maxWidth: 200,
-            }}
+        <div style={{ display: "flex", gap: "8px", overflowX: "auto" }}>
+          {onReconnect && (
+            <button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}>
+              Reconnect
+            </button>
+          )}
+          {ACTIONS.map((action) => (
+            <button key={action.endpoint} onClick={() => handleAction(action)} style={btnStyle}>
+              {action.label}
+            </button>
+          ))}
+          <button
+            onClick={() => setCompactModal("confirm")}
+            style={{ ...btnStyle, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
           >
-            {status}
-          </span>
-        )}
+            Compact
+          </button>
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: connected === false ? "#f7768e" : "#7aa2f7",
+            marginTop: 6,
+            textAlign: "center",
+            minHeight: 16,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {status || (connected === false ? "[disconnected]" : "\u00A0")}
+        </div>
       </div>
     </>
   );

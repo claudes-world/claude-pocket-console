@@ -31,6 +31,15 @@ app.post("/git-status", async (c) => {
   }
 });
 
+app.post("/resize-terminal", async (c) => {
+  try {
+    await execAsync(`tmux resize-window -t ${TMUX_SESSION} -A`);
+    return c.json({ ok: true, action: "resize-terminal" });
+  } catch (err: any) {
+    return c.json({ ok: false, error: err.message }, 500);
+  }
+});
+
 app.post("/send-keys", async (c) => {
   try {
     const body = await c.req.json();

@@ -38,13 +38,17 @@ export function terminalRoute(c: any) {
       console.log(`[ws] client connected (user: ${authResult.user?.username || "unknown"})`);
 
       let lastContent = "";
+      let lastDims = "";
       let interval: ReturnType<typeof setInterval>;
 
-      // Send pane dimensions so client can match
-      const dims = getPaneDimensions();
-      ws.send(JSON.stringify({ type: "dimensions", cols: dims.cols, rows: dims.rows }));
-
       const sendPaneContent = () => {
+        // Send updated dimensions whenever they change
+        const dims = getPaneDimensions();
+        const dimsKey = `${dims.cols}x${dims.rows}`;
+        if (dimsKey !== lastDims) {
+          lastDims = dimsKey;
+          ws.send(JSON.stringify({ type: "dimensions", cols: dims.cols, rows: dims.rows }));
+        }
         // -e preserves ANSI colors and -J joins wrapped lines so they reflow
         // to the client width.
         const capture = spawn("tmux", [
