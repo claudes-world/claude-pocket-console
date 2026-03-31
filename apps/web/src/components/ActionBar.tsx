@@ -55,7 +55,6 @@ type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continui
 /** Bottom sheet — swipe-to-close ONLY from header, content scrolls independently */
 function BottomSheet({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
   const { sheetRef, onTouchStart, onTouchMove, onTouchEnd } = useSwipeDown(onClose);
-  const overlayRef = useRef<HTMLDivElement>(null);
   const [bottomOffset, setBottomOffset] = useState(0);
 
   useEffect(() => {
@@ -63,23 +62,15 @@ function BottomSheet({ onClose, title, children }: { onClose: () => void; title:
     if (tg?.safeAreaInset?.bottom) setBottomOffset(tg.safeAreaInset.bottom);
   }, []);
 
-  // Block ALL touch events from reaching Telegram's swipe-to-minimize handler.
-  // Must use native listener with { passive: false } so preventDefault() actually works.
+  // Disable Telegram's swipe-to-minimize while bottom sheet is open (Bot API 7.7+)
   useEffect(() => {
-    const el = overlayRef.current;
-    if (!el) return;
-    const block = (e: TouchEvent) => { e.preventDefault(); e.stopPropagation(); };
-    el.addEventListener("touchmove", block, { passive: false });
-    el.addEventListener("touchstart", block, { passive: false });
-    return () => {
-      el.removeEventListener("touchmove", block);
-      el.removeEventListener("touchstart", block);
-    };
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.disableVerticalSwipes) tg.disableVerticalSwipes();
+    return () => { if (tg?.enableVerticalSwipes) tg.enableVerticalSwipes(); };
   }, []);
 
   return (
     <div
-      ref={overlayRef}
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
       onClick={onClose}
     >
@@ -102,7 +93,7 @@ function BottomSheet({ onClose, title, children }: { onClose: () => void; title:
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
-          style={{ padding: "12px 16px 0", cursor: "grab", flexShrink: 0, touchAction: "none" }}
+          style={{ padding: "12px 16px 0", cursor: "grab", flexShrink: 0 }}
         >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <div style={{ width: 36, height: 4, borderRadius: 2, background: "#3b3d57" }} />
@@ -110,7 +101,7 @@ function BottomSheet({ onClose, title, children }: { onClose: () => void; title:
           <div style={{ fontSize: 15, fontWeight: 600, color: "#c0caf5", marginBottom: 12 }}>{title}</div>
         </div>
         {/* Content — scrolls independently, does NOT trigger swipe-to-close or Telegram minimize */}
-        <div style={{ overflowY: "auto", padding: "0 16px 24px", flex: 1, minHeight: 0, touchAction: "pan-y" }}>
+        <div style={{ overflowY: "auto", padding: "0 16px 24px", flex: 1, minHeight: 0 }}>
           {children}
         </div>
       </div>
@@ -138,11 +129,11 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const btnStyle = { padding: "6px 12px", fontSize: 12, borderRadius: 6, background: "#24283b", color: "#a9b1d6", border: "1px solid #2a2b3d", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 };
   const modalCenter = { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
 
-  // Block Telegram swipe-to-minimize on any modal overlay
+  // Disable Telegram swipe-to-minimize when center modals mount
   const blockTelegramSwipe = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return;
-    const block = (e: TouchEvent) => { e.preventDefault(); e.stopPropagation(); };
-    el.addEventListener("touchmove", block, { passive: false });
+    const tg = (window as any).Telegram?.WebApp;
+    if (!el) { if (tg?.enableVerticalSwipes) tg.enableVerticalSwipes(); return; }
+    if (tg?.disableVerticalSwipes) tg.disableVerticalSwipes();
     el.addEventListener("touchstart", block, { passive: false });
   }, []);
 
