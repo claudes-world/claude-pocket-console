@@ -203,18 +203,9 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const renameSession = async () => {
     if (!renameName.trim()) return;
     setModal(null);
-    setStatus("Renaming...");
-    try {
-      const res = await fetch("/api/actions/rename-session", {
-        method: "POST",
-        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ name: renameName.trim() }),
-      });
-      const data = await res.json();
-      setStatus(data.ok ? `Renamed to "${renameName.trim()}"` : `Failed: ${data.error}`);
-    } catch (err) {
-      setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    sendToTmux(`/rename ${renameName.trim()}`);
+    setStatus(`Renamed to "${renameName.trim()}"`);
+    setTimeout(() => setStatus(null), 2000);
   };
 
   const handleGitAction = async (action: { label: string; command: string }) => {
