@@ -101,7 +101,7 @@ export function App() {
   const isDev = window.location.hostname.includes("cpc-dev");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
       {/* Dev mode banner */}
       {isDev && (
         <div style={{
