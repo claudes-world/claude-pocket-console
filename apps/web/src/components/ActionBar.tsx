@@ -129,11 +129,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const btnStyle = { padding: "6px 12px", fontSize: 12, borderRadius: 6, background: "#24283b", color: "#a9b1d6", border: "1px solid #2a2b3d", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 };
   const modalCenter = { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
 
-  // Disable Telegram swipe-to-minimize when center modals mount
-  const blockTelegramSwipe = useCallback((el: HTMLDivElement | null) => {
-    const tg = (window as any).Telegram?.WebApp;
-    if (!el) { if (tg?.enableVerticalSwipes) tg.enableVerticalSwipes(); return; }
-    if (tg?.disableVerticalSwipes) tg.disableVerticalSwipes();
+  // unused blockTelegramSwipe removed — BottomSheet handles Telegram swipe API
     el.addEventListener("touchstart", block, { passive: false });
   }, []);
 
@@ -380,7 +376,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* Rename modal */}
       {modal === "rename" && (
-        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("commands")}>
+        <div style={modalCenter} onClick={() => setModal("commands")}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
@@ -407,7 +403,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* Fork name modal */}
       {modal === "fork-name" && (
-        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("commands")}>
+        <div style={modalCenter} onClick={() => setModal("commands")}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
@@ -480,7 +476,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* New/Clear modal */}
       {modal === "new-clear" && (
-        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("commands")}>
+        <div style={modalCenter} onClick={() => setModal("commands")}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
@@ -578,7 +574,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* Compact confirm modal */}
       {modal === "compact-confirm" && (
-        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal(null)}>
+        <div style={modalCenter} onClick={() => setModal(null)}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
@@ -615,7 +611,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* Compact focus modal */}
       {modal === "compact-focus" && (
-        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("compact-confirm")}>
+        <div style={modalCenter} onClick={() => setModal("compact-confirm")}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
@@ -652,7 +648,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* Continuity notes modal */}
       {modal === "continuity-notes" && (
-        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("compact-confirm")}>
+        <div style={modalCenter} onClick={() => setModal("compact-confirm")}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
