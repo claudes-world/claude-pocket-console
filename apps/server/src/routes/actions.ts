@@ -301,25 +301,37 @@ app.post("/send-audio-telegram", async (c) => {
   }
 });
 
+// Telegram MarkdownV2 sanitizer — inline version (see toolbox/tg-sanitize for full tool)
+const TG_SPECIAL = /[_*\[\]()~`>#\+\-=|{}.!\\]/g;
+function tgRaw(text: string) { return text.replace(TG_SPECIAL, '\\$&'); }
+function tgSanitize(text: string) {
+  // Preserve *bold*, _italic_, `code`, then escape everything else
+  const phs: { key: string; val: string }[] = [];
+  let idx = 0;
+  const hold = (m: string) => { const k = `\x00${idx++}\x00`; phs.push({ key: k, val: m }); return k; };
+  let t = text;
+  t = t.replace(/`[^`]+`/g, hold);
+  t = t.replace(/\*([^*]+)\*/g, (_, i) => hold(`*${i.replace(TG_SPECIAL, '\\$&')}*`));
+  t = t.replace(/_([^_]+)_/g, (_, i) => hold(`_${i.replace(TG_SPECIAL, '\\$&')}_`));
+  t = t.replace(TG_SPECIAL, '\\$&');
+  for (const { key, val } of phs) t = t.replace(key, val);
+  return t;
+}
+
 // Send file path to Telegram chat with contextual prompt
 app.post("/send-to-chat", async (c) => {
   const { filePath } = await c.req.json<{ filePath: string }>();
   if (!filePath) return c.json({ ok: false, error: "filePath required" }, 400);
 
   try {
-    const commonSh = join(process.env.HOME || "/home/claude", "code/toolbox/hooks/common.sh");
-    const envCmd = `source "${commonSh}" 2>/dev/null; echo "$BOTTOKEN|||$TELEGRAM_CHAT_ID"`;
-    const { stdout: envOut } = await execAsync(envCmd, { shell: "/bin/bash" });
-    const [botToken, chatId] = envOut.trim().split("|||");
-    if (!botToken || !chatId) return c.json({ ok: false, error: "Telegram not configured" }, 500);
-
+    const { botToken, chatId } = await getTelegramCreds();
     const shortPath = filePath.replace(/^\/home\/claude\//, "~/");
     const message = [
-      `\ud83d\udcc4 *Shared from Pocket Console*`,
+      `📄 *Shared from Pocket Console*`,
       ``,
-      `\`${shortPath}\``,
+      `\`${tgRaw(shortPath)}\``,
       ``,
-      `_User is sharing this file with you. Read it and consider how it relates to our current work. If you can infer the intent, act on it. If you need slight clarification, offer 2\\-3 multiple choice options so the user can respond quickly. Only ask an open\\-ended question if you truly cannot guess._`,
+      tgSanitize(`_User is sharing this file with you. Read it and consider how it relates to our current work. If you can infer the intent, act on it. If you need slight clarification, offer 2-3 multiple choice options so the user can respond quickly. Only ask an open-ended question if you truly cannot guess._`),
     ].join("\n");
 
     const payload = JSON.stringify({ chat_id: chatId, text: message, parse_mode: "MarkdownV2" });
