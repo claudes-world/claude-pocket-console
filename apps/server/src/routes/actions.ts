@@ -344,4 +344,24 @@ app.post("/send-to-chat", async (c) => {
   }
 });
 
+app.get("/git-branch", async (c) => {
+  try {
+    // Get current branch
+    const { stdout: branch } = await execAsync("git -C /home/claude/claudes-world rev-parse --abbrev-ref HEAD");
+
+    // Check if this is a worktree or main tree
+    const { stdout: gitDir } = await execAsync("git -C /home/claude/claudes-world rev-parse --git-dir");
+    const isWorktree = gitDir.trim().includes("/worktrees/");
+
+    return c.json({
+      ok: true,
+      branch: branch.trim(),
+      isWorktree,
+      treeType: isWorktree ? "linked tree" : "main tree",
+    });
+  } catch (err: any) {
+    return c.json({ ok: false, error: err.message }, 500);
+  }
+});
+
 export { app as actionsRoute };

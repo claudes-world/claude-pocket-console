@@ -125,13 +125,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [searchResults, setSearchResults] = useState<{ name: string; path: string; type: string; relPath: string }[]>([]);
   const [audioStatus, setAudioStatus] = useState<{ exists: boolean; path?: string } | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [gitBranch, setGitBranch] = useState<{ branch: string; treeType: string } | null>(null);
 
   const btnStyle = { padding: "6px 12px", fontSize: 12, borderRadius: 6, background: "#24283b", color: "#a9b1d6", border: "1px solid #2a2b3d", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 };
   const modalCenter = { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
-
-  // unused blockTelegramSwipe removed — BottomSheet handles Telegram swipe API
-    el.addEventListener("touchstart", block, { passive: false });
-  }, []);
 
   // --- API helpers ---
   const handleAction = async (endpoint: string, label: string) => {
@@ -169,6 +166,21 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       setSessionNames(data.names || []);
     } catch { setSessionNames([]); }
   };
+
+  const fetchGitBranch = async () => {
+    try {
+      const res = await fetch("/api/actions/git-branch", { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.ok) setGitBranch({ branch: data.branch, treeType: data.treeType });
+    } catch { /* silent */ }
+  };
+
+  // Fetch git branch on mount and every 30 seconds
+  useEffect(() => {
+    fetchGitBranch();
+    const interval = setInterval(fetchGitBranch, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const sendToTmux = async (text: string) => {
     try {
@@ -872,7 +884,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
           )}
         </div>
         <div style={{ fontSize: 11, color: connected === false ? "#f7768e" : "#7aa2f7", marginTop: 6, textAlign: "center", minHeight: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {status || (connected === false ? "[disconnected]" : "\u00A0")}
+          {status || (connected === false ? "[disconnected]" : gitBranch ? `\uD83D\uDD00 ${gitBranch.branch} (${gitBranch.treeType})` : "\u00A0")}
         </div>
       </div>
     </>
