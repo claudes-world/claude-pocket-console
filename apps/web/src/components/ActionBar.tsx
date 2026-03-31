@@ -211,8 +211,19 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const renameSession = async () => {
     if (!renameName.trim()) return;
     setModal(null);
+    setStatus("Renaming...");
     sendToTmux(`/rename ${renameName.trim()}`);
-    setStatus(`Renamed to "${renameName.trim()}"`);
+    try {
+      const res = await fetch("/api/actions/rename-session", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      });
+      const data = await res.json();
+      setStatus(data.ok ? `Renamed to "${renameName.trim()}"` : `Failed: ${data.error}`);
+    } catch {
+      setStatus(`Renamed to "${renameName.trim()}"`);
+    }
     setTimeout(() => setStatus(null), 2000);
   };
 
@@ -321,7 +332,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       {/* Commands bottom sheet */}
       {modal === "commands" && (
         <BottomSheet onClose={() => setModal(null)} title="/commands">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {/* Quick number buttons at top */}
             <div style={{ display: "flex", gap: 8 }}>
               {[1, 2, 3].map((n) => (
@@ -336,33 +347,38 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
             </div>
             <button
               onClick={() => setModal("new-clear")}
-              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030", fontFamily: "monospace" }}
+              style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030", fontFamily: "monospace" }}
             >
               /new <span style={{ color: "#6a4040", fontFamily: "inherit" }}>(clear)</span>
-            </button>
-            <button
-              onClick={() => { setForkName(""); setModal("fork-name"); }}
-              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, fontFamily: "monospace" }}
-            >
-              /branch <span style={{ color: "#565f89", fontFamily: "inherit" }}>(fork)</span>
+              <div style={{ fontSize: 10, color: "#6a4040", marginTop: 1 }}>Start fresh or clear conversation</div>
             </button>
             <button
               onClick={() => { fetchSessionNames(); setModal("resume"); }}
-              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", fontFamily: "monospace" }}
+              style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", fontFamily: "monospace" }}
             >
               /resume
+              <div style={{ fontSize: 10, color: "#4a7a5a", marginTop: 1 }}>Switch to a previous session</div>
+            </button>
+            <button
+              onClick={() => { setForkName(""); setModal("fork-name"); }}
+              style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, fontFamily: "monospace" }}
+            >
+              /branch <span style={{ color: "#565f89", fontFamily: "inherit" }}>(fork)</span>
+              <div style={{ fontSize: 10, color: "#565f89", marginTop: 1 }}>Branch or fork this conversation</div>
             </button>
             <button
               onClick={() => { setRenameName(""); setModal("rename"); }}
-              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, fontFamily: "monospace" }}
+              style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, fontFamily: "monospace" }}
             >
               /rename
+              <div style={{ fontSize: 10, color: "#565f89", marginTop: 1 }}>Give this session a name</div>
             </button>
             <button
               onClick={() => setModal("compact-confirm")}
-              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a", fontFamily: "monospace" }}
+              style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a", fontFamily: "monospace" }}
             >
               /compact
+              <div style={{ fontSize: 10, color: "#4a5a8a", marginTop: 1 }}>Compress conversation context</div>
             </button>
           </div>
         </BottomSheet>
