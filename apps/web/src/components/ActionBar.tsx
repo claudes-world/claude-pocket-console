@@ -320,52 +320,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* Commands bottom sheet */}
       {modal === "commands" && (
-        <BottomSheet onClose={() => setModal(null)} title="Commands">
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <button
-              onClick={() => setModal("compact-confirm")}
-              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}
-            >
-              Compact
-              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Compress conversation context</div>
-            </button>
-            <button
-              onClick={() => { setRenameName(""); setModal("rename"); }}
-              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const }}
-            >
-              Rename Session
-              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Give this session a friendly name</div>
-            </button>
-            <button
-              onClick={() => { fetchSessionNames(); setModal("resume"); }}
-              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
-            >
-              Resume Session
-              <div style={{ fontSize: 11, color: "#4a7a5a", marginTop: 2 }}>Switch to a previous session</div>
-            </button>
-            <button
-              onClick={() => { sendToTmux("/branch"); setModal(null); setStatus("Branching..."); setTimeout(() => setStatus(null), 2000); }}
-              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const }}
-            >
-              Branch
-              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Branch this conversation</div>
-            </button>
-            <button
-              onClick={() => { setForkName(""); setModal("fork-name"); }}
-              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const }}
-            >
-              Fork
-              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Fork into a new session</div>
-            </button>
-            <button
-              onClick={() => setModal("new-clear")}
-              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
-            >
-              New / Clear
-              <div style={{ fontSize: 11, color: "#6a4040", marginTop: 2 }}>Start fresh or clear conversation</div>
-            </button>
-            {/* Quick number buttons */}
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <BottomSheet onClose={() => setModal(null)} title="/commands">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {/* Quick number buttons at top */}
+            <div style={{ display: "flex", gap: 8 }}>
               {[1, 2, 3].map((n) => (
                 <button
                   key={n}
@@ -377,10 +335,34 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               ))}
             </div>
             <button
-              onClick={() => setModal(null)}
-              style={{ ...btnStyle, padding: "10px 16px", textAlign: "center" as const, marginTop: 4 }}
+              onClick={() => setModal("new-clear")}
+              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030", fontFamily: "monospace" }}
             >
-              Cancel
+              /new <span style={{ color: "#6a4040", fontFamily: "inherit" }}>(clear)</span>
+            </button>
+            <button
+              onClick={() => { setForkName(""); setModal("fork-name"); }}
+              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, fontFamily: "monospace" }}
+            >
+              /branch <span style={{ color: "#565f89", fontFamily: "inherit" }}>(fork)</span>
+            </button>
+            <button
+              onClick={() => { fetchSessionNames(); setModal("resume"); }}
+              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", fontFamily: "monospace" }}
+            >
+              /resume
+            </button>
+            <button
+              onClick={() => { setRenameName(""); setModal("rename"); }}
+              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, fontFamily: "monospace" }}
+            >
+              /rename
+            </button>
+            <button
+              onClick={() => setModal("compact-confirm")}
+              style={{ ...btnStyle, padding: "8px 16px", textAlign: "left" as const, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a", fontFamily: "monospace" }}
+            >
+              /compact
             </button>
           </div>
         </BottomSheet>
@@ -420,12 +402,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4, color: "#c0caf5" }}>Fork Session</div>
-            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>Name this new branch of the chat</div>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4, color: "#c0caf5" }}>Branch / Fork</div>
+            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>Name the new branch (optional)</div>
             <input
               value={forkName}
               onChange={(e) => setForkName(e.target.value)}
-              placeholder="Fork name..."
+              placeholder="Branch name..."
               style={{
                 width: "100%", padding: 10, background: "#24283b", color: "#c0caf5",
                 border: "1px solid #3b3d57", borderRadius: 6, fontSize: 13, fontFamily: "inherit",
