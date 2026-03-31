@@ -12,9 +12,12 @@
   "dependencies": {
     "@hono/node-server": "^1",
     "@hono/node-ws": "^1",
-    "hono": "^4"
+    "better-sqlite3": "^12.8.0",
+    "hono": "^4",
+    "nanoid": "^5.1.7"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "tsx": "^4",
     "typescript": "^5"

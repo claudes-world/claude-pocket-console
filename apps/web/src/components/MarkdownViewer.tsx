@@ -20,9 +20,12 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
   return (
     <div
       style={{
-        padding: "16px 20px",
-        overflow: "auto",
+        padding: "16px 16px",
+        overflowY: "auto",
+        overflowX: "hidden",
         height: "100%",
+        width: "100%",
+        maxWidth: "100%",
       }}
     >
       <style>{`
@@ -31,6 +34,13 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
           font-size: 14px;
           line-height: 1.7;
           color: #c0caf5;
+          overflow-wrap: break-word;
+          word-break: break-word;
+          max-width: 100%;
+        }
+        .md-content * {
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .md-content h1 {
           font-size: 22px;
@@ -86,6 +96,8 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
           color: #c0caf5;
         }
         .md-content table {
+          display: block;
+          overflow-x: auto;
           width: 100%;
           border-collapse: collapse;
           margin: 12px 0;

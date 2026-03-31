@@ -3,10 +3,11 @@ import { Terminal } from "./components/Terminal";
 import { FileViewer } from "./components/FileViewer";
 import { Links } from "./components/Links";
 import { ActionBar } from "./components/ActionBar";
+import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp } from "./lib/telegram";
 
-type Tab = "terminal" | "files" | "links";
-const TABS: Tab[] = ["terminal", "files", "links"];
+type Tab = "terminal" | "files" | "links" | "voice";
+const TABS: Tab[] = ["terminal", "files", "links", "voice"];
 const SWIPE_THRESHOLD = 120;
 
 export function App() {
@@ -19,6 +20,9 @@ export function App() {
   );
   const [reconnectKey, setReconnectKey] = useState(0);
   const [initialFilePath] = useState<string | null>(initialFile);
+  const [fileShowHidden, setFileShowHidden] = useState(false);
+  const [fileSortMode, setFileSortMode] = useState<string>("name-asc");
+  const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -192,17 +196,29 @@ export function App() {
             <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} />
+            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onViewChange={setViewingFile} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <Links onClose={() => setActiveTab("terminal")} />
+          </div>
+          <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
+            <VoiceRecorder />
           </div>
         </div>
       </div>
 
       {/* Action bar — stop propagation so swipe doesn't fire from action buttons */}
       <div onTouchStart={(e) => e.stopPropagation()}>
-        <ActionBar onReconnect={onReconnect} connected={connected} />
+        <ActionBar
+          onReconnect={onReconnect}
+          connected={connected}
+          activeTab={activeTab}
+          fileShowHidden={fileShowHidden}
+          setFileShowHidden={setFileShowHidden}
+          fileSortMode={fileSortMode}
+          setFileSortMode={setFileSortMode}
+          viewingFile={viewingFile}
+        />
       </div>
     </div>
   );

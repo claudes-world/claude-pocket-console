@@ -44,8 +44,9 @@ app.get("/list", async (c) => {
     const items = await Promise.all(
       entries
         .filter((e) => {
-          // Show dotfiles when inside a dotfile root (like .claude/)
-          if (resolved.includes("/.")) return true;
+          // Always show dotfiles if ?hidden=1 or inside a dotfile root
+          const showHidden = c.req.query("hidden") === "1";
+          if (showHidden || resolved.includes("/.")) return true;
           return !e.name.startsWith(".");
         })
         .map(async (e) => {
@@ -150,6 +151,45 @@ app.get("/read", async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
   }
+});
+
+// Fuzzy file/path search — BFS across all allowed roots
+app.get("/search", async (c) => {
+  const qRaw = c.req.query("q")?.toLowerCase() || "";
+  if (qRaw.length < 2) return c.json({ results: [] });
+  const q = qRaw;
+
+  const results: { name: string; path: string; type: string; relPath: string }[] = [];
+  const MAX = 25;
+
+  // BFS queue: [dirPath, depth]
+  const queue: [string, number][] = ALLOWED_ROOTS.map((r) => [r, 0]);
+
+  while (queue.length > 0 && results.length < MAX) {
+    const [dir, depth] = queue.shift()!;
+    if (depth > 8) continue;
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        if (results.length >= MAX) break;
+        if (e.name.startsWith(".") && !e.name.startsWith(".claude")) continue;
+        const full = join(dir, e.name);
+        const relPath = full.replace("/home/claude/", "~/");
+        // Match against filename OR relative path (supports partial paths)
+        if (e.name.toLowerCase().includes(q) || relPath.toLowerCase().includes(q)) {
+          results.push({
+            name: e.name,
+            path: full,
+            type: e.isDirectory() ? "dir" : "file",
+            relPath,
+          });
+        }
+        if (e.isDirectory()) queue.push([full, depth + 1]);
+      }
+    } catch { /* skip inaccessible dirs */ }
+  }
+
+  return c.json({ results });
 });
 
 // Upload file to current directory

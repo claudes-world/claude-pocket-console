@@ -13,6 +13,9 @@ interface FileEntry {
 interface FileViewerProps {
   onClose: () => void;
   initialFile?: string | null;
+  showHidden?: boolean;
+  sortMode?: string;
+  onViewChange?: (file: { path: string; name: string } | null) => void;
 }
 
 const EXT_LANG: Record<string, string> = {
@@ -45,12 +48,13 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export function FileViewer({ onClose, initialFile }: FileViewerProps) {
+export function FileViewer({ onClose, initialFile, showHidden = false, sortMode = "name-asc", onViewChange }: FileViewerProps) {
   const [currentPath, setCurrentPath] = useState("/home/claude/claudes-world");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
+  const [filePath, setFilePath] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedRanges, setCollapsedRanges] = useState<Set<number>>(new Set());
@@ -93,8 +97,9 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
     setError(null);
     setFileContent(null);
     setCollapsedRanges(new Set());
+    onViewChange?.(null);
     try {
-      const res = await fetch(`/api/files/list?path=${encodeURIComponent(path)}`, {
+      const res = await fetch(`/api/files/list?path=${encodeURIComponent(path)}&hidden=1`, {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
@@ -127,6 +132,8 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
       }
       setFileContent(data.content);
       setFileName(name);
+      setFilePath(path);
+      onViewChange?.({ path, name });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to read file");
     } finally {
@@ -174,6 +181,17 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
     });
   };
 
+  const visibleEntries = showHidden ? entries : entries.filter((e) => !e.name.startsWith("."));
+  const filteredEntries = [...visibleEntries].sort((a, b) => {
+    // Dirs always first
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    switch (sortMode) {
+      case "name-desc": return b.name.localeCompare(a.name);
+      case "date-asc": return a.modified.localeCompare(b.modified);
+      case "date-desc": return b.modified.localeCompare(a.modified);
+      default: return a.name.localeCompare(b.name); // name-asc
+    }
+  });
   const shortPath = currentPath.replace("/home/claude/", "~/");
 
   return (
@@ -187,6 +205,9 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
           alignItems: "center",
           gap: 8,
           flexShrink: 0,
+          minWidth: 0,
+          maxWidth: "100%",
+          overflow: "hidden",
         }}
       >
         <button
@@ -351,7 +372,7 @@ export function FileViewer({ onClose, initialFile }: FileViewerProps) {
       {/* Directory listing */}
       {fileContent === null && !loading && (
         <div style={{ flex: 1, overflow: "auto" }}>
-          {entries.map((entry) => (
+          {filteredEntries.map((entry) => (
             <div
               key={entry.path}
               onClick={() => handleEntry(entry)}

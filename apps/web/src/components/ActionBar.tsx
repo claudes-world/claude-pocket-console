@@ -1,159 +1,628 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 
-interface Action {
-  label: string;
-  endpoint: string;
-}
+/** Hook: swipe-down-to-close — ONLY from header/drag handle area */
+function useSwipeDown(onClose: () => void, threshold = 80) {
+  const startY = useRef(0);
+  const currentY = useRef(0);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
-const ACTIONS: Action[] = [
-  { label: "Reload Plugins", endpoint: "/api/actions/reload-plugins" },
-  { label: "Git Status", endpoint: "/api/actions/git-status" },
-];
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation(); // prevent Telegram mini app from minimizing
+    startY.current = e.touches[0].clientY;
+    currentY.current = e.touches[0].clientY;
+    if (sheetRef.current) sheetRef.current.style.transition = "none";
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+    currentY.current = e.touches[0].clientY;
+    const dy = currentY.current - startY.current;
+    if (dy > 0 && sheetRef.current) {
+      sheetRef.current.style.transform = `translateY(${dy}px)`;
+    }
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    const dy = currentY.current - startY.current;
+    if (sheetRef.current) {
+      sheetRef.current.style.transition = "transform 200ms ease-out";
+      if (dy > threshold) {
+        sheetRef.current.style.transform = "translateY(100%)";
+        setTimeout(onClose, 200);
+      } else {
+        sheetRef.current.style.transform = "translateY(0)";
+      }
+    }
+  }, [onClose, threshold]);
+
+  return { sheetRef, onTouchStart, onTouchMove, onTouchEnd };
+}
 
 interface ActionBarProps {
   onReconnect?: () => void;
   connected?: boolean;
+  activeTab?: string;
+  fileShowHidden?: boolean;
+  setFileShowHidden?: (v: boolean) => void;
+  fileSortMode?: string;
+  setFileSortMode?: (v: string) => void;
+  viewingFile?: { path: string; name: string } | null;
 }
 
-type CompactModal = null | "confirm" | "compact-focus" | "continuity-notes";
+type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-clear" | "file-options" | "file-search" | "audio-gen";
 
-export function ActionBar({ onReconnect, connected }: ActionBarProps) {
+/** Bottom sheet — swipe-to-close ONLY from header, content scrolls independently */
+function BottomSheet({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
+  const { sheetRef, onTouchStart, onTouchMove, onTouchEnd } = useSwipeDown(onClose);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [bottomOffset, setBottomOffset] = useState(0);
+
+  useEffect(() => {
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.safeAreaInset?.bottom) setBottomOffset(tg.safeAreaInset.bottom);
+  }, []);
+
+  // Block ALL touch events from reaching Telegram's swipe-to-minimize handler.
+  // Must use native listener with { passive: false } so preventDefault() actually works.
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const block = (e: TouchEvent) => { e.preventDefault(); e.stopPropagation(); };
+    el.addEventListener("touchmove", block, { passive: false });
+    el.addEventListener("touchstart", block, { passive: false });
+    return () => {
+      el.removeEventListener("touchmove", block);
+      el.removeEventListener("touchstart", block);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={overlayRef}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={onClose}
+    >
+      <div
+        ref={sheetRef}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#1a1b26",
+          borderTop: "1px solid #2a2b3d",
+          borderRadius: "16px 16px 0 0",
+          maxHeight: "70vh",
+          display: "flex",
+          flexDirection: "column",
+          paddingBottom: bottomOffset,
+          animation: "slideUp 200ms ease-out",
+        }}
+      >
+        {/* Header — ONLY this area triggers swipe-to-close */}
+        <div
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          style={{ padding: "12px 16px 0", cursor: "grab", flexShrink: 0, touchAction: "none" }}
+        >
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "#3b3d57" }} />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#c0caf5", marginBottom: 12 }}>{title}</div>
+        </div>
+        {/* Content — scrolls independently, does NOT trigger swipe-to-close or Telegram minimize */}
+        <div style={{ overflowY: "auto", padding: "0 16px 24px", flex: 1, minHeight: 0, touchAction: "pan-y" }}>
+          {children}
+        </div>
+      </div>
+      <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
-  const [compactModal, setCompactModal] = useState<CompactModal>(null);
+  const [modal, setModal] = useState<Modal>(null);
   const [compactFocus, setCompactFocus] = useState("");
   const [continuityNotes, setContinuityNotes] = useState("");
+  const [renameName, setRenameName] = useState("");
+  const [forkName, setForkName] = useState("");
+  const [resumeName, setResumeName] = useState("");
+  const [gitOutput, setGitOutput] = useState("");
+  const [todoContent, setTodoContent] = useState("");
+  const [sessionNames, setSessionNames] = useState<{ name: string; ts: number }[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ name: string; path: string; type: string; relPath: string }[]>([]);
+  const [audioStatus, setAudioStatus] = useState<{ exists: boolean; path?: string } | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
 
-  const handleAction = async (action: Action) => {
-    setStatus(`Running ${action.label}...`);
+  const btnStyle = { padding: "6px 12px", fontSize: 12, borderRadius: 6, background: "#24283b", color: "#a9b1d6", border: "1px solid #2a2b3d", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 };
+  const modalCenter = { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
+
+  // Block Telegram swipe-to-minimize on any modal overlay
+  const blockTelegramSwipe = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const block = (e: TouchEvent) => { e.preventDefault(); e.stopPropagation(); };
+    el.addEventListener("touchmove", block, { passive: false });
+    el.addEventListener("touchstart", block, { passive: false });
+  }, []);
+
+  // --- API helpers ---
+  const handleAction = async (endpoint: string, label: string) => {
+    setStatus(`Running ${label}...`);
     try {
-      const res = await fetch(action.endpoint, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      });
+      const res = await fetch(endpoint, { method: "POST", headers: getAuthHeaders() });
       const data = await res.json();
-      if (!res.ok) {
-        setStatus(`Failed: ${data.error || "unknown error"}`);
-      } else {
-        setStatus(data.output || `${action.label}: OK`);
-      }
+      if (!res.ok) setStatus(`Failed: ${data.error || "unknown error"}`);
+      else setStatus(data.output || `${label}: OK`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setStatus(`Error: ${message}`);
+      setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
-  const sendCompactCommand = async (command: string) => {
-    setCompactModal(null);
-    setStatus("Sending...");
+  const fetchGitStatus = async () => {
     try {
-      const res = await fetch("/api/actions/send-keys", {
+      const res = await fetch("/api/actions/git-status", { headers: getAuthHeaders() });
+      const data = await res.json();
+      setGitOutput(data.output || "No output");
+    } catch { setGitOutput("Failed to fetch"); }
+  };
+
+  const fetchTodo = async () => {
+    try {
+      const res = await fetch("/api/actions/todo", { headers: getAuthHeaders() });
+      const data = await res.json();
+      setTodoContent(data.content || "No TODO.md found");
+    } catch { setTodoContent("Failed to fetch"); }
+  };
+
+  const fetchSessionNames = async () => {
+    try {
+      const res = await fetch("/api/actions/session-names", { headers: getAuthHeaders() });
+      const data = await res.json();
+      setSessionNames(data.names || []);
+    } catch { setSessionNames([]); }
+  };
+
+  const sendToTmux = async (text: string) => {
+    try {
+      await fetch("/api/actions/send-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ keys: text }),
+      });
+    } catch { /* fire and forget */ }
+  };
+
+  const sendCompactCommand = async (message: string) => {
+    setModal(null);
+    setStatus("Compacting...");
+    try {
+      const res = await fetch("/api/actions/compact", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ keys: command }),
+        body: JSON.stringify({ message }),
       });
       const data = await res.json();
-      setStatus(data.ok ? "Sent" : `Failed: ${data.error}`);
+      setStatus(data.ok ? "Compact sent" : `Failed: ${data.error}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setStatus(`Error: ${message}`);
+      setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
-  const btnStyle = {
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 500,
-    background: "#2a2b3d",
-    color: "#c0caf5",
-    border: "1px solid #3b3d57",
-    borderRadius: 6,
-    cursor: "pointer",
-    whiteSpace: "nowrap" as const,
+  const renameSession = async () => {
+    if (!renameName.trim()) return;
+    setModal(null);
+    setStatus("Renaming...");
+    try {
+      const res = await fetch("/api/actions/rename-session", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      });
+      const data = await res.json();
+      setStatus(data.ok ? `Renamed to "${renameName.trim()}"` : `Failed: ${data.error}`);
+    } catch (err) {
+      setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
+
+  const handleGitAction = async (action: { label: string; command: string }) => {
+    setGitOutput(`Running ${action.label}...`);
+    setModal("git-status");
+    try {
+      const res = await fetch("/api/actions/git-command", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ command: action.command }),
+      });
+      const data = await res.json();
+      setGitOutput(data.output || "No output");
+    } catch { setGitOutput("Failed to run command"); }
+  };
+
+  const searchFiles = async (q: string) => {
+    if (q.length < 2) { setSearchResults([]); return; }
+    try {
+      const res = await fetch(`/api/files/search?q=${encodeURIComponent(q)}`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      setSearchResults(data.results || []);
+    } catch { setSearchResults([]); }
+  };
+
+  const checkAudio = async (filePath: string) => {
+    setAudioStatus(null);
+    setAudioLoading(true);
+    try {
+      const res = await fetch(`/api/actions/check-audio?path=${encodeURIComponent(filePath)}`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      setAudioStatus({ exists: data.exists, path: data.path });
+    } catch { setAudioStatus(null); }
+    setAudioLoading(false);
+  };
+
+  const generateAudio = async (filePath: string) => {
+    setAudioLoading(true);
+    setStatus("Generating audio...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+      const res = await fetch("/api/actions/generate-audio", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ path: filePath }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (data.ok) {
+        setAudioStatus({ exists: true, path: data.path });
+        setStatus("Audio generated");
+      } else {
+        setStatus(`Failed: ${data.error}`);
+      }
+    } catch (err) {
+      setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  const sendAudioTelegram = async (audioPath: string) => {
+    setAudioLoading(true);
+    setStatus("Sending to Telegram...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      const res = await fetch("/api/actions/send-audio-telegram", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ path: audioPath }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      setStatus(data.ok ? "Sent to Telegram" : `Failed: ${data.error}`);
+    } catch (err) {
+      setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  // Debounced file search
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchInput = useCallback((q: string) => {
+    setSearchQuery(q);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => searchFiles(q), 300);
+  }, []);
+
+  // Clear status after 4 seconds
+  useEffect(() => {
+    if (!status) return;
+    const t = setTimeout(() => setStatus(null), 4000);
+    return () => clearTimeout(t);
+  }, [status]);
 
   return (
     <>
-      {/* Compact confirmation modal */}
-      {compactModal === "confirm" && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: 16,
-          }}
-          onClick={() => setCompactModal(null)}
-        >
+      {/* ===== MODALS ===== */}
+
+      {/* Commands bottom sheet */}
+      {modal === "commands" && (
+        <BottomSheet onClose={() => setModal(null)} title="Commands">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => setModal("compact-confirm")}
+              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}
+            >
+              Compact
+              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Compress conversation context</div>
+            </button>
+            <button
+              onClick={() => { setRenameName(""); setModal("rename"); }}
+              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const }}
+            >
+              Rename Session
+              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Give this session a friendly name</div>
+            </button>
+            <button
+              onClick={() => { fetchSessionNames(); setModal("resume"); }}
+              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
+            >
+              Resume Session
+              <div style={{ fontSize: 11, color: "#4a7a5a", marginTop: 2 }}>Switch to a previous session</div>
+            </button>
+            <button
+              onClick={() => { sendToTmux("/branch"); setModal(null); setStatus("Branching..."); setTimeout(() => setStatus(null), 2000); }}
+              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const }}
+            >
+              Branch
+              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Branch this conversation</div>
+            </button>
+            <button
+              onClick={() => { setForkName(""); setModal("fork-name"); }}
+              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const }}
+            >
+              Fork
+              <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Fork into a new session</div>
+            </button>
+            <button
+              onClick={() => setModal("new-clear")}
+              style={{ ...btnStyle, padding: "12px 16px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
+            >
+              New / Clear
+              <div style={{ fontSize: 11, color: "#6a4040", marginTop: 2 }}>Start fresh or clear conversation</div>
+            </button>
+            {/* Quick number buttons */}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => { sendToTmux(String(n)); setModal(null); setStatus(`Sent: ${n}`); setTimeout(() => setStatus(null), 1500); }}
+                  style={{ ...btnStyle, flex: 1, padding: "12px 0", textAlign: "center" as const, fontSize: 16, fontWeight: 600 }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setModal(null)}
+              style={{ ...btnStyle, padding: "10px 16px", textAlign: "center" as const, marginTop: 4 }}
+            >
+              Cancel
+            </button>
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* Rename modal */}
+      {modal === "rename" && (
+        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("commands")}>
           <div
-            style={{
-              background: "#1a1b26",
-              border: "1px solid #2a2b3d",
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 320,
-              width: "100%",
-            }}
+            style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#c0caf5" }}>
-              Compact Context
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#c0caf5" }}>Rename Session</div>
+            <input
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
+              placeholder="Session name..."
+              style={{
+                width: "100%", padding: 10, background: "#24283b", color: "#c0caf5",
+                border: "1px solid #3b3d57", borderRadius: 6, fontSize: 13, fontFamily: "inherit",
+              }}
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && renameSession()}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => setModal("commands")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d" }}>Back</button>
+              <button onClick={renameSession} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}>Rename</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fork name modal */}
+      {modal === "fork-name" && (
+        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("commands")}>
+          <div
+            style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4, color: "#c0caf5" }}>Fork Session</div>
+            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>Name this new branch of the chat</div>
+            <input
+              value={forkName}
+              onChange={(e) => setForkName(e.target.value)}
+              placeholder="Fork name..."
+              style={{
+                width: "100%", padding: 10, background: "#24283b", color: "#c0caf5",
+                border: "1px solid #3b3d57", borderRadius: 6, fontSize: 13, fontFamily: "inherit",
+              }}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const name = forkName.trim();
+                  setModal(null);
+                  sendToTmux(name ? `/fork\n/rename ${name}` : "/fork");
+                  setStatus(name ? `Forked as "${name}"` : "Forked");
+                  setTimeout(() => setStatus(null), 2000);
+                }
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => setModal("commands")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d" }}>Back</button>
+              <button
+                onClick={() => {
+                  const name = forkName.trim();
+                  setModal(null);
+                  sendToTmux(name ? `/fork\n/rename ${name}` : "/fork");
+                  setStatus(name ? `Forked as "${name}"` : "Forked");
+                  setTimeout(() => setStatus(null), 2000);
+                }}
+                style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}
+              >Fork</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resume session modal */}
+      {modal === "resume" && (
+        <BottomSheet onClose={() => setModal("commands")} title="Resume Session">
+          {sessionNames.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>No saved sessions</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {sessionNames.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setResumeName(s.name);
+                    setModal(null);
+                    sendCompactCommand(`/resume ${s.name}`);
+                  }}
+                  style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const }}
+                >
+                  {s.name}
+                  <div style={{ fontSize: 10, color: "#565f89", marginTop: 2 }}>
+                    {new Date(s.ts).toLocaleDateString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </BottomSheet>
+      )}
+
+      {/* New/Clear modal */}
+      {modal === "new-clear" && (
+        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("commands")}>
+          <div
+            style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>New / Clear Session</div>
+            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>
+              Add continuity notes before clearing? (optional)
+            </div>
+            <textarea
+              value={continuityNotes}
+              onChange={(e) => setContinuityNotes(e.target.value)}
+              placeholder="Notes to preserve..."
+              style={{
+                width: "100%", height: 80, background: "#24283b", color: "#c0caf5",
+                border: "1px solid #3b3d57", borderRadius: 6, padding: 10, fontSize: 13,
+                resize: "vertical", fontFamily: "inherit",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => setModal("commands")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d" }}>Back</button>
+              <button
+                onClick={() => {
+                  const notes = continuityNotes.trim();
+                  const cmd = notes ? `/clear ${notes}` : "/clear";
+                  sendCompactCommand(cmd);
+                }}
+                style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Git status bottom sheet */}
+      {modal === "git-status" && (
+        <BottomSheet onClose={() => setModal(null)} title="Git Status">
+          <pre style={{
+            fontSize: 11, color: "#a9b1d6", background: "#24283b", padding: 12,
+            borderRadius: 6, overflow: "auto", maxHeight: "50vh", whiteSpace: "pre-wrap", wordBreak: "break-all",
+            fontFamily: "'SF Mono', 'Fira Code', monospace",
+          }}>
+            {gitOutput || "Loading..."}
+          </pre>
+          <button onClick={() => setModal(null)} style={{ ...btnStyle, marginTop: 12, width: "100%", padding: "10px 16px", textAlign: "center" as const }}>Close</button>
+        </BottomSheet>
+      )}
+
+      {/* Git menu bottom sheet */}
+      {modal === "git-menu" && (
+        <BottomSheet onClose={() => setModal(null)} title="Git">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => { fetchGitStatus(); setModal("git-status"); }}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const }}
+            >
+              View Status
+            </button>
+            <button
+              onClick={() => handleGitAction({ label: "Check Branch", command: "branch" })}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const }}
+            >
+              Check Branch
+            </button>
+            <button
+              onClick={() => handleGitAction({ label: "View Log", command: "log" })}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const }}
+            >
+              View Log
+            </button>
+            <button
+              onClick={() => handleGitAction({ label: "Pull", command: "pull" })}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
+            >
+              Pull
+            </button>
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* TODO bottom sheet */}
+      {modal === "todo" && (
+        <BottomSheet onClose={() => setModal(null)} title="TODO">
+          <pre style={{
+            fontSize: 11, color: "#a9b1d6", background: "#24283b", padding: 12,
+            borderRadius: 6, overflow: "auto", maxHeight: "50vh", whiteSpace: "pre-wrap", wordBreak: "break-all",
+            fontFamily: "'SF Mono', 'Fira Code', monospace",
+          }}>
+            {todoContent || "Loading..."}
+          </pre>
+          <button onClick={() => setModal(null)} style={{ ...btnStyle, marginTop: 12, width: "100%", padding: "10px 16px", textAlign: "center" as const }}>Close</button>
+        </BottomSheet>
+      )}
+
+      {/* Compact confirm modal */}
+      {modal === "compact-confirm" && (
+        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal(null)}>
+          <div
+            style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#c0caf5" }}>Compact Context</div>
             <div style={{ fontSize: 13, color: "#a9b1d6", marginBottom: 16, lineHeight: 1.5 }}>
               Choose how to compact the conversation:
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <button
-                onClick={() => {
-                  setCompactFocus("");
-                  setCompactModal("compact-focus");
-                }}
-                style={{
-                  ...btnStyle,
-                  background: "#2d3a5a",
-                  color: "#7aa2f7",
-                  border: "1px solid #3d4a6a",
-                  padding: "10px 16px",
-                  textAlign: "left" as const,
-                }}
+                onClick={() => { setCompactFocus(""); setModal("compact-focus"); }}
+                style={{ ...btnStyle, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a", padding: "10px 16px", textAlign: "left" as const }}
               >
                 Compact Now
-                <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>
-                  Compress context immediately
-                </div>
+                <div style={{ fontSize: 11, color: "#565f89", marginTop: 2 }}>Compress context immediately</div>
               </button>
               <button
-                onClick={() => {
-                  setContinuityNotes("");
-                  setCompactModal("continuity-notes");
-                }}
-                style={{
-                  ...btnStyle,
-                  background: "#1a3a2a",
-                  color: "#9ece6a",
-                  border: "1px solid #2d5a3d",
-                  padding: "10px 16px",
-                  textAlign: "left" as const,
-                }}
+                onClick={() => { setContinuityNotes(""); setModal("continuity-notes"); }}
+                style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", padding: "10px 16px", textAlign: "left" as const }}
               >
                 Prompt for Continuity
-                <div style={{ fontSize: 11, color: "#4a7a5a", marginTop: 2 }}>
-                  Save context to files first, then compact
-                </div>
+                <div style={{ fontSize: 11, color: "#4a7a5a", marginTop: 2 }}>Save context to files first, then compact</div>
               </button>
               <button
-                onClick={() => setCompactModal(null)}
-                style={{
-                  ...btnStyle,
-                  background: "#3a2a2a",
-                  color: "#f7768e",
-                  border: "1px solid #5a3d3d",
-                  padding: "10px 16px",
-                }}
+                onClick={() => setModal(null)}
+                style={{ ...btnStyle, background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d", padding: "10px 16px" }}
               >
                 Cancel
               </button>
@@ -163,34 +632,13 @@ export function ActionBar({ onReconnect, connected }: ActionBarProps) {
       )}
 
       {/* Compact focus modal */}
-      {compactModal === "compact-focus" && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: 16,
-          }}
-          onClick={() => setCompactModal("confirm")}
-        >
+      {modal === "compact-focus" && (
+        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("compact-confirm")}>
           <div
-            style={{
-              background: "#1a1b26",
-              border: "1px solid #2a2b3d",
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 320,
-              width: "100%",
-            }}
+            style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>
-              Compact Focus
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>Compact Focus</div>
             <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>
               Optionally steer what the compact summary focuses on:
             </div>
@@ -199,45 +647,19 @@ export function ActionBar({ onReconnect, connected }: ActionBarProps) {
               onChange={(e) => setCompactFocus(e.target.value)}
               placeholder="e.g. Focus on the auth refactor and voice recorder plan..."
               style={{
-                width: "100%",
-                height: 80,
-                background: "#24283b",
-                color: "#c0caf5",
-                border: "1px solid #3b3d57",
-                borderRadius: 6,
-                padding: 10,
-                fontSize: 13,
-                resize: "vertical",
-                fontFamily: "inherit",
+                width: "100%", height: 80, background: "#24283b", color: "#c0caf5",
+                border: "1px solid #3b3d57", borderRadius: 6, padding: 10, fontSize: 13,
+                resize: "vertical", fontFamily: "inherit",
               }}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button
-                onClick={() => setCompactModal("confirm")}
-                style={{
-                  ...btnStyle,
-                  flex: 1,
-                  background: "#3a2a2a",
-                  color: "#f7768e",
-                  border: "1px solid #5a3d3d",
-                  padding: "10px 16px",
-                }}
-              >
-                Back
-              </button>
+              <button onClick={() => setModal("compact-confirm")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d" }}>Back</button>
               <button
                 onClick={() => {
                   const focus = compactFocus.trim();
                   sendCompactCommand(focus ? `/compact ${focus}` : "/compact");
                 }}
-                style={{
-                  ...btnStyle,
-                  flex: 1,
-                  background: "#2d3a5a",
-                  color: "#7aa2f7",
-                  border: "1px solid #3d4a6a",
-                  padding: "10px 16px",
-                }}
+                style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}
               >
                 Compact
               </button>
@@ -247,34 +669,13 @@ export function ActionBar({ onReconnect, connected }: ActionBarProps) {
       )}
 
       {/* Continuity notes modal */}
-      {compactModal === "continuity-notes" && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: 16,
-          }}
-          onClick={() => setCompactModal("confirm")}
-        >
+      {modal === "continuity-notes" && (
+        <div ref={blockTelegramSwipe} style={modalCenter} onClick={() => setModal("compact-confirm")}>
           <div
-            style={{
-              background: "#1a1b26",
-              border: "1px solid #2a2b3d",
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 320,
-              width: "100%",
-            }}
+            style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>
-              Additional Notes
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>Additional Notes</div>
             <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>
               Anything extra to preserve before compacting? (optional)
             </div>
@@ -283,48 +684,20 @@ export function ActionBar({ onReconnect, connected }: ActionBarProps) {
               onChange={(e) => setContinuityNotes(e.target.value)}
               placeholder="e.g. Remember we were debugging the auth issue..."
               style={{
-                width: "100%",
-                height: 100,
-                background: "#24283b",
-                color: "#c0caf5",
-                border: "1px solid #3b3d57",
-                borderRadius: 6,
-                padding: 10,
-                fontSize: 13,
-                resize: "vertical",
-                fontFamily: "inherit",
+                width: "100%", height: 100, background: "#24283b", color: "#c0caf5",
+                border: "1px solid #3b3d57", borderRadius: 6, padding: 10, fontSize: 13,
+                resize: "vertical", fontFamily: "inherit",
               }}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button
-                onClick={() => setCompactModal("confirm")}
-                style={{
-                  ...btnStyle,
-                  flex: 1,
-                  background: "#3a2a2a",
-                  color: "#f7768e",
-                  border: "1px solid #5a3d3d",
-                  padding: "10px 16px",
-                }}
-              >
-                Back
-              </button>
+              <button onClick={() => setModal("compact-confirm")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d" }}>Back</button>
               <button
                 onClick={() => {
                   const base = "Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.";
-                  const notes = continuityNotes.trim()
-                    ? ` Additional context from user: "${continuityNotes.trim()}".`
-                    : "";
+                  const notes = continuityNotes.trim() ? ` Additional context from user: "${continuityNotes.trim()}".` : "";
                   sendCompactCommand(`${base}${notes}`);
                 }}
-                style={{
-                  ...btnStyle,
-                  flex: 1,
-                  background: "#1a3a2a",
-                  color: "#9ece6a",
-                  border: "1px solid #2d5a3d",
-                  padding: "10px 16px",
-                }}
+                style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
               >
                 Send
               </button>
@@ -333,44 +706,194 @@ export function ActionBar({ onReconnect, connected }: ActionBarProps) {
         </div>
       )}
 
-      {/* Action bar */}
-      <div
-        style={{
-          padding: "10px 12px 8px",
-          borderTop: "1px solid #2a2b3d",
-          flexShrink: 0,
-        }}
-      >
+      {/* File options bottom sheet */}
+      {modal === "file-options" && (
+        <BottomSheet onClose={() => setModal(null)} title="File Options">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              onClick={() => { setFileShowHidden?.(!fileShowHidden); setModal(null); }}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const }}
+            >
+              {fileShowHidden ? "Hide Hidden Files" : "Show Hidden Files"}
+            </button>
+            <div style={{ fontSize: 12, color: "#565f89", marginTop: 4, marginBottom: 2 }}>Sort by:</div>
+            {[
+              { value: "name-asc", label: "Name (A-Z)" },
+              { value: "name-desc", label: "Name (Z-A)" },
+              { value: "date-asc", label: "Date (Oldest)" },
+              { value: "date-desc", label: "Date (Newest)" },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => { setFileSortMode?.(opt.value); setModal(null); }}
+                style={{
+                  ...btnStyle,
+                  padding: "10px 14px",
+                  textAlign: "left" as const,
+                  ...(fileSortMode === opt.value ? { background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" } : {}),
+                }}
+              >
+                {opt.label}
+                {fileSortMode === opt.value && " \u2713"}
+              </button>
+            ))}
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* File search bottom sheet */}
+      {modal === "file-search" && (
+        <BottomSheet onClose={() => setModal(null)} title="Search Files">
+          <input
+            value={searchQuery}
+            onChange={(e) => handleSearchInput(e.target.value)}
+            placeholder="Search files..."
+            style={{
+              width: "100%", padding: 10, background: "#24283b", color: "#c0caf5",
+              border: "1px solid #3b3d57", borderRadius: 6, fontSize: 13, fontFamily: "inherit",
+              marginBottom: 8,
+            }}
+            autoFocus
+          />
+          <div style={{ maxHeight: "40vh", overflowY: "auto" }}>
+            {searchResults.length === 0 && searchQuery.length >= 2 && (
+              <div style={{ fontSize: 12, color: "#565f89", padding: 12, textAlign: "center" }}>No results</div>
+            )}
+            {searchResults.map((r, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setModal(null);
+                  window.location.hash = `files&file=${encodeURIComponent(r.path)}`;
+                  window.location.reload();
+                }}
+                style={{
+                  ...btnStyle,
+                  display: "block",
+                  width: "100%",
+                  padding: "8px 12px",
+                  textAlign: "left" as const,
+                  marginBottom: 4,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                <span style={{ color: r.type === "directory" ? "#e0af68" : "#7aa2f7" }}>
+                  {r.type === "directory" ? "\uD83D\uDCC1 " : "\uD83D\uDCC4 "}
+                </span>
+                {r.name}
+                <div style={{ fontSize: 10, color: "#565f89", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {r.relPath}
+                </div>
+              </button>
+            ))}
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* Audio generation modal */}
+      {modal === "audio-gen" && viewingFile && (
+        <BottomSheet onClose={() => setModal(null)} title="Audio">
+          <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>
+            {viewingFile.name}
+          </div>
+          {audioLoading ? (
+            <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>Loading...</div>
+          ) : audioStatus?.exists ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "#9ece6a", marginBottom: 4 }}>Audio file exists</div>
+              <button
+                onClick={() => audioStatus.path && sendAudioTelegram(audioStatus.path)}
+                style={{ ...btnStyle, padding: "10px 14px", background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}
+              >
+                Send to Telegram
+              </button>
+              <button
+                onClick={() => viewingFile && generateAudio(viewingFile.path)}
+                style={{ ...btnStyle, padding: "10px 14px" }}
+              >
+                Regenerate
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "#565f89", marginBottom: 4 }}>No audio file found</div>
+              <button
+                onClick={() => viewingFile && generateAudio(viewingFile.path)}
+                style={{ ...btnStyle, padding: "10px 14px", background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}
+              >
+                Generate Audio
+              </button>
+            </div>
+          )}
+        </BottomSheet>
+      )}
+
+      {/* ===== ACTION BAR ===== */}
+      <div style={{ padding: "10px 12px 8px", borderTop: "1px solid #2a2b3d", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: "8px", overflowX: "auto" }}>
-          {onReconnect && (
-            <button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}>
-              Reconnect
+          {/* TODO — always first */}
+          <button onClick={() => { setModal("todo"); fetchTodo(); }} style={{ ...btnStyle, background: "#3a3520", color: "#e0af68", border: "1px solid #5a4a30" }}>
+            TODO
+          </button>
+          {/* Tab-specific buttons */}
+          {activeTab === "terminal" && (
+            <>
+              {onReconnect && (
+                <button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}>
+                  Reconnect
+                </button>
+              )}
+              <div style={{ display: "flex", flexShrink: 0 }}>
+                <button onClick={() => { setModal("git-status"); fetchGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>
+                  Git
+                </button>
+                <button onClick={() => setModal("git-menu")} style={{ ...btnStyle, borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>
+                  &#9652;
+                </button>
+              </div>
+              <button onClick={() => setModal("commands")} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>
+                /commands
+              </button>
+            </>
+          )}
+          {activeTab === "files" && !viewingFile && (
+            <>
+              <button onClick={() => { setSearchQuery(""); setSearchResults([]); setModal("file-search"); }} style={{ ...btnStyle, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}>
+                Search
+              </button>
+              <button onClick={() => setModal("file-options")} style={btnStyle}>
+                Options
+              </button>
+            </>
+          )}
+          {activeTab === "files" && viewingFile && (
+            <button
+              onClick={async () => {
+                setStatus("Sharing...");
+                try {
+                  const res = await fetch("/api/actions/send-to-chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                    body: JSON.stringify({ filePath: viewingFile.path }),
+                  });
+                  const data = await res.json();
+                  setStatus(data.ok ? "Sent to chat" : "Failed");
+                } catch { setStatus("Failed"); }
+                setTimeout(() => setStatus(null), 2000);
+              }}
+              style={{ ...btnStyle, background: "#1a2a3a", color: "#7dcfff", border: "1px solid #2d4a5a" }}
+            >
+              Send to Chat
             </button>
           )}
-          {ACTIONS.map((action) => (
-            <button key={action.endpoint} onClick={() => handleAction(action)} style={btnStyle}>
-              {action.label}
+          {activeTab === "files" && viewingFile?.name.endsWith(".md") && (
+            <button onClick={() => { checkAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>
+              Audio
             </button>
-          ))}
-          <button
-            onClick={() => setCompactModal("confirm")}
-            style={{ ...btnStyle, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
-          >
-            Compact
-          </button>
+          )}
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: connected === false ? "#f7768e" : "#7aa2f7",
-            marginTop: 6,
-            textAlign: "center",
-            minHeight: 16,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div style={{ fontSize: 11, color: connected === false ? "#f7768e" : "#7aa2f7", marginTop: 6, textAlign: "center", minHeight: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {status || (connected === false ? "[disconnected]" : "\u00A0")}
         </div>
       </div>

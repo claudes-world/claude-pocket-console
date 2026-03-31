@@ -8,6 +8,7 @@ import { telegramAuth } from "./middleware.js";
 import { terminalRoute } from "./routes/terminal.js";
 import { actionsRoute } from "./routes/actions.js";
 import { filesRoute } from "./routes/files.js";
+import { voiceRoute } from "./routes/voice.js";
 
 // Load env from secrets file if not already set
 function loadEnv(path: string) {
@@ -46,6 +47,7 @@ app.use("/api/*", telegramAuth);
 // Protected routes
 app.route("/api/actions", actionsRoute);
 app.route("/api/files", filesRoute);
+app.route("/api/voice", voiceRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)
 app.get("/ws/terminal", upgradeWebSocket(terminalRoute));
