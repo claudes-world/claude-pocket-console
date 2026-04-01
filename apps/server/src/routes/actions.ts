@@ -193,6 +193,25 @@ app.get("/session-names", async (c) => {
   }
 });
 
+app.delete("/session-names", async (c) => {
+  try {
+    const body = await c.req.json();
+    const ts = body.ts as number;
+    if (!ts) return c.json({ ok: false, error: "ts required" }, 400);
+    let names: { name: string; ts: number }[] = [];
+    try {
+      if (existsSync(SESSION_NAMES_FILE)) {
+        names = JSON.parse(readFileSync(SESSION_NAMES_FILE, "utf-8"));
+      }
+    } catch { names = []; }
+    const filtered = names.filter((n: { ts: number }) => n.ts !== ts);
+    writeFileSync(SESSION_NAMES_FILE, JSON.stringify(filtered, null, 2));
+    return c.json({ ok: true });
+  } catch (err: any) {
+    return c.json({ ok: false, error: err.message }, 500);
+  }
+});
+
 // --- Check audio (TTS) for a markdown file ---
 app.get("/check-audio", async (c) => {
   try {

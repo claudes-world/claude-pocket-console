@@ -50,7 +50,7 @@ interface ActionBarProps {
   viewingFile?: { path: string; name: string } | null;
 }
 
-type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-clear" | "file-options" | "file-search" | "audio-gen";
+type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-clear" | "file-options" | "file-search" | "audio-gen" | "confirm-delete";
 
 /** Bottom sheet — swipe-to-close ONLY from header, content scrolls independently */
 function BottomSheet({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
@@ -121,6 +121,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [gitOutput, setGitOutput] = useState("");
   const [todoContent, setTodoContent] = useState("");
   const [sessionNames, setSessionNames] = useState<{ name: string; ts: number }[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string; ts: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ name: string; path: string; type: string; relPath: string }[]>([]);
   const [audioStatus, setAudioStatus] = useState<{ exists: boolean; path?: string } | null>(null);
@@ -165,6 +166,19 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       const data = await res.json();
       setSessionNames(data.names || []);
     } catch { setSessionNames([]); }
+  };
+
+  const deleteSessionName = async (ts: number) => {
+    try {
+      await fetch("/api/actions/session-names", {
+        method: "DELETE",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ ts }),
+      });
+      setSessionNames((prev) => prev.filter((s) => s.ts !== ts));
+    } catch { /* silent */ }
+    setDeleteTarget(null);
+    setModal("resume");
   };
 
   const fetchGitBranch = async () => {
@@ -464,23 +478,78 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {sessionNames.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setResumeName(s.name);
-                    setModal(null);
-                    sendCompactCommand(`/resume ${s.name}`);
-                  }}
-                  style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const }}
-                >
-                  {s.name}
-                  <div style={{ fontSize: 10, color: "#565f89", marginTop: 2 }}>
-                    {new Date(s.ts).toLocaleDateString()}
-                  </div>
-                </button>
+                <div key={i} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+                  <button
+                    onClick={() => {
+                      setModal(null);
+                      sendCompactCommand(`/resume ${s.name}`);
+                    }}
+                    style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const, flex: 1 }}
+                  >
+                    {s.name}
+                    <div style={{ fontSize: 10, color: "#565f89", marginTop: 2 }}>
+                      {new Date(s.ts).toLocaleDateString()}
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget(s);
+                      setModal("confirm-delete");
+                    }}
+                    style={{
+                      ...btnStyle,
+                      padding: "0 12px",
+                      color: "#f7768e",
+                      background: "#2a2020",
+                      border: "1px solid #3a2a2a",
+                      fontSize: 16,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
           )}
+        </BottomSheet>
+      )}
+
+      {/* Confirm delete session name modal */}
+      {modal === "confirm-delete" && deleteTarget && (
+        <BottomSheet onClose={() => { setDeleteTarget(null); setModal("resume"); }} title="Delete Session Name">
+          <div style={{ padding: "8px 0" }}>
+            <div style={{ fontSize: 14, color: "#c0caf5", marginBottom: 4 }}>
+              Delete "{deleteTarget.name}"?
+            </div>
+            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 16 }}>
+              This only removes the name from the list. It does not delete the session itself.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { setDeleteTarget(null); setModal("resume"); }}
+                style={{ ...btnStyle, flex: 1, padding: "10px 16px" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteSessionName(deleteTarget.ts)}
+                style={{
+                  ...btnStyle,
+                  flex: 1,
+                  padding: "10px 16px",
+                  background: "#3a2020",
+                  color: "#f7768e",
+                  border: "1px solid #5a3030",
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </BottomSheet>
       )}
 
