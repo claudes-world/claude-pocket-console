@@ -4,7 +4,7 @@ import { FileViewer } from "./components/FileViewer";
 import { Links } from "./components/Links";
 import { ActionBar } from "./components/ActionBar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
-import { getTelegramWebApp } from "./lib/telegram";
+import { getTelegramWebApp, getAuthHeaders } from "./lib/telegram";
 
 type Tab = "terminal" | "files" | "links" | "voice";
 const TABS: Tab[] = ["terminal", "files", "links", "voice"];
@@ -23,6 +23,7 @@ export function App() {
   const [fileShowHidden, setFileShowHidden] = useState(false);
   const [fileSortMode, setFileSortMode] = useState<string>("name-asc");
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
+  const [cpcBranch, setCpcBranch] = useState<string | null>(null);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -90,6 +91,20 @@ export function App() {
       tg.ready();
       tg.expand();
     }
+  }, []);
+
+  // Fetch CPC branch on mount and every 30 seconds
+  useEffect(() => {
+    const fetchCpcBranch = async () => {
+      try {
+        const res = await fetch("/api/terminal/cpc-branch", { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.ok) setCpcBranch(data.branch);
+      } catch { /* silent */ }
+    };
+    fetchCpcBranch();
+    const interval = setInterval(fetchCpcBranch, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // The strip is (TABS.length * 100vw) wide. To show tab N we shift by -(N * 100vw).
@@ -172,6 +187,21 @@ export function App() {
           {connected ? "live" : "offline"}
         </span>
       </header>
+
+      {/* CPC branch indicator — terminal tab only */}
+      {activeTab === "terminal" && cpcBranch && (
+        <div
+          style={{
+            fontSize: 11,
+            color: "#565f89",
+            padding: "3px 14px",
+            borderBottom: "1px solid #2a2b3d",
+            flexShrink: 0,
+          }}
+        >
+          CPC: {cpcBranch}
+        </div>
+      )}
 
       {/* Content area — swipeable viewport */}
       <div
