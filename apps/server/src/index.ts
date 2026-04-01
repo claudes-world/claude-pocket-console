@@ -61,7 +61,11 @@ app.route("/api/voice", voiceRoute);
 app.get("/ws/terminal", upgradeWebSocket(terminalWsRoute));
 
 // Serve static frontend in production
-app.use("/*", serveStatic({ root: "../web/dist" }));
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const webDistRoot = join(__dirname, "../../web/dist");
+app.use("/*", serveStatic({ root: webDistRoot }));
 
 const port = parseInt(process.env.PORT || "38830");
 const server = serve({ fetch: app.fetch, port }, (info) => {
