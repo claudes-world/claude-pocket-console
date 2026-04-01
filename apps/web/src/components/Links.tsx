@@ -13,6 +13,12 @@ const LINKS: LinkItem[] = [
     description: "Tech terms for STT accuracy",
   },
   {
+    title: "React Icons",
+    url: "https://react-icons.github.io/react-icons/",
+    icon: "🎨",
+    description: "Icon library (FA, MD, Hero, Feather, etc.)",
+  },
+  {
     title: "Edit Links",
     url: "https://github.com/claudes-world/claude-pocket-console/edit/feat/file-viewer-and-terminal-fix/apps/web/src/components/Links.tsx",
     icon: "✏️",
