@@ -1,3 +1,4 @@
+declare const __APP_VERSION__: string;
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Terminal } from "./components/Terminal";
 import { FileViewer } from "./components/FileViewer";
@@ -255,7 +256,7 @@ export function App() {
           }}
         >
           <span>Claude Pocket Console: {cpcBranch}</span>
-          <span style={{ marginLeft: "auto", color: "#3b3d57" }}>v1.0.1</span>
+          <span style={{ marginLeft: "auto", color: "#3b3d57" }}>{__APP_VERSION__}</span>
         </div>
       )}
 
