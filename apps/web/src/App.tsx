@@ -141,7 +141,7 @@ export function App() {
   // but since we just want pixel-accurate dragging we use a calc mix.
   const stripShift = `calc(${(-activeIdx * 100) / TABS.length}% + ${dragOffset / TABS.length}px)`;
 
-  const isDev = window.location.hostname.includes("cpc-dev");
+  const isDev = window.location.hostname.includes("cpc-dev") || window.location.pathname.startsWith("/dev");
 
   // Login screen when no auth available (e.g. opened from reply keyboard button)
   if (!authed) {
