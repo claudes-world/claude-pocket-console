@@ -33,19 +33,23 @@
 - `GET /api/health` -- backward-compat health check
 
 ### Protected (Telegram auth required)
-- `POST /api/actions/reload-plugins`
-- `GET|POST /api/actions/git-status`
-- `POST /api/actions/resize-terminal`
-- `POST /api/actions/send-keys` -- send keystrokes to tmux
-- `POST /api/actions/git-command` -- branch, log, pull, status
-- `GET /api/actions/todo` -- read TODO.md
-- `POST /api/actions/compact` -- send compact command to tmux
-- `POST /api/actions/rename-session`
-- `GET /api/actions/session-names`
-- `GET /api/actions/check-audio` -- check if TTS mp3 exists
-- `POST /api/actions/generate-audio` -- generate TTS via OpenAI
-- `POST /api/actions/send-audio-telegram` -- send mp3 to Telegram chat
-- `POST /api/actions/send-to-chat` -- share file path to Telegram
+- `POST /api/terminal/reload-plugins`
+- `GET|POST /api/terminal/git-status`
+- `POST /api/terminal/resize-terminal`
+- `POST /api/terminal/send-keys` -- send keystrokes to tmux
+- `POST /api/terminal/git-command` -- branch, log, pull, status
+- `GET /api/terminal/git-branch` -- current branch & worktree info
+- `GET /api/terminal/cpc-branch` -- CPC repo branch
+- `GET /api/terminal/dir-branch` -- branch for any directory (query: path)
+- `POST /api/terminal/compact` -- send compact command to tmux
+- `GET /api/todo` -- read TODO.md
+- `POST /api/session/rename` -- rename current session
+- `GET /api/session/names` -- list session names
+- `DELETE /api/session/names` -- delete a session name
+- `GET /api/audio/check` -- check if TTS mp3 exists
+- `POST /api/audio/generate` -- generate TTS via OpenAI
+- `POST /api/audio/send-telegram` -- send mp3 to Telegram chat
+- `POST /api/telegram/send-to-chat` -- share file path to Telegram
 - `GET /api/files/roots` -- list allowed root directories
 - `GET /api/files/list` -- directory contents
 - `GET /api/files/read` -- file content

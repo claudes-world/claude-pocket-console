@@ -22,7 +22,7 @@ function getPaneDimensions(): { cols: number; rows: number } {
 // the user's SSH terminal which may have a different size.
 // The mini app adapts to whatever tmux size exists via -J (join wrapped lines).
 
-export function terminalRoute(c: any) {
+export function terminalWsRoute(c: any) {
   // Auth check: initData passed as query param
   const initData = c.req.query("auth") || "";
   const authResult = checkAuth(initData);

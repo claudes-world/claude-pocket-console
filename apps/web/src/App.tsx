@@ -26,7 +26,7 @@ export function App() {
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
-    fetch("/api/actions/resize-terminal", { method: "POST" }).catch(() => {});
+    fetch("/api/terminal/resize-terminal", { method: "POST" }).catch(() => {});
     setReconnectKey((k) => k + 1);
   }, []);
 

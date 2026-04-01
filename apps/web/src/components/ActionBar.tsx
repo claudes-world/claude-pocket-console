@@ -146,7 +146,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const fetchGitStatus = async () => {
     try {
-      const res = await fetch("/api/actions/git-status", { headers: getAuthHeaders() });
+      const res = await fetch("/api/terminal/git-status", { headers: getAuthHeaders() });
       const data = await res.json();
       setGitOutput(data.output || "No output");
     } catch { setGitOutput("Failed to fetch"); }
@@ -154,7 +154,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const fetchTodo = async () => {
     try {
-      const res = await fetch("/api/actions/todo", { headers: getAuthHeaders() });
+      const res = await fetch("/api/todo", { headers: getAuthHeaders() });
       const data = await res.json();
       setTodoContent(data.content || "No TODO.md found");
     } catch { setTodoContent("Failed to fetch"); }
@@ -162,7 +162,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const fetchSessionNames = async () => {
     try {
-      const res = await fetch("/api/actions/session-names", { headers: getAuthHeaders() });
+      const res = await fetch("/api/session/names", { headers: getAuthHeaders() });
       const data = await res.json();
       setSessionNames(data.names || []);
     } catch { setSessionNames([]); }
@@ -170,7 +170,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const deleteSessionName = async (ts: number) => {
     try {
-      await fetch("/api/actions/session-names", {
+      await fetch("/api/session/names", {
         method: "DELETE",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ ts }),
@@ -183,7 +183,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const fetchGitBranch = async () => {
     try {
-      const res = await fetch("/api/actions/git-branch", { headers: getAuthHeaders() });
+      const res = await fetch("/api/terminal/git-branch", { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.ok) setGitBranch({ branch: data.branch, treeType: data.treeType });
     } catch { /* silent */ }
@@ -198,7 +198,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const sendToTmux = async (text: string) => {
     try {
-      await fetch("/api/actions/send-keys", {
+      await fetch("/api/terminal/send-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ keys: text }),
@@ -208,7 +208,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const sendRawKey = async (key: string) => {
     try {
-      await fetch("/api/actions/send-keys", {
+      await fetch("/api/terminal/send-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ keys: key, raw: true }),
@@ -220,7 +220,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setModal(null);
     setStatus("Compacting...");
     try {
-      const res = await fetch("/api/actions/compact", {
+      const res = await fetch("/api/terminal/compact", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
@@ -238,7 +238,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setStatus("Renaming...");
     sendToTmux(`/rename ${renameName.trim()}`);
     try {
-      const res = await fetch("/api/actions/rename-session", {
+      const res = await fetch("/api/session/rename", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameName.trim() }),
@@ -255,7 +255,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setGitOutput(`Running ${action.label}...`);
     setModal("git-status");
     try {
-      const res = await fetch("/api/actions/git-command", {
+      const res = await fetch("/api/terminal/git-command", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ command: action.command }),
@@ -278,7 +278,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setAudioStatus(null);
     setAudioLoading(true);
     try {
-      const res = await fetch(`/api/actions/check-audio?path=${encodeURIComponent(filePath)}`, { headers: getAuthHeaders() });
+      const res = await fetch(`/api/audio/check?path=${encodeURIComponent(filePath)}`, { headers: getAuthHeaders() });
       const data = await res.json();
       setAudioStatus({ exists: data.exists, path: data.path });
     } catch { setAudioStatus(null); }
@@ -291,7 +291,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
-      const res = await fetch("/api/actions/generate-audio", {
+      const res = await fetch("/api/audio/generate", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ path: filePath }),
@@ -318,7 +318,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
-      const res = await fetch("/api/actions/send-audio-telegram", {
+      const res = await fetch("/api/audio/send-telegram", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ path: audioPath }),
@@ -951,7 +951,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               onClick={async () => {
                 setStatus("Sharing...");
                 try {
-                  const res = await fetch("/api/actions/send-to-chat", {
+                  const res = await fetch("/api/telegram/send-to-chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                     body: JSON.stringify({ filePath: viewingFile.path }),
