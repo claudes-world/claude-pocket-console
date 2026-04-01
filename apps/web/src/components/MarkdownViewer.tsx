@@ -22,7 +22,7 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
       style={{
         padding: "16px 16px",
         overflowY: "auto",
-        overflowX: "hidden",
+        overflowX: "auto",
         height: "100%",
         width: "100%",
         maxWidth: "100%",

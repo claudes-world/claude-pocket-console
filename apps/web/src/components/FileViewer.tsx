@@ -462,6 +462,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
               outlineOffset: -8,
               margin: 8,
               borderRadius: 6,
+              boxSizing: "border-box" as const,
             }}
           >
             {uploading ? "Uploading..." : "+ Upload file"}
