@@ -50,7 +50,7 @@ interface ActionBarProps {
   viewingFile?: { path: string; name: string } | null;
 }
 
-type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-clear" | "file-options" | "file-search" | "audio-gen" | "confirm-delete";
+type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-clear" | "file-options" | "file-search" | "audio-gen" | "confirm-delete" | "reconnect-menu";
 
 /** Bottom sheet — swipe-to-close ONLY from header, content scrolls independently */
 function BottomSheet({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
@@ -581,6 +581,42 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         </BottomSheet>
       )}
 
+      {/* Reconnect menu */}
+      {modal === "reconnect-menu" && (
+        <BottomSheet onClose={() => setModal(null)} title="Session Controls">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <button
+              onClick={() => { if (onReconnect) onReconnect(); setModal(null); }}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
+            >
+              Reconnect Terminal
+              <div style={{ fontSize: 10, color: "#4a7a5a", marginTop: 2 }}>Refresh the terminal WebSocket connection</div>
+            </button>
+            <button
+              onClick={async () => {
+                setModal(null);
+                setStatus("Restarting session...");
+                const h = { "Content-Type": "application/json", ...getAuthHeaders() };
+                for (let i = 0; i < 3; i++) {
+                  await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "C-c", raw: true }) });
+                  await new Promise(r => setTimeout(r, 300));
+                }
+                await new Promise(r => setTimeout(r, 500));
+                await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "cw" }) });
+                await new Promise(r => setTimeout(r, 100));
+                await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "Enter", raw: true }) });
+                setStatus("Session restart sent");
+                setTimeout(() => setStatus(null), 3000);
+              }}
+              style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
+            >
+              Restart Claude Session
+              <div style={{ fontSize: 10, color: "#7a4a4a", marginTop: 2 }}>Send Ctrl+C ×3, then cw to restart</div>
+            </button>
+          </div>
+        </BottomSheet>
+      )}
+
       {/* New/Clear modal */}
       {modal === "new-clear" && (
         <div style={modalCenter} onClick={() => setModal("commands")}>
@@ -925,9 +961,14 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
           {activeTab === "terminal" && (
             <>
               {onReconnect && (
-                <button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}>
-                  Reconnect
-                </button>
+                <div style={{ display: "flex", flexShrink: 0 }}>
+                  <button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>
+                    Reconnect
+                  </button>
+                  <button onClick={() => setModal("reconnect-menu")} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>
+                    &#9652;
+                  </button>
+                </div>
               )}
               <div style={{ display: "flex", flexShrink: 0 }}>
                 <button onClick={() => { setModal("git-status"); fetchGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>
