@@ -197,9 +197,12 @@ export function App() {
             padding: "3px 14px",
             borderBottom: "1px solid #2a2b3d",
             flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          CPC: {cpcBranch}
+          <span>Claude Pocket Console: {cpcBranch}</span>
+          <span style={{ marginLeft: "auto", color: "#3b3d57" }}>v1.0.1</span>
         </div>
       )}
 

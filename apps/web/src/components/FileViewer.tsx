@@ -60,6 +60,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   const [collapsedRanges, setCollapsedRanges] = useState<Set<number>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [dirBranch, setDirBranch] = useState<string | null>(null);
+  const [dirTreeInfo, setDirTreeInfo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,10 +161,19 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     })
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setDirBranch(data.ok ? data.branch : null);
+        if (!cancelled) {
+          setDirBranch(data.ok ? data.branch : null);
+          if (data.ok && data.isWorktree && data.mainTreePath) {
+            setDirTreeInfo(`linked tree \u2192 ${data.mainTreePath}`);
+          } else if (data.ok && data.branch) {
+            setDirTreeInfo("main tree");
+          } else {
+            setDirTreeInfo(null);
+          }
+        }
       })
       .catch(() => {
-        if (!cancelled) setDirBranch(null);
+        if (!cancelled) { setDirBranch(null); setDirTreeInfo(null); }
       });
     return () => { cancelled = true; };
   }, [currentPath, fileContent]);
@@ -441,7 +451,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 borderTop: "1px solid #1e1f2e",
               }}
             >
-              ⎇ {dirBranch}
+              ⎇ {dirBranch}{dirTreeInfo ? ` (${dirTreeInfo})` : ""}
             </div>
           )}
           {/* Upload area */}

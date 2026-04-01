@@ -89,7 +89,24 @@ app.get("/dir-branch", async (c) => {
     const dir = c.req.query("path");
     if (!dir) return c.json({ ok: false, error: "path required" }, 400);
     const { stdout: branch } = await execAsync(`git -C "${dir}" rev-parse --abbrev-ref HEAD 2>/dev/null`);
-    return c.json({ ok: true, branch: branch.trim() });
+    const { stdout: gitDir } = await execAsync(`git -C "${dir}" rev-parse --git-dir 2>/dev/null`);
+    const isWorktree = gitDir.trim().includes("/worktrees/");
+    let mainTreePath: string | null = null;
+    if (isWorktree) {
+      try {
+        const { stdout: commonDir } = await execAsync(`git -C "${dir}" rev-parse --git-common-dir 2>/dev/null`);
+        // common dir points to the main .git dir; the repo root is one level up
+        const { stdout: mainRoot } = await execAsync(`git -C "${commonDir.trim()}/.." rev-parse --show-toplevel 2>/dev/null`);
+        mainTreePath = mainRoot.trim().replace(/^\/home\/claude\//, "~/");
+      } catch { /* silent */ }
+    }
+    return c.json({
+      ok: true,
+      branch: branch.trim(),
+      isWorktree,
+      treeType: isWorktree ? "linked tree" : "main tree",
+      mainTreePath,
+    });
   } catch {
     return c.json({ ok: true, branch: null });
   }
