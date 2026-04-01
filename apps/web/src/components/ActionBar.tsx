@@ -206,6 +206,16 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     } catch { /* fire and forget */ }
   };
 
+  const sendRawKey = async (key: string) => {
+    try {
+      await fetch("/api/actions/send-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ keys: key, raw: true }),
+      });
+    } catch { /* fire and forget */ }
+  };
+
   const sendCompactCommand = async (message: string) => {
     setModal(null);
     setStatus("Compacting...");
@@ -347,8 +357,14 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       {modal === "commands" && (
         <BottomSheet onClose={() => setModal(null)} title="/commands">
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {/* Quick number buttons at top */}
-            <div style={{ display: "flex", gap: 8 }}>
+            {/* Quick key buttons at top */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => { sendRawKey("Escape"); setModal(null); setStatus("Sent: Esc"); setTimeout(() => setStatus(null), 1500); }}
+                style={{ ...btnStyle, flex: 1, padding: "12px 0", textAlign: "center" as const, fontSize: 13, fontWeight: 600, color: "#f7768e" }}
+              >
+                Esc
+              </button>
               {[1, 2, 3].map((n) => (
                 <button
                   key={n}
@@ -358,6 +374,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   {n}
                 </button>
               ))}
+              <button
+                onClick={() => { sendRawKey("BTab"); setModal(null); setStatus("Sent: \u21e7Tab"); setTimeout(() => setStatus(null), 1500); }}
+                style={{ ...btnStyle, flex: 1, padding: "12px 0", textAlign: "center" as const, fontSize: 11, fontWeight: 600, color: "#bb9af7" }}
+              >
+                {"\u21e7Tab"}
+              </button>
             </div>
             <button
               onClick={() => setModal("new-clear")}

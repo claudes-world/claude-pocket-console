@@ -82,9 +82,14 @@ app.post("/send-keys", async (c) => {
     if (!keys || typeof keys !== "string") {
       return c.json({ ok: false, error: "keys required" }, 400);
     }
-    // Escape for tmux — use literal send-keys with -l to avoid special char issues
-    await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);
-    await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+    if (body.raw) {
+      // Raw tmux key names (Escape, BTab, etc.) — no -l flag, no Enter
+      await execAsync(`tmux send-keys -t ${TMUX_SESSION} ${keys}`);
+    } else {
+      // Escape for tmux — use literal send-keys with -l to avoid special char issues
+      await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);
+      await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+    }
     return c.json({ ok: true, action: "send-keys" });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
