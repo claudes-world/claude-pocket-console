@@ -380,6 +380,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               >
                 {"\u21e7Tab"}
               </button>
+              <button
+                onClick={() => { sendRawKey("C-b"); setModal(null); setStatus("Sent: ^B"); setTimeout(() => setStatus(null), 1500); }}
+                style={{ ...btnStyle, flex: 1, padding: "12px 0", textAlign: "center" as const, fontSize: 11, fontWeight: 600, color: "#e0af68" }}
+              >
+                ^B
+              </button>
             </div>
             <button
               onClick={() => setModal("new-clear")}
