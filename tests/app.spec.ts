@@ -40,8 +40,8 @@ test.describe("CPC App", () => {
 
   test("screenshot of action bar", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("button:has-text('Reload Plugins')")).toBeVisible();
-    await expect(page.locator("button:has-text('Git Status')")).toBeVisible();
+    await expect(page.locator("button:has-text('/commands')")).toBeVisible();
+    await expect(page.locator("button:has-text('Compact')")).toBeVisible();
     await page.screenshot({ path: "test-results/action-bar.png", fullPage: true });
   });
 });
