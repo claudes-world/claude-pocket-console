@@ -5,6 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
+import { validateTelegramLoginWidget, createSession, getAllowedUsers } from "./auth.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
 import { todoRoute } from "./routes/todo.js";
@@ -44,6 +45,25 @@ app.use("*", cors());
 // Public routes (no auth)
 app.get("/api/public/health", (c) => c.json({ status: "ok" }));
 app.get("/api/health", (c) => c.json({ status: "ok" })); // backward compat
+
+// Public auth: Telegram Login Widget callback
+app.post("/api/auth/telegram-widget", async (c) => {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return c.json({ error: "Not configured" }, 500);
+
+  const data = await c.req.json();
+  const { valid, user } = validateTelegramLoginWidget(data, botToken);
+  if (!valid || !user) return c.json({ error: "Invalid login" }, 401);
+
+  // Check allowlist
+  const allowed = getAllowedUsers();
+  if (allowed.size > 0 && !allowed.has(String(user.id))) {
+    return c.json({ error: "User not authorized" }, 403);
+  }
+
+  const token = createSession(user);
+  return c.json({ ok: true, token, user: { id: user.id, first_name: user.first_name } });
+});
 
 // Auth middleware for all other /api/* routes
 app.use("/api/*", telegramAuth);

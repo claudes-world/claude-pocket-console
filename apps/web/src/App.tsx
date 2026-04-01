@@ -4,13 +4,14 @@ import { FileViewer } from "./components/FileViewer";
 import { Links } from "./components/Links";
 import { ActionBar } from "./components/ActionBar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
-import { getTelegramWebApp, getAuthHeaders } from "./lib/telegram";
+import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
 
 type Tab = "terminal" | "files" | "links" | "voice";
 const TABS: Tab[] = ["terminal", "files", "links", "voice"];
 const SWIPE_THRESHOLD = 120;
 
 export function App() {
+  const [authed, setAuthed] = useState(() => hasAuth());
   const [connected, setConnected] = useState(false);
   const hashParams = window.location.hash.replace("#", "");
   const initialFile = hashParams.match(/file=([^&]+)/)?.[1] ? decodeURIComponent(hashParams.match(/file=([^&]+)/)![1]) : null;
@@ -93,6 +94,32 @@ export function App() {
     }
   }, []);
 
+  // Telegram Login Widget callback (for fallback auth)
+  useEffect(() => {
+    if (authed) return;
+
+    (window as any).onTelegramAuth = async (user: any) => {
+      try {
+        const res = await fetch("/api/auth/telegram-widget", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(user),
+        });
+        const result = await res.json();
+        if (result.ok && result.token) {
+          setSessionToken(result.token);
+          setAuthed(true);
+        }
+      } catch (err) {
+        console.error("Login failed:", err);
+      }
+    };
+
+    return () => {
+      delete (window as any).onTelegramAuth;
+    };
+  }, [authed]);
+
   // Fetch CPC branch on mount and every 30 seconds
   useEffect(() => {
     const fetchCpcBranch = async () => {
@@ -114,6 +141,32 @@ export function App() {
   const stripShift = `calc(${(-activeIdx * 100) / TABS.length}% + ${dragOffset / TABS.length}px)`;
 
   const isDev = window.location.hostname.includes("cpc-dev");
+
+  // Login screen when no auth available (e.g. opened from reply keyboard button)
+  if (!authed) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        height: "100%", background: "#1a1b26", color: "#c0caf5", padding: 20,
+      }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Claude Pocket Console</div>
+        <div style={{ fontSize: 13, color: "#565f89", marginBottom: 24, textAlign: "center" }}>
+          Telegram auth unavailable. Sign in to continue.
+        </div>
+        <div id="telegram-login-container" ref={(el) => {
+          if (!el || el.querySelector("script")) return;
+          const script = document.createElement("script");
+          script.src = "https://telegram.org/js/telegram-widget.js?22";
+          script.setAttribute("data-telegram-login", "claude_do_bot");
+          script.setAttribute("data-size", "large");
+          script.setAttribute("data-onauth", "onTelegramAuth(user)");
+          script.setAttribute("data-request-access", "write");
+          script.async = true;
+          el.appendChild(script);
+        }} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>

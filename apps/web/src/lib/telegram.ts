@@ -40,6 +40,23 @@ export function getInitData(): string {
 
 export function getAuthHeaders(): Record<string, string> {
   const initData = getInitData();
-  if (!initData) return {};
-  return { Authorization: `tma ${initData}` };
+  if (initData) return { Authorization: `tma ${initData}` };
+
+  // Fallback: check for saved session token from Login Widget
+  const token = localStorage.getItem("cpc-session-token");
+  if (token) return { Authorization: `Bearer ${token}` };
+
+  return {};
+}
+
+export function setSessionToken(token: string) {
+  localStorage.setItem("cpc-session-token", token);
+}
+
+export function clearSessionToken() {
+  localStorage.removeItem("cpc-session-token");
+}
+
+export function hasAuth(): boolean {
+  return !!(getInitData() || localStorage.getItem("cpc-session-token"));
 }

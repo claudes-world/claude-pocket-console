@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 
 /**
  * Validate Telegram Mini App initData.
@@ -51,6 +51,64 @@ export interface TelegramUser {
 export function getAllowedUsers(): Set<string> {
   const raw = process.env.ALLOWED_TELEGRAM_USERS || "";
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+}
+
+/**
+ * Validate Telegram Login Widget data.
+ * https://core.telegram.org/widgets/login#checking-authorization
+ */
+export function validateTelegramLoginWidget(
+  data: Record<string, string>,
+  botToken: string,
+): { valid: boolean; user?: TelegramUser } {
+  const { hash, ...rest } = data;
+  if (!hash) return { valid: false };
+
+  // Login Widget uses SHA256(botToken) as secret key (different from mini app!)
+  const secretKey = createHash("sha256").update(botToken).digest();
+  const dataCheckString = Object.keys(rest)
+    .sort()
+    .map((key) => `${key}=${rest[key]}`)
+    .join("\n");
+  const computedHash = createHmac("sha256", secretKey)
+    .update(dataCheckString)
+    .digest("hex");
+
+  if (computedHash !== hash) return { valid: false };
+
+  // Check auth_date is within 24 hours
+  const authDate = parseInt(rest.auth_date || "0");
+  if (Date.now() / 1000 - authDate > 86400) return { valid: false };
+
+  return {
+    valid: true,
+    user: {
+      id: parseInt(rest.id),
+      first_name: rest.first_name,
+      last_name: rest.last_name,
+      username: rest.username,
+      language_code: undefined,
+    },
+  };
+}
+
+// Simple in-memory session store (sufficient for single-user app)
+const sessions = new Map<string, { user: TelegramUser; expires: number }>();
+
+export function createSession(user: TelegramUser): string {
+  const token = randomBytes(32).toString("hex");
+  sessions.set(token, { user, expires: Date.now() + 48 * 60 * 60 * 1000 }); // 48 hours
+  return token;
+}
+
+export function validateSession(token: string): { valid: boolean; user?: TelegramUser } {
+  const session = sessions.get(token);
+  if (!session) return { valid: false };
+  if (Date.now() > session.expires) {
+    sessions.delete(token);
+    return { valid: false };
+  }
+  return { valid: true, user: session.user };
 }
 
 /** Full auth check: validate initData + check allowlist. Returns user if authorized. */

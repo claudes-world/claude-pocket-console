@@ -52,7 +52,13 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     // Connect to WebSocket
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const initData = window.Telegram?.WebApp?.initData || "";
-    const authParam = initData ? `?auth=${encodeURIComponent(initData)}` : "";
+    let authParam = "";
+    if (initData) {
+      authParam = `?auth=${encodeURIComponent(initData)}`;
+    } else {
+      const token = localStorage.getItem("cpc-session-token");
+      if (token) authParam = `?token=${encodeURIComponent(token)}`;
+    }
     const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;
     const ws = new WebSocket(wsUrl);
 

@@ -1,6 +1,6 @@
 import { spawn, execSync } from "node:child_process";
 import type { WSContext } from "hono/ws";
-import { checkAuth } from "../auth.js";
+import { checkAuth, validateSession } from "../auth.js";
 
 const TMUX_SESSION = process.env.TMUX_SESSION || "claudes-world";
 
@@ -23,9 +23,20 @@ function getPaneDimensions(): { cols: number; rows: number } {
 // The mini app adapts to whatever tmux size exists via -J (join wrapped lines).
 
 export function terminalWsRoute(c: any) {
-  // Auth check: initData passed as query param
+  // Auth check: initData or session token passed as query param
   const initData = c.req.query("auth") || "";
-  const authResult = checkAuth(initData);
+  let authResult = checkAuth(initData);
+
+  // Fallback: session token from Login Widget auth
+  if (!authResult.ok) {
+    const token = c.req.query("token") || "";
+    if (token) {
+      const { valid, user } = validateSession(token);
+      if (valid && user) {
+        authResult = { ok: true, user };
+      }
+    }
+  }
 
   return {
     onOpen(_event: Event, ws: WSContext) {

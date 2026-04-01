@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { validateTelegramInitData, getAllowedUsers } from "./auth.js";
+import { validateTelegramInitData, getAllowedUsers, validateSession } from "./auth.js";
 
 /**
  * Middleware that validates Telegram Mini App auth.
@@ -12,30 +12,59 @@ export async function telegramAuth(c: Context, next: Next) {
   }
 
   const authHeader = c.req.header("Authorization");
-  if (!authHeader?.startsWith("tma ")) {
-    return c.json({ error: "Missing Telegram auth" }, 401);
-  }
 
-  const initData = authHeader.slice(4);
-  const { valid, user } = validateTelegramInitData(initData, botToken);
+  // Primary: Telegram Mini App initData
+  if (authHeader?.startsWith("tma ")) {
+    const initData = authHeader.slice(4);
+    const { valid, user } = validateTelegramInitData(initData, botToken);
 
-  if (!valid) {
-    return c.json({ error: "Invalid Telegram auth" }, 401);
-  }
-
-  const allowed = getAllowedUsers();
-  if (allowed.size > 0) {
-    if (!user) {
-      return c.json({ error: "User identification is required" }, 403);
+    if (!valid) {
+      return c.json({ error: "Invalid Telegram auth" }, 401);
     }
-    if (!allowed.has(String(user.id))) {
-      return c.json({ error: "User not authorized" }, 403);
+
+    const allowed = getAllowedUsers();
+    if (allowed.size > 0) {
+      if (!user) {
+        return c.json({ error: "User identification is required" }, 403);
+      }
+      if (!allowed.has(String(user.id))) {
+        return c.json({ error: "User not authorized" }, 403);
+      }
     }
+
+    if (user) {
+      c.set("telegramUser", user);
+    }
+
+    await next();
+    return;
   }
 
-  if (user) {
-    c.set("telegramUser", user);
+  // Fallback: session token from Login Widget auth
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    const { valid, user } = validateSession(token);
+    if (!valid) {
+      return c.json({ error: "Invalid or expired session" }, 401);
+    }
+
+    const allowed = getAllowedUsers();
+    if (allowed.size > 0) {
+      if (!user) {
+        return c.json({ error: "User identification is required" }, 403);
+      }
+      if (!allowed.has(String(user.id))) {
+        return c.json({ error: "User not authorized" }, 403);
+      }
+    }
+
+    if (user) {
+      c.set("telegramUser", user);
+    }
+
+    await next();
+    return;
   }
 
-  await next();
+  return c.json({ error: "Missing Telegram auth" }, 401);
 }
