@@ -59,6 +59,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   const [error, setError] = useState<string | null>(null);
   const [collapsedRanges, setCollapsedRanges] = useState<Set<number>>(new Set());
   const [uploading, setUploading] = useState(false);
+  const [dirBranch, setDirBranch] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,6 +150,23 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       loadDirectory(currentPath);
     }
   }, []);
+
+  // Fetch git branch for the current directory
+  useEffect(() => {
+    if (fileContent !== null) return;
+    let cancelled = false;
+    fetch(`/api/terminal/dir-branch?path=${encodeURIComponent(currentPath)}`, {
+      headers: getAuthHeaders(),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setDirBranch(data.ok ? data.branch : null);
+      })
+      .catch(() => {
+        if (!cancelled) setDirBranch(null);
+      });
+    return () => { cancelled = true; };
+  }, [currentPath, fileContent]);
 
   const handleEntry = (entry: FileEntry) => {
     if (entry.type === "dir") {
@@ -412,6 +430,20 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
               )}
             </div>
           ))}
+          {/* Git branch indicator */}
+          {dirBranch && (
+            <div
+              style={{
+                padding: "6px 12px",
+                fontSize: 11,
+                color: "#7aa2f7",
+                textAlign: "left",
+                borderTop: "1px solid #1e1f2e",
+              }}
+            >
+              ⎇ {dirBranch}
+            </div>
+          )}
           {/* Upload area */}
           <button
             onClick={() => fileInputRef.current?.click()}
