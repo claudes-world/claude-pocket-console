@@ -196,60 +196,6 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
-      {/* Header */}
-      <div
-        style={{
-          padding: "8px 12px",
-          borderBottom: "1px solid #2a2b3d",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          flexShrink: 0,
-          minWidth: 0,
-          maxWidth: "100%",
-          overflow: "hidden",
-        }}
-      >
-        <button
-          onClick={handleBack}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#7aa2f7",
-            cursor: "pointer",
-            fontSize: 16,
-            padding: "2px 6px",
-          }}
-        >
-          {fileContent !== null ? "< back" : parentPath ? "< up" : ""}
-        </button>
-        <span
-          style={{
-            fontSize: 12,
-            color: "#565f89",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-          }}
-        >
-          {fileContent !== null ? fileName : shortPath}
-        </span>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#565f89",
-            cursor: "pointer",
-            fontSize: 14,
-            padding: "2px 6px",
-          }}
-        >
-          x
-        </button>
-      </div>
-
       {/* Root directory shortcuts */}
       {fileContent === null && (
         <div
@@ -288,6 +234,60 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           ))}
         </div>
       )}
+
+      {/* Header */}
+      <div
+        style={{
+          padding: "8px 12px",
+          borderBottom: "1px solid #2a2b3d",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexShrink: 0,
+          minWidth: 0,
+          maxWidth: "100%",
+          overflow: "hidden",
+        }}
+      >
+        <button
+          onClick={handleBack}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#7aa2f7",
+            cursor: "pointer",
+            fontSize: 16,
+            padding: "2px 6px",
+          }}
+        >
+          {fileContent !== null ? "< back" : parentPath ? "< up" : ""}
+        </button>
+        <span
+          style={{
+            fontSize: 12,
+            color: "#c0caf5",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: 1,
+          }}
+        >
+          {fileContent !== null ? fileName : shortPath}
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#565f89",
+            cursor: "pointer",
+            fontSize: 14,
+            padding: "2px 6px",
+          }}
+        >
+          x
+        </button>
+      </div>
 
       {/* Error */}
       {error && (
