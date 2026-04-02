@@ -601,7 +601,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "C-c", raw: true }) });
                   await new Promise(r => setTimeout(r, 300));
                 }
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => setTimeout(r, 2000));
                 await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "cw" }) });
                 await new Promise(r => setTimeout(r, 100));
                 await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "Enter", raw: true }) });
