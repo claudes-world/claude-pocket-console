@@ -596,22 +596,20 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               onClick={async () => {
                 setModal(null);
                 setStatus("Restarting session...");
-                const h = { "Content-Type": "application/json", ...getAuthHeaders() };
-                for (let i = 0; i < 3; i++) {
-                  await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "C-c", raw: true }) });
-                  await new Promise(r => setTimeout(r, 300));
-                }
-                await new Promise(r => setTimeout(r, 2000));
-                await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "cw" }) });
-                await new Promise(r => setTimeout(r, 100));
-                await fetch("/api/terminal/send-keys", { method: "POST", headers: h, body: JSON.stringify({ keys: "Enter", raw: true }) });
-                setStatus("Session restart sent");
+                try {
+                  const res = await fetch("/api/terminal/restart-session", {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                  });
+                  const data = await res.json();
+                  setStatus(data.ok ? "Session restarted" : `Failed: ${data.error}`);
+                } catch { setStatus("Restart failed"); }
                 setTimeout(() => setStatus(null), 3000);
               }}
               style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
             >
               Restart Claude Session
-              <div style={{ fontSize: 10, color: "#7a4a4a", marginTop: 2 }}>Send Ctrl+C ×3, then cw to restart</div>
+              <div style={{ fontSize: 10, color: "#7a4a4a", marginTop: 2 }}>Kill tmux session and start fresh</div>
             </button>
           </div>
         </BottomSheet>
