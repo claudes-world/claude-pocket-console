@@ -50,14 +50,14 @@ app.post("/reload-plugins", async (c) => {
 
 app.post("/restart-session", async (c) => {
   try {
-    // Kill existing tmux session, then start a new one via the cw alias
-    // Run in bash login shell so aliases are available
-    await execAsync(`tmux kill-session -t ${TMUX_SESSION} 2>/dev/null; true`);
-    // Start new tmux session detached with the claude command
-    await execAsync(
-      `tmux new-session -d -s ${TMUX_SESSION} "cd ~/claudes-world && TZ=America/New_York claude --dangerously-skip-permissions --continue --channels plugin:telegram@claude-plugins-official"`,
-      { shell: "/bin/bash" }
-    );
+    // Kill existing tmux session, then recreate using the same command as the cw alias
+    await execAsync(`tmux kill-session -t ${TMUX_SESSION} 2>/dev/null || true`, { shell: "/bin/bash" });
+    // Match the cw alias exactly: tmux new-session with the full claude command
+    const cmd = [
+      `tmux new-session -d -s ${TMUX_SESSION}`,
+      `"cd ~/claudes-world && TZ=America/New_York claude --dangerously-skip-permissions --continue --channels plugin:telegram@claude-plugins-official"`,
+    ].join(" ");
+    await execAsync(cmd, { shell: "/bin/bash" });
     return c.json({ ok: true, action: "restart-session" });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
