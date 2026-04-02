@@ -38,13 +38,24 @@ export function getInitData(): string {
   return window.Telegram?.WebApp?.initData ?? "";
 }
 
+export function getUrlToken(): string {
+  const params = new URLSearchParams(window.location.search);
+  // Also check hash params for Voice button URL format (#voice&token=...)
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#[^&]*&?/, ""));
+  return params.get("token") || hashParams.get("token") || "";
+}
+
 export function getAuthHeaders(): Record<string, string> {
   const initData = getInitData();
   if (initData) return { Authorization: `tma ${initData}` };
 
-  // Fallback: check for saved session token from Login Widget
-  const token = localStorage.getItem("cpc-session-token");
-  if (token) return { Authorization: `Bearer ${token}` };
+  // Fallback: URL token from keyboard button
+  const urlToken = getUrlToken();
+  if (urlToken) return { Authorization: `Bearer ${urlToken}` };
+
+  // Fallback: saved session token from Login Widget
+  const sessionToken = localStorage.getItem("cpc-session-token");
+  if (sessionToken) return { Authorization: `Bearer ${sessionToken}` };
 
   return {};
 }
@@ -58,5 +69,5 @@ export function clearSessionToken() {
 }
 
 export function hasAuth(): boolean {
-  return !!(getInitData() || localStorage.getItem("cpc-session-token"));
+  return !!(getInitData() || getUrlToken() || localStorage.getItem("cpc-session-token"));
 }

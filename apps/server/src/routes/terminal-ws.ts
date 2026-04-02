@@ -1,6 +1,6 @@
 import { spawn, execSync } from "node:child_process";
 import type { WSContext } from "hono/ws";
-import { checkAuth, validateSession } from "../auth.js";
+import { checkAuth, validateSession, validateJwtToken, getAllowedUsers } from "../auth.js";
 
 const TMUX_SESSION = process.env.TMUX_SESSION || "claudes-world";
 
@@ -34,6 +34,20 @@ export function terminalWsRoute(c: any) {
       const { valid, user } = validateSession(token);
       if (valid && user) {
         authResult = { ok: true, user };
+      }
+
+      // Fallback: JWT token validation (keyboard button auth)
+      if (!authResult.ok) {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        if (botToken) {
+          const { valid: jwtValid, user: jwtUser } = validateJwtToken(token, botToken);
+          if (jwtValid && jwtUser) {
+            const allowed = getAllowedUsers();
+            if (allowed.size === 0 || allowed.has(String(jwtUser.id))) {
+              authResult = { ok: true, user: jwtUser };
+            }
+          }
+        }
       }
     }
   }

@@ -56,7 +56,12 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     if (initData) {
       authParam = `?auth=${encodeURIComponent(initData)}`;
     } else {
-      const token = localStorage.getItem("cpc-session-token");
+      // Fallback: URL token from keyboard button, then saved session token
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#[^&]*&?/, ""));
+      const urlToken = urlParams.get("token") || hashParams.get("token") || "";
+      const savedToken = localStorage.getItem("cpc-session-token") || "";
+      const token = urlToken || savedToken;
       if (token) authParam = `?token=${encodeURIComponent(token)}`;
     }
     const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;

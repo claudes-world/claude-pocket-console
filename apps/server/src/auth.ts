@@ -92,6 +92,45 @@ export function validateTelegramLoginWidget(
   };
 }
 
+/**
+ * Validate a JWT token signed with the bot token (keyboard button auth).
+ * The bot embeds a signed JWT in keyboard button URLs so the app can
+ * authenticate when Telegram initData is unavailable.
+ */
+export function validateJwtToken(
+  token: string,
+  botToken: string,
+): { valid: boolean; user?: TelegramUser } {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return { valid: false };
+
+    // Verify signature
+    const signatureInput = `${parts[0]}.${parts[1]}`;
+    const expectedSig = createHmac("sha256", botToken)
+      .update(signatureInput)
+      .digest("base64url");
+
+    if (expectedSig !== parts[2]) return { valid: false };
+
+    // Decode payload
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+
+    // Check expiry
+    if (payload.exp && Date.now() / 1000 > payload.exp) return { valid: false };
+
+    return {
+      valid: true,
+      user: {
+        id: parseInt(payload.sub),
+        first_name: "Keyboard User",
+      },
+    };
+  } catch {
+    return { valid: false };
+  }
+}
+
 // Simple in-memory session store (sufficient for single-user app)
 const sessions = new Map<string, { user: TelegramUser; expires: number }>();
 

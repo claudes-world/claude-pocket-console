@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { validateTelegramInitData, getAllowedUsers, validateSession } from "./auth.js";
+import { validateTelegramInitData, getAllowedUsers, validateSession, validateJwtToken } from "./auth.js";
 
 /**
  * Middleware that validates Telegram Mini App auth.
@@ -40,30 +40,71 @@ export async function telegramAuth(c: Context, next: Next) {
     return;
   }
 
-  // Fallback: session token from Login Widget auth
+  // Fallback: Bearer token (session token from Login Widget, or JWT from keyboard button)
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
-    const { valid, user } = validateSession(token);
-    if (!valid) {
-      return c.json({ error: "Invalid or expired session" }, 401);
-    }
 
-    const allowed = getAllowedUsers();
-    if (allowed.size > 0) {
-      if (!user) {
-        return c.json({ error: "User identification is required" }, 403);
+    // Try session token first
+    const sessionResult = validateSession(token);
+    if (sessionResult.valid) {
+      const allowed = getAllowedUsers();
+      if (allowed.size > 0) {
+        if (!sessionResult.user) {
+          return c.json({ error: "User identification is required" }, 403);
+        }
+        if (!allowed.has(String(sessionResult.user.id))) {
+          return c.json({ error: "User not authorized" }, 403);
+        }
       }
-      if (!allowed.has(String(user.id))) {
-        return c.json({ error: "User not authorized" }, 403);
+
+      if (sessionResult.user) {
+        c.set("telegramUser", sessionResult.user);
       }
+
+      await next();
+      return;
     }
 
-    if (user) {
-      c.set("telegramUser", user);
+    // Try JWT token validation (keyboard button auth)
+    const jwtResult = validateJwtToken(token, botToken);
+    if (jwtResult.valid) {
+      const allowed = getAllowedUsers();
+      if (allowed.size > 0) {
+        if (!jwtResult.user || !allowed.has(String(jwtResult.user.id))) {
+          return c.json({ error: "User not authorized" }, 403);
+        }
+      }
+
+      if (jwtResult.user) {
+        c.set("telegramUser", jwtResult.user);
+      }
+
+      await next();
+      return;
     }
 
-    await next();
-    return;
+    return c.json({ error: "Invalid or expired token" }, 401);
+  }
+
+  // Fallback: JWT token in query param (keyboard button auth)
+  const urlToken = c.req.query("token");
+  if (urlToken) {
+    const { valid, user } = validateJwtToken(urlToken, botToken);
+    if (valid) {
+      const allowed = getAllowedUsers();
+      if (allowed.size > 0) {
+        if (!user || !allowed.has(String(user.id))) {
+          return c.json({ error: "User not authorized" }, 403);
+        }
+      }
+
+      if (user) {
+        c.set("telegramUser", user);
+      }
+
+      await next();
+      return;
+    }
   }
 
   return c.json({ error: "Missing Telegram auth" }, 401);
