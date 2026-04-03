@@ -50,7 +50,7 @@ interface ActionBarProps {
   viewingFile?: { path: string; name: string } | null;
 }
 
-type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-clear" | "file-options" | "file-search" | "audio-gen" | "confirm-delete" | "reconnect-menu";
+type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-confirm" | "file-options" | "file-search" | "audio-gen" | "confirm-delete" | "reconnect-menu";
 
 /** Bottom sheet — swipe-to-close ONLY from header, content scrolls independently */
 function BottomSheet({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
@@ -216,9 +216,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     } catch { /* fire and forget */ }
   };
 
-  const sendCompactCommand = async (message: string) => {
+  const sendCompactCommand = async (message: string, statusLabel?: string) => {
     setModal(null);
-    setStatus("Compacting...");
+    const label = statusLabel || "Compact";
+    setStatus(`${label}...`);
     try {
       const res = await fetch("/api/terminal/compact", {
         method: "POST",
@@ -226,7 +227,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         body: JSON.stringify({ message }),
       });
       const data = await res.json();
-      setStatus(data.ok ? "Compact sent" : `Failed: ${data.error}`);
+      setStatus(data.ok ? `${label} sent` : `Failed: ${data.error}`);
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -388,11 +389,11 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               </button>
             </div>
             <button
-              onClick={() => setModal("new-clear")}
+              onClick={() => setModal("new-confirm")}
               style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030", fontFamily: "monospace" }}
             >
-              /new <span style={{ color: "#6a4040", fontFamily: "inherit" }}>(clear)</span>
-              <div style={{ fontSize: 10, color: "#6a4040", marginTop: 1 }}>Start fresh or clear conversation</div>
+              /new
+              <div style={{ fontSize: 10, color: "#6a4040", marginTop: 1 }}>Start a new conversation</div>
             </button>
             <button
               onClick={() => { fetchSessionNames(); setModal("resume"); }}
@@ -510,7 +511,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   <button
                     onClick={() => {
                       setModal(null);
-                      sendCompactCommand(`/resume ${s.name}`);
+                      sendCompactCommand(`/resume ${s.name}`, "Resume");
                     }}
                     style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" as const, flex: 1 }}
                   >
@@ -615,38 +616,24 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         </BottomSheet>
       )}
 
-      {/* New/Clear modal */}
-      {modal === "new-clear" && (
+      {/* New session confirm modal */}
+      {modal === "new-confirm" && (
         <div style={modalCenter} onClick={() => setModal("commands")}>
           <div
             style={{ background: "#1a1b26", border: "1px solid #2a2b3d", borderRadius: 12, padding: 20, maxWidth: 320, width: "100%" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>New / Clear Session</div>
-            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 12 }}>
-              Add continuity notes before clearing? (optional)
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "#c0caf5" }}>Start new session?</div>
+            <div style={{ fontSize: 12, color: "#565f89", marginBottom: 16 }}>
+              This will end the current conversation and start fresh.
             </div>
-            <textarea
-              value={continuityNotes}
-              onChange={(e) => setContinuityNotes(e.target.value)}
-              placeholder="Notes to preserve..."
-              style={{
-                width: "100%", height: 80, background: "#24283b", color: "#c0caf5",
-                border: "1px solid #3b3d57", borderRadius: 6, padding: 10, fontSize: 13,
-                resize: "vertical", fontFamily: "inherit",
-              }}
-            />
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setModal("commands")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2a2a", color: "#f7768e", border: "1px solid #5a3d3d" }}>Back</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setModal("commands")} style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#24283b", color: "#565f89", border: "1px solid #3b3d57" }}>Cancel</button>
               <button
-                onClick={() => {
-                  const notes = continuityNotes.trim();
-                  const cmd = notes ? `/clear ${notes}` : "/clear";
-                  sendCompactCommand(cmd);
-                }}
-                style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}
+                onClick={() => sendCompactCommand("/new", "New session")}
+                style={{ ...btnStyle, flex: 1, padding: "10px 16px", background: "#3a2020", color: "#f7768e", border: "1px solid #5a3030" }}
               >
-                Clear
+                New
               </button>
             </div>
           </div>

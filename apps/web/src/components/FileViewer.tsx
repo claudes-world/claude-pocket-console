@@ -285,10 +285,15 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             color: "#7aa2f7",
             cursor: "pointer",
             fontSize: 16,
-            padding: "2px 6px",
+            padding: "10px 14px",
+            margin: "-10px -6px",
+            minHeight: 44,
+            minWidth: 44,
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          {fileContent !== null ? "< back" : parentPath ? "< up" : ""}
+          {fileContent !== null ? "\u2190 back" : parentPath ? "\u2190 up" : ""}
         </button>
         <span
           style={{
@@ -310,10 +315,16 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             color: "#565f89",
             cursor: "pointer",
             fontSize: 14,
-            padding: "2px 6px",
+            padding: "10px 14px",
+            margin: "-10px -6px",
+            minHeight: 44,
+            minWidth: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          x
+          ✕
         </button>
       </div>
 
