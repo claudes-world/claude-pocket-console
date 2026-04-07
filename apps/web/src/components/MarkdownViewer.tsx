@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { marked } from "marked";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 interface MarkdownViewerProps {
   content: string;
@@ -12,10 +14,54 @@ marked.setOptions({
   breaks: true,
 });
 
-export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
+export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
   const html = useMemo(() => {
     return marked.parse(content) as string;
   }, [content]);
+
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // After marked renders the HTML, find any ```mermaid code blocks and
+  // replace them with a React-rendered MermaidDiagram component. We track
+  // each root we create so we can unmount them on cleanup to avoid leaks.
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+
+    const codeBlocks = container.querySelectorAll<HTMLElement>(
+      "code.language-mermaid"
+    );
+    const roots: Root[] = [];
+
+    codeBlocks.forEach((codeEl) => {
+      const pre = codeEl.closest("pre");
+      if (!pre || !pre.parentNode) return;
+
+      const source = codeEl.textContent ?? "";
+      const mountPoint = document.createElement("div");
+      mountPoint.className = "mermaid-mount";
+      pre.parentNode.replaceChild(mountPoint, pre);
+
+      const root = createRoot(mountPoint);
+      root.render(<MermaidDiagram source={source} />);
+      roots.push(root);
+    });
+
+    return () => {
+      // Defer unmount to avoid "synchronously unmounting a root while React
+      // was already rendering" warnings (React 18+ StrictMode double-invoke).
+      const toUnmount = roots.slice();
+      queueMicrotask(() => {
+        toUnmount.forEach((root) => {
+          try {
+            root.unmount();
+          } catch {
+            // Best-effort cleanup.
+          }
+        });
+      });
+    };
+  }, [html]);
 
   return (
     <div
@@ -150,8 +196,56 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
           max-width: 100%;
           border-radius: 4px;
         }
+        .md-content .mermaid-mount {
+          margin: 12px 0;
+        }
+        .md-content .mermaid-container {
+          background: #1a1b26;
+          border: 1px solid #2a2b3d;
+          border-radius: 6px;
+          padding: 16px;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          max-width: 100%;
+          display: flex;
+          justify-content: center;
+        }
+        .md-content .mermaid-container svg {
+          max-width: 100%;
+          height: auto;
+        }
+        .md-content .mermaid-loading {
+          background: #1a1b26;
+          border: 1px dashed #2a2b3d;
+          border-radius: 6px;
+          padding: 24px 16px;
+          text-align: center;
+          color: #565f89;
+          font-size: 13px;
+          font-style: italic;
+          margin: 12px 0;
+        }
+        .md-content .mermaid-error {
+          background: #1a1b26;
+          border: 1px solid #f7768e;
+          border-radius: 6px;
+          padding: 12px 16px;
+          margin: 12px 0;
+        }
+        .md-content .mermaid-error-label {
+          color: #f7768e;
+          font-size: 12px;
+          font-weight: 600;
+          margin-bottom: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .md-content .mermaid-error pre {
+          margin: 0;
+        }
       `}</style>
       <div
+        ref={contentRef}
         className="md-content"
         dangerouslySetInnerHTML={{ __html: html }}
       />
