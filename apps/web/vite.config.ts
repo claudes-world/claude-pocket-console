@@ -16,11 +16,13 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(gitVersion),
   },
   server: {
+    host: "127.0.0.1",
+    allowedHosts: ["cpc.claude.do"],
     port: 58830,
     proxy: {
-      "/api": "http://localhost:38830",
+      "/api": "http://127.0.0.1:38830",
       "/ws": {
-        target: "ws://localhost:38830",
+        target: "ws://127.0.0.1:38830",
         ws: true,
       },
     },
