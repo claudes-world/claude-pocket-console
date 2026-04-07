@@ -1,6 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
+
+export type SortMode = "name-asc" | "name-desc" | "date-asc" | "date-desc";
+
+/**
+ * Sort mode options — single source of truth for both the inline control
+ * in FileViewer and the bottom-sheet modal in ActionBar. Export both a
+ * short-label version (for compact inline controls) and a long-label
+ * version (for menus where space isn't constrained).
+ */
+export const SORT_OPTIONS: { value: SortMode; short: string; long: string }[] = [
+  { value: "name-asc",  short: "name \u2191", long: "Name (A-Z)" },
+  { value: "name-desc", short: "name \u2193", long: "Name (Z-A)" },
+  { value: "date-asc",  short: "date \u2191", long: "Date (Oldest)" },
+  { value: "date-desc", short: "date \u2193", long: "Date (Newest)" },
+];
 
 interface FileEntry {
   name: string;
@@ -14,7 +29,8 @@ interface FileViewerProps {
   onClose: () => void;
   initialFile?: string | null;
   showHidden?: boolean;
-  sortMode?: string;
+  sortMode?: SortMode;
+  onSortModeChange?: (mode: SortMode) => void;
   onViewChange?: (file: { path: string; name: string } | null) => void;
 }
 
@@ -48,7 +64,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export function FileViewer({ onClose, initialFile, showHidden = false, sortMode = "name-asc", onViewChange }: FileViewerProps) {
+export function FileViewer({ onClose, initialFile, showHidden = false, sortMode = "name-asc", onSortModeChange, onViewChange }: FileViewerProps) {
   const [currentPath, setCurrentPath] = useState("/home/claude/claudes-world");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -209,17 +225,38 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     });
   };
 
-  const visibleEntries = showHidden ? entries : entries.filter((e) => !e.name.startsWith("."));
-  const filteredEntries = [...visibleEntries].sort((a, b) => {
-    // Dirs always first
-    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
-    switch (sortMode) {
-      case "name-desc": return b.name.localeCompare(a.name);
-      case "date-asc": return a.modified.localeCompare(b.modified);
-      case "date-desc": return b.modified.localeCompare(a.modified);
-      default: return a.name.localeCompare(b.name); // name-asc
-    }
-  });
+  const sortedEntries = useMemo(() => {
+    const visible = showHidden ? entries : entries.filter((e) => !e.name.startsWith("."));
+
+    const cmpName = (a: FileEntry, b: FileEntry) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+
+    return [...visible].sort((a, b) => {
+      if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+
+      switch (sortMode) {
+        case "name-desc":
+          return -cmpName(a, b);
+        case "date-asc": {
+          if (!a.modified && !b.modified) return cmpName(a, b);
+          if (!a.modified) return 1;
+          if (!b.modified) return -1;
+          const d = a.modified.localeCompare(b.modified);
+          return d !== 0 ? d : cmpName(a, b);
+        }
+        case "date-desc": {
+          if (!a.modified && !b.modified) return cmpName(a, b);
+          if (!a.modified) return 1;
+          if (!b.modified) return -1;
+          const d = b.modified.localeCompare(a.modified);
+          return d !== 0 ? d : cmpName(a, b);
+        }
+        case "name-asc":
+        default:
+          return cmpName(a, b);
+      }
+    });
+  }, [entries, showHidden, sortMode]);
   const shortPath = currentPath.replace("/home/claude/", "~/");
 
   return (
@@ -260,6 +297,46 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
               {root.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Inline sort control — only in directory listing view */}
+      {fileContent === null && (
+        <div
+          style={{
+            padding: "6px 12px",
+            display: "flex",
+            gap: 6,
+            flexShrink: 0,
+            overflowX: "auto",
+            borderBottom: "1px solid #1e1f2e",
+            alignItems: "center",
+          }}
+        >
+          <span style={{ fontSize: 11, color: "#565f89", marginRight: 4 }}>sort</span>
+          {SORT_OPTIONS.map((opt) => {
+            const active = sortMode === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => onSortModeChange?.(opt.value)}
+                aria-pressed={active}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  background: active ? "#2a2b3d" : "transparent",
+                  color: active ? "#7aa2f7" : "#565f89",
+                  border: "1px solid #2a2b3d",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  minHeight: 28,
+                }}
+              >
+                {opt.short}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -411,7 +488,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       {/* Directory listing */}
       {fileContent === null && !loading && (
         <div style={{ flex: 1, overflow: "auto" }}>
-          {filteredEntries.map((entry) => (
+          {sortedEntries.map((entry) => (
             <div
               key={entry.path}
               onClick={() => handleEntry(entry)}
