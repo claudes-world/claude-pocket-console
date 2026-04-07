@@ -200,13 +200,14 @@ app.get("/download", async (c) => {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Length": String(st.size),
+        "Content-Length": String(content.length),
         "Content-Disposition": `attachment; filename="${baseName.replace(/"/g, "")}"; filename*=UTF-8''${encodedName}`,
         "Cache-Control": "no-store",
       },
     });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+  } catch (err) {
+    console.error("[files/download] error:", err);
+    return c.json({ error: "Failed to read file" }, 500);
   }
 });
 
