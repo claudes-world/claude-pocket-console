@@ -88,12 +88,20 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
           border-radius: 6px;
           padding: 12px 16px;
           overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
           margin: 12px 0;
         }
         .md-content pre code {
           background: none;
           padding: 0;
           color: #c0caf5;
+          display: block;
+          width: max-content;
+          min-width: 100%;
+          overflow-wrap: normal;
+          word-break: normal;
+          white-space: pre;
+          max-width: none;
         }
         .md-content table {
           display: block;
