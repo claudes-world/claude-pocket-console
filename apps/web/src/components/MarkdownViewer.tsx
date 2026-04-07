@@ -96,6 +96,8 @@ export function MarkdownViewer({ content, fileName }: MarkdownViewerProps) {
           padding: 0;
           color: #c0caf5;
           display: block;
+          width: max-content;
+          min-width: 100%;
           overflow-wrap: normal;
           word-break: normal;
           white-space: pre;
