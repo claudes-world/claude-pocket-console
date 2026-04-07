@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthHeaders } from "../lib/telegram";
+import type { SortMode } from "./FileViewer";
 
 /** Hook: swipe-down-to-close — ONLY from header/drag handle area */
 function useSwipeDown(onClose: () => void, threshold = 80) {
@@ -45,8 +46,8 @@ interface ActionBarProps {
   activeTab?: string;
   fileShowHidden?: boolean;
   setFileShowHidden?: (v: boolean) => void;
-  fileSortMode?: string;
-  setFileSortMode?: (v: string) => void;
+  fileSortMode?: SortMode;
+  setFileSortMode?: (v: SortMode) => void;
   viewingFile?: { path: string; name: string } | null;
 }
 
@@ -831,7 +832,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
             ].map((opt) => (
               <button
                 key={opt.value}
-                onClick={() => { setFileSortMode?.(opt.value); setModal(null); }}
+                onClick={() => { setFileSortMode?.(opt.value as SortMode); setModal(null); }}
                 style={{
                   ...btnStyle,
                   padding: "10px 14px",
