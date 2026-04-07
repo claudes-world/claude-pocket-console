@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  /* Tokyo Night palette — keep these in sync with the inline-style usage
+     across the existing components. After the Codex migration sweep,
+     inline styles will use these tokens via tw classes like bg-bg, text-fg, etc. */
+
+  --color-bg: #1a1b26;
+  --color-bg-alt: #16161e;
+  --color-fg: #c0caf5;
+  --color-fg-muted: #a9b1d6;
+  --color-muted: #565f89;
+  --color-border: #292e42;
+  --color-border-alt: #414868;
+
+  --color-accent-blue: #7aa2f7;
+  --color-accent-purple: #bb9af7;
+  --color-accent-cyan: #7dcfff;
+  --color-accent-green: #9ece6a;
+  --color-accent-yellow: #e0af68;
+  --color-accent-orange: #ff9e64;
+  --color-accent-red: #f7768e;
+  --color-accent-pink: #ff7a93;
+
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
