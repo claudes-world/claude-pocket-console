@@ -20,6 +20,60 @@ function isPathAllowed(absPath: string): boolean {
   return ALLOWED_ROOTS.some((root) => resolved.startsWith(root));
 }
 
+/**
+ * Sanitize a user-supplied filename. Returns null if the name is unsafe.
+ * Accepts dotfiles (e.g. .gitignore) but rejects the literal "." and "..",
+ * slashes, control chars, null bytes, reserved names, and empty/long names.
+ */
+function sanitizeFilename(raw: string): string | null {
+  if (typeof raw !== "string") return null;
+  // Strip control chars (0x00-0x1f, 0x7f) and trim
+  let cleaned = raw.replace(/[\x00-\x1f\x7f]/g, "").trim();
+  // Collapse trailing dots and spaces (Windows/fat32 footgun + hidden extension tricks)
+  cleaned = cleaned.replace(/[. ]+$/, "");
+  if (cleaned.length === 0 || cleaned.length > 255) return null;
+  if (cleaned.includes("/") || cleaned.includes("\\")) return null;
+  if (cleaned === "." || cleaned === "..") return null;
+  // Windows reserved names (we're Linux, but files may be transferred/shared)
+  const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+  if (WIN_RESERVED.test(cleaned)) return null;
+  return cleaned;
+}
+
+/**
+ * Find a non-colliding absolute path in `dir` for the given `name`.
+ * If `name` exists, inserts a numeric suffix before the extension:
+ *   foo.md -> foo-1.md -> foo-2.md ...
+ * Shared by /upload and /paste.
+ *
+ * NOTE: This walk is not race-free — two concurrent callers may both
+ * decide the same suffix is free. Matches the legacy /upload behavior;
+ * worth revisiting if concurrent writes become common.
+ */
+async function pickAvailablePath(dir: string, name: string): Promise<string> {
+  const destPath = join(dir, name);
+  let finalPath = destPath;
+  let counter = 1;
+  // Find an unused path by probing stat() for each candidate.
+  while (true) {
+    try {
+      await stat(finalPath);
+    } catch {
+      return finalPath;
+    }
+    const dotIdx = name.lastIndexOf(".");
+    const hasExt = dotIdx > 0; // ignore leading dot (dotfile with no ext)
+    const base = hasExt ? name.slice(0, dotIdx) : name;
+    const ext = hasExt ? name.slice(dotIdx) : "";
+    finalPath = join(dir, `${base}-${counter}${ext}`);
+    counter++;
+    if (counter > 9999) {
+      // Pathological case — give up rather than loop forever.
+      throw new Error("Could not find available filename");
+    }
+  }
+}
+
 // List available root directories
 app.get("/roots", (c) => {
   return c.json({
@@ -267,21 +321,7 @@ app.post("/upload", async (c) => {
 
   try {
     const fileName = (file as File).name || "uploaded-file";
-    const destPath = join(resolved, fileName);
-
-    // Don't overwrite existing files — add suffix
-    let finalPath = destPath;
-    let counter = 1;
-    try {
-      while (await stat(finalPath)) {
-        const ext = fileName.includes(".") ? "." + fileName.split(".").pop() : "";
-        const base = fileName.includes(".") ? fileName.slice(0, fileName.lastIndexOf(".")) : fileName;
-        finalPath = join(resolved, `${base}-${counter}${ext}`);
-        counter++;
-      }
-    } catch {
-      // File doesn't exist — good, use this path
-    }
+    const finalPath = await pickAvailablePath(resolved, fileName);
 
     const arrayBuffer = await (file as File).arrayBuffer();
     await writeFile(finalPath, Buffer.from(arrayBuffer));
@@ -294,6 +334,78 @@ app.post("/upload", async (c) => {
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
+  }
+});
+
+// Paste text content into the current directory as a new file.
+// JSON body: { filename: string, content: string, dir: string }
+// 1MB cap, line endings normalized, filename sanitized, never overwrites.
+app.post("/paste", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const { filename, content, dir } = body as {
+    filename?: unknown;
+    content?: unknown;
+    dir?: unknown;
+  };
+
+  if (typeof content !== "string") {
+    return c.json({ error: "content required (string)" }, 400);
+  }
+  if (typeof filename !== "string") {
+    return c.json({ error: "filename required (string)" }, 400);
+  }
+  if (typeof dir !== "string") {
+    return c.json({ error: "dir required (string)" }, 400);
+  }
+  if (content.length === 0) {
+    return c.json({ error: "content is empty" }, 400);
+  }
+
+  // 1 MB cap (matches /read). JSON.stringify already decoded the string,
+  // so we measure the UTF-8 byte length of the actual content.
+  const byteLength = Buffer.byteLength(content, "utf-8");
+  if (byteLength > 1024 * 1024) {
+    return c.json({ error: "Content too large (max 1MB)" }, 413);
+  }
+
+  const cleanName = sanitizeFilename(filename);
+  if (!cleanName) {
+    return c.json({ error: "Invalid filename" }, 400);
+  }
+
+  const resolved = resolve(dir);
+  if (!isPathAllowed(resolved)) {
+    return c.json({ error: "Access denied" }, 403);
+  }
+
+  // Destination must exist and be a directory. We do NOT auto-create.
+  try {
+    const st = await stat(resolved);
+    if (!st.isDirectory()) {
+      return c.json({ error: "Destination is not a directory" }, 400);
+    }
+  } catch {
+    return c.json({ error: "Destination directory does not exist" }, 404);
+  }
+
+  // Normalize line endings: CRLF and lone CR both become LF.
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  try {
+    const finalPath = await pickAvailablePath(resolved, cleanName);
+    await writeFile(finalPath, normalized, "utf-8");
+    return c.json({
+      ok: true,
+      path: finalPath,
+      name: finalPath.split("/").pop(),
+      size: Buffer.byteLength(normalized, "utf-8"),
+    });
+  } catch (err: any) {
+    console.error("[files/paste] write error:", err);
+    return c.json({ error: err?.message || "Failed to write file" }, 500);
   }
 });
 
