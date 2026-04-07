@@ -4,6 +4,19 @@ import { MarkdownViewer } from "./MarkdownViewer";
 
 export type SortMode = "name-asc" | "name-desc" | "date-asc" | "date-desc";
 
+/**
+ * Sort mode options — single source of truth for both the inline control
+ * in FileViewer and the bottom-sheet modal in ActionBar. Export both a
+ * short-label version (for compact inline controls) and a long-label
+ * version (for menus where space isn't constrained).
+ */
+export const SORT_OPTIONS: { value: SortMode; short: string; long: string }[] = [
+  { value: "name-asc",  short: "name \u2191", long: "Name (A-Z)" },
+  { value: "name-desc", short: "name \u2193", long: "Name (Z-A)" },
+  { value: "date-asc",  short: "date \u2191", long: "Date (Oldest)" },
+  { value: "date-desc", short: "date \u2193", long: "Date (Newest)" },
+];
+
 interface FileEntry {
   name: string;
   path: string;
@@ -301,17 +314,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           }}
         >
           <span style={{ fontSize: 11, color: "#565f89", marginRight: 4 }}>sort</span>
-          {[
-            { value: "name-asc",  label: "name \u2191" },
-            { value: "name-desc", label: "name \u2193" },
-            { value: "date-asc",  label: "date \u2191" },
-            { value: "date-desc", label: "date \u2193" },
-          ].map((opt) => {
+          {SORT_OPTIONS.map((opt) => {
             const active = sortMode === opt.value;
             return (
               <button
                 key={opt.value}
-                onClick={() => onSortModeChange?.(opt.value as SortMode)}
+                onClick={() => onSortModeChange?.(opt.value)}
                 aria-pressed={active}
                 style={{
                   padding: "4px 10px",
@@ -325,7 +333,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                   minHeight: 28,
                 }}
               >
-                {opt.label}
+                {opt.short}
               </button>
             );
           })}
