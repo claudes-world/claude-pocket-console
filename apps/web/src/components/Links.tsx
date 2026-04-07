@@ -19,6 +19,18 @@ const LINKS: LinkItem[] = [
     description: "Icon library (FA, MD, Hero, Feather, etc.)",
   },
   {
+    title: "Companion",
+    url: "https://companion.claude.do",
+    icon: "🦆",
+    description: "companion.claude.do",
+  },
+  {
+    title: "T3",
+    url: "https://t3.claude.do",
+    icon: "🌀",
+    description: "t3.claude.do",
+  },
+  {
     title: "Edit Links",
     url: "https://github.com/claudes-world/claude-pocket-console/edit/feat/file-viewer-and-terminal-fix/apps/web/src/components/Links.tsx",
     icon: "✏️",

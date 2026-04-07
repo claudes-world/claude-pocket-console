@@ -2,6 +2,7 @@ declare const __APP_VERSION__: string;
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Terminal } from "./components/Terminal";
 import { FileViewer } from "./components/FileViewer";
+import type { SortMode } from "./components/FileViewer";
 import { Links } from "./components/Links";
 import { ActionBar } from "./components/ActionBar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
@@ -10,6 +11,10 @@ import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./l
 type Tab = "terminal" | "files" | "links" | "voice";
 const TABS: Tab[] = ["terminal", "files", "links", "voice"];
 const SWIPE_THRESHOLD = 120;
+
+const SORT_KEY = "cpc-file-sort-mode";
+const HIDDEN_KEY = "cpc-file-show-hidden";
+const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc"];
 
 export function App() {
   const [authed, setAuthed] = useState(() => hasAuth());
@@ -22,8 +27,23 @@ export function App() {
   );
   const [reconnectKey, setReconnectKey] = useState(0);
   const [initialFilePath] = useState<string | null>(initialFile);
-  const [fileShowHidden, setFileShowHidden] = useState(false);
-  const [fileSortMode, setFileSortMode] = useState<string>("name-asc");
+  const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
+    try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
+  });
+  const [fileSortMode, setFileSortMode] = useState<SortMode>(() => {
+    try {
+      const saved = localStorage.getItem(SORT_KEY);
+      return VALID_SORTS.includes(saved as SortMode) ? (saved as SortMode) : "name-asc";
+    } catch { return "name-asc"; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(SORT_KEY, fileSortMode); } catch { /* ignore */ }
+  }, [fileSortMode]);
+
+  useEffect(() => {
+    try { localStorage.setItem(HIDDEN_KEY, fileShowHidden ? "1" : "0"); } catch { /* ignore */ }
+  }, [fileShowHidden]);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
 
@@ -283,7 +303,7 @@ export function App() {
             <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onViewChange={setViewingFile} />
+            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <Links onClose={() => setActiveTab("terminal")} />

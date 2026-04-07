@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthHeaders } from "../lib/telegram";
+import { SORT_OPTIONS, type SortMode } from "./FileViewer";
 
 /** Hook: swipe-down-to-close — ONLY from header/drag handle area */
 function useSwipeDown(onClose: () => void, threshold = 80) {
@@ -45,8 +46,8 @@ interface ActionBarProps {
   activeTab?: string;
   fileShowHidden?: boolean;
   setFileShowHidden?: (v: boolean) => void;
-  fileSortMode?: string;
-  setFileSortMode?: (v: string) => void;
+  fileSortMode?: SortMode;
+  setFileSortMode?: (v: SortMode) => void;
   viewingFile?: { path: string; name: string } | null;
 }
 
@@ -823,12 +824,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               {fileShowHidden ? "Hide Hidden Files" : "Show Hidden Files"}
             </button>
             <div style={{ fontSize: 12, color: "#565f89", marginTop: 4, marginBottom: 2 }}>Sort by:</div>
-            {[
-              { value: "name-asc", label: "Name (A-Z)" },
-              { value: "name-desc", label: "Name (Z-A)" },
-              { value: "date-asc", label: "Date (Oldest)" },
-              { value: "date-desc", label: "Date (Newest)" },
-            ].map((opt) => (
+            {SORT_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => { setFileSortMode?.(opt.value); setModal(null); }}
@@ -839,7 +835,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   ...(fileSortMode === opt.value ? { background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" } : {}),
                 }}
               >
-                {opt.label}
+                {opt.long}
                 {fileSortMode === opt.value && " \u2713"}
               </button>
             ))}

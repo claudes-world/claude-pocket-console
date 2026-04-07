@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["PORT", "NODE_ENV"],
   "tasks": {
     "dev": {
       "cache": false,
