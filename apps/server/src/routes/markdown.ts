@@ -2,11 +2,8 @@ import { Hono } from "hono";
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { db } from "../db.js";
-import { loadAnthropicEnv } from "./utils.js";
-
-// Load Anthropic env on module init (no-op if file missing)
-loadAnthropicEnv();
 
 const app = new Hono();
 
@@ -29,7 +26,8 @@ function isPathAllowed(absPath: string): boolean {
 const MAX_BYTES = parseInt(process.env.CPC_TLDR_MAX_BYTES || "512000", 10);
 const MODEL = process.env.CPC_TLDR_MODEL || "claude-haiku-4-5";
 const PROMPT_VERSION = parseInt(process.env.CPC_TLDR_PROMPT_VERSION || "1", 10);
-const ANTHROPIC_TIMEOUT_MS = 30_000;
+const CLAUDE_TIMEOUT_MS = 60_000;
+const CLAUDE_BIN = process.env.CPC_CLAUDE_BIN || "claude";
 
 const SYSTEM_PROMPT = `You are a precise, ruthless summarizer of long-form documents for a busy mobile reader who needs the gist in 30 seconds before deciding whether to read the whole thing. Your output must be skim-optimized markdown.
 
@@ -67,72 +65,102 @@ List anything that requires the reader to do something. If nothing, write: "None
 
 // In-flight dedupe — collapses simultaneous taps on the same doc into one call.
 // Keyed by cache tuple to match lookup semantics.
-const inflight = new Map<string, Promise<{ summary: string; inputTokens: number; outputTokens: number }>>();
+const inflight = new Map<string, Promise<{ summary: string }>>();
 
-type AnthropicResponse = {
-  content?: Array<{ type: string; text?: string }>;
-  usage?: { input_tokens?: number; output_tokens?: number };
-  error?: { type?: string; message?: string };
-};
+/**
+ * Shell out to the Claude Code CLI to summarize the document.
+ *
+ * Why CLI instead of the Anthropic HTTP API:
+ * - Uses the host's existing Claude Max OAuth (no API key, no $ per call)
+ * - Same pattern md-speak uses for its table-mode AI decision
+ * - Removes the ANTHROPIC_API_KEY config requirement entirely
+ *
+ * Mode notes:
+ * - `-p` (--print) is non-interactive: read prompt from argv/stdin, write
+ *   the model's reply to stdout, exit
+ * - `--model claude-haiku-4-5` selects the cheapest fast model
+ * - `--append-system-prompt` injects our summarizer system prompt
+ * - We do NOT use `--bare` because that mode strictly requires
+ *   ANTHROPIC_API_KEY and bypasses the OAuth keychain — defeating the
+ *   whole point of this rewrite
+ * - Document content goes to stdin so we don't hit argv length limits
+ *   on large markdown files
+ */
+async function callClaudeCli(content: string): Promise<{ summary: string }> {
+  return new Promise((resolveCall, rejectCall) => {
+    const args = [
+      "-p",
+      "--model",
+      MODEL,
+      "--append-system-prompt",
+      SYSTEM_PROMPT,
+    ];
 
-async function callAnthropic(
-  apiKey: string,
-  content: string,
-): Promise<{ summary: string; inputTokens: number; outputTokens: number }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 600,
-        temperature: 0.3,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `Summarize this document:\n\n<document>\n${content}\n</document>`,
-          },
-        ],
-      }),
-      signal: controller.signal,
+    const proc = spawn(CLAUDE_BIN, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      // Inherit environment so the CLI can find its OAuth/keychain
+      env: process.env,
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      let msg = `Anthropic API ${res.status}`;
-      try {
-        const parsed = JSON.parse(errText) as AnthropicResponse;
-        if (parsed.error?.message) msg = `Anthropic: ${parsed.error.message}`;
-      } catch {
-        if (errText) msg = `Anthropic API ${res.status}: ${errText.slice(0, 200)}`;
-      }
-      const err = new Error(msg);
-      (err as any).status = res.status;
-      throw err;
-    }
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
 
-    const data = (await res.json()) as AnthropicResponse;
-    // Pick the first text block defensively — Anthropic may return tool_use
-    // or multi-block responses and data.content[0].text isn't guaranteed.
-    const textBlock = data.content?.find((b) => b.type === "text" && typeof b.text === "string");
-    if (!textBlock?.text) {
-      throw new Error("Anthropic returned no text content");
-    }
-    return {
-      summary: textBlock.text,
-      inputTokens: data.usage?.input_tokens ?? 0,
-      outputTokens: data.usage?.output_tokens ?? 0,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        // ignore
+      }
+      const err: Error & { name?: string } = new Error("claude CLI timed out");
+      err.name = "AbortError";
+      rejectCall(err);
+    }, CLAUDE_TIMEOUT_MS);
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf-8");
+    });
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf-8");
+    });
+
+    proc.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      rejectCall(
+        new Error(
+          `Failed to spawn claude CLI (${CLAUDE_BIN}): ${err.message}`,
+        ),
+      );
+    });
+
+    proc.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code !== 0) {
+        rejectCall(
+          new Error(
+            `claude CLI exited ${code}: ${stderr.slice(0, 200) || "(no stderr)"}`,
+          ),
+        );
+        return;
+      }
+      const summary = stdout.trim();
+      if (!summary) {
+        rejectCall(new Error("claude CLI returned empty output"));
+        return;
+      }
+      resolveCall({ summary });
+    });
+
+    // Stream the document content into stdin and close.
+    proc.stdin.write(`Summarize this document:\n\n<document>\n${content}\n</document>\n`);
+    proc.stdin.end();
+  });
 }
 
 app.post("/summarize", async (c) => {
@@ -206,19 +234,10 @@ app.post("/summarize", async (c) => {
     });
   }
 
-  // API key check (configuration failure — 503, not 500)
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return c.json(
-      { ok: false, error: "ANTHROPIC_API_KEY not set — add it to ~/.secrets/anthropic.env and restart cpc.service" },
-      503,
-    );
-  }
-
-  // In-flight dedupe
+  // In-flight dedupe — collapse simultaneous taps on the same doc.
   let flight = inflight.get(cacheKey);
   if (!flight) {
-    flight = callAnthropic(apiKey, content).finally(() => {
+    flight = callClaudeCli(content).finally(() => {
       // Clean up in finally to avoid leaking on rejection (Codex DA).
       inflight.delete(cacheKey);
     });
@@ -226,15 +245,17 @@ app.post("/summarize", async (c) => {
   }
 
   try {
-    const { summary, inputTokens, outputTokens } = await flight;
+    const { summary } = await flight;
 
-    // Persist to cache
+    // Persist to cache. input_tokens/output_tokens are not exposed by
+    // the CLI surface so we record 0 — kept in the schema for forward
+    // compat with a possible future direct-API path.
     try {
       db.prepare(
         `INSERT OR REPLACE INTO tldr_cache
          (content_hash, prompt_version, model, summary, source_path, input_tokens, output_tokens, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(contentHash, PROMPT_VERSION, MODEL, summary, resolved, inputTokens, outputTokens, Date.now());
+      ).run(contentHash, PROMPT_VERSION, MODEL, summary, resolved, 0, 0, Date.now());
     } catch (err: any) {
       console.error("[markdown/summarize] cache write failed:", err.message);
       // Non-fatal — return the summary anyway.
@@ -246,12 +267,10 @@ app.post("/summarize", async (c) => {
       cached: false,
       model: MODEL,
       promptVersion: PROMPT_VERSION,
-      inputTokens,
-      outputTokens,
       ms: Date.now() - started,
     });
   } catch (err: any) {
-    const status = err?.name === "AbortError" ? 504 : err?.status === 429 ? 429 : 502;
+    const status = err?.name === "AbortError" ? 504 : 502;
     const msg =
       err?.name === "AbortError"
         ? "Took too long — Claude may be slow right now"
