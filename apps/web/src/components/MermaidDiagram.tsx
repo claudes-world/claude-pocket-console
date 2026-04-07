@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 interface MermaidDiagramProps {
   source: string;
@@ -19,9 +19,15 @@ function loadMermaid(): Promise<MermaidModule> {
         theme: "dark",
         securityLevel: "strict",
         themeVariables: {
+          // Tokyo Night palette mapped to mermaid's documented theme variable
+          // names. Previously used `background` and `textColor` which are NOT
+          // recognized by mermaid and were silently ignored — verified against
+          // mermaid 11 docs. The correct keys are `mainBkg` for background
+          // surfaces and `primaryTextColor` for text on primary nodes.
           primaryColor: "#7aa2f7",
-          background: "#1a1b26",
-          textColor: "#c0caf5",
+          primaryTextColor: "#c0caf5",
+          primaryBorderColor: "#2a2b3d",
+          mainBkg: "#1a1b26",
           nodeBorder: "#2a2b3d",
           lineColor: "#565f89",
         },
@@ -40,10 +46,8 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
 
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    isMountedRef.current = true;
     let cancelled = false;
 
     (async () => {
@@ -65,7 +69,6 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
 
     return () => {
       cancelled = true;
-      isMountedRef.current = false;
     };
   }, [id, source]);
 
