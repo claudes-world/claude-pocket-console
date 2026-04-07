@@ -153,6 +153,64 @@ app.get("/read", async (c) => {
   }
 });
 
+// Download file (raw bytes, preserves binary content)
+app.get("/download", async (c) => {
+  const filePath = c.req.query("path");
+  if (!filePath) {
+    return c.json({ error: "path parameter required" }, 400);
+  }
+
+  const resolved = resolve(filePath);
+  if (!isPathAllowed(resolved)) {
+    return c.json({ error: "Access denied" }, 403);
+  }
+
+  try {
+    const st = await stat(resolved);
+    if (!st.isFile()) {
+      return c.json({ error: "Not a file" }, 400);
+    }
+
+    // Cap download size at 50MB for safety
+    if (st.size > 50 * 1024 * 1024) {
+      return c.json({ error: "File too large (max 50MB)" }, 413);
+    }
+
+    const content = await readFile(resolved);
+    const baseName = resolved.split("/").pop() || "file";
+
+    // Basic content-type guess by extension (keeps browsers from mis-sniffing)
+    const ext = baseName.split(".").pop()?.toLowerCase() || "";
+    const typeMap: Record<string, string> = {
+      md: "text/markdown", txt: "text/plain", json: "application/json",
+      js: "application/javascript", ts: "application/typescript",
+      html: "text/html", css: "text/css", csv: "text/csv",
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+      gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+      pdf: "application/pdf", mp3: "audio/mpeg", mp4: "video/mp4",
+      webm: "video/webm", wav: "audio/wav", ogg: "audio/ogg",
+      zip: "application/zip", gz: "application/gzip",
+    };
+    const contentType = typeMap[ext] || "application/octet-stream";
+
+    // RFC 5987 encoding for Content-Disposition filename to handle unicode safely
+    const encodedName = encodeURIComponent(baseName);
+
+    return new Response(new Uint8Array(content), {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(content.length),
+        "Content-Disposition": `attachment; filename="${baseName.replace(/"/g, "")}"; filename*=UTF-8''${encodedName}`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    console.error("[files/download] error:", err);
+    return c.json({ error: "Failed to read file" }, 500);
+  }
+});
+
 // Fuzzy file/path search — BFS across all allowed roots
 app.get("/search", async (c) => {
   const qRaw = c.req.query("q")?.toLowerCase() || "";

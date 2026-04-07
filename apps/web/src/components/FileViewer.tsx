@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { FiDownload } from "react-icons/fi";
 import { getAuthHeaders } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
 
@@ -75,9 +76,45 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   const [error, setError] = useState<string | null>(null);
   const [collapsedRanges, setCollapsedRanges] = useState<Set<number>>(new Set());
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [dirBranch, setDirBranch] = useState<string | null>(null);
   const [dirTreeInfo, setDirTreeInfo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownload = async () => {
+    if (!filePath || !fileName || downloading) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/files/download?path=${encodeURIComponent(filePath)}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        // Try to surface server error message if JSON
+        let msg = `Download failed (${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) msg = data.error;
+        } catch { /* not JSON */ }
+        setError(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Give the browser a tick before revoking the object URL
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -384,6 +421,30 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         >
           {fileContent !== null ? fileName : shortPath}
         </span>
+        {fileContent !== null && (
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            title="Download file"
+            aria-label="Download file"
+            style={{
+              background: "none",
+              border: "none",
+              color: downloading ? "#565f89" : "#7aa2f7",
+              cursor: downloading ? "wait" : "pointer",
+              fontSize: 16,
+              padding: "10px 12px",
+              margin: "-10px -2px",
+              minHeight: 44,
+              minWidth: 44,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <FiDownload />
+          </button>
+        )}
         <button
           onClick={onClose}
           style={{
