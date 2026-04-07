@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 import { SORT_OPTIONS, type SortMode } from "./FileViewer";
+import { MarkdownViewer } from "./MarkdownViewer";
 
 /** Hook: swipe-down-to-close — ONLY from header/drag handle area */
 function useSwipeDown(onClose: () => void, threshold = 80) {
@@ -51,7 +52,7 @@ interface ActionBarProps {
   viewingFile?: { path: string; name: string } | null;
 }
 
-type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-confirm" | "file-options" | "file-search" | "audio-gen" | "confirm-delete" | "reconnect-menu";
+type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-confirm" | "file-options" | "file-search" | "audio-gen" | "tldr" | "confirm-delete" | "reconnect-menu";
 
 /** Bottom sheet — swipe-to-close ONLY from header, content scrolls independently */
 function BottomSheet({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
@@ -128,6 +129,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [audioStatus, setAudioStatus] = useState<{ exists: boolean; path?: string } | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
   const [gitBranch, setGitBranch] = useState<{ branch: string; treeType: string } | null>(null);
+  const [tldrLoading, setTldrLoading] = useState(false);
+  const [tldrSummary, setTldrSummary] = useState<string | null>(null);
+  const [tldrError, setTldrError] = useState<string | null>(null);
+  const [tldrCached, setTldrCached] = useState(false);
+  const [tldrMs, setTldrMs] = useState(0);
+  const [tldrCopied, setTldrCopied] = useState(false);
 
   const btnStyle = { padding: "6px 12px", fontSize: 12, borderRadius: 6, background: "#24283b", color: "#a9b1d6", border: "1px solid #2a2b3d", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 };
   const modalCenter = { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
@@ -333,6 +340,51 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAudioLoading(false);
+    }
+  };
+
+  const generateTldr = async (filePath: string) => {
+    setTldrLoading(true);
+    setTldrError(null);
+    setTldrSummary(null);
+    setTldrCopied(false);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 35000);
+      const res = await fetch("/api/markdown/summarize", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ path: filePath }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (!data.ok) {
+        setTldrError(data.error || "Failed to generate summary");
+      } else {
+        setTldrSummary(data.summary);
+        setTldrCached(Boolean(data.cached));
+        setTldrMs(Number(data.ms) || 0);
+      }
+    } catch (err) {
+      setTldrError(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Took too long — Claude may be slow right now"
+          : `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setTldrLoading(false);
+    }
+  };
+
+  const copyTldr = async () => {
+    if (!tldrSummary) return;
+    try {
+      await navigator.clipboard.writeText(tldrSummary);
+      setTldrCopied(true);
+      setTimeout(() => setTldrCopied(false), 1500);
+    } catch {
+      setTldrError("Clipboard copy failed");
     }
   };
 
@@ -893,6 +945,68 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         </BottomSheet>
       )}
 
+      {/* TL;DR modal */}
+      {modal === "tldr" && viewingFile && (
+        <BottomSheet onClose={() => setModal(null)} title="TL;DR">
+          <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>
+            {viewingFile.name}
+          </div>
+          {tldrLoading && (
+            <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>
+              Summarizing with Claude Haiku...
+            </div>
+          )}
+          {!tldrLoading && tldrError && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "#f7768e", padding: "8px 10px", background: "#2a1a22", border: "1px solid #4a2d3a", borderRadius: 6 }}>
+                {tldrError}
+              </div>
+              <button
+                onClick={() => viewingFile && generateTldr(viewingFile.path)}
+                style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!tldrLoading && !tldrError && tldrSummary && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 10, color: "#565f89" }}>
+                {tldrCached ? "cached" : `fresh (${tldrMs}ms)`}
+              </div>
+              <div
+                style={{
+                  background: "#16171f",
+                  border: "1px solid #2a2b3d",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  color: "#c0caf5",
+                  maxHeight: "45vh",
+                  overflowY: "auto",
+                }}
+              >
+                <MarkdownViewer content={tldrSummary} fileName="tldr.md" />
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={copyTldr}
+                  style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}
+                >
+                  {tldrCopied ? "Copied" : "Copy"}
+                </button>
+                <button
+                  onClick={() => viewingFile && generateTldr(viewingFile.path)}
+                  style={{ ...btnStyle, padding: "10px 14px" }}
+                >
+                  Regenerate
+                </button>
+              </div>
+            </div>
+          )}
+        </BottomSheet>
+      )}
+
       {/* Audio generation modal */}
       {modal === "audio-gen" && viewingFile && (
         <BottomSheet onClose={() => setModal(null)} title="Audio">
@@ -992,6 +1106,20 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               style={{ ...btnStyle, background: "#1a2a3a", color: "#7dcfff", border: "1px solid #2d4a5a" }}
             >
               Send to Chat
+            </button>
+          )}
+          {activeTab === "files" && viewingFile?.name.endsWith(".md") && (
+            <button
+              onClick={() => {
+                setTldrError(null);
+                setTldrSummary(null);
+                setTldrCopied(false);
+                setModal("tldr");
+                generateTldr(viewingFile.path);
+              }}
+              style={{ ...btnStyle, background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}
+            >
+              TL;DR
             </button>
           )}
           {activeTab === "files" && viewingFile?.name.endsWith(".md") && (

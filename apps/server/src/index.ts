@@ -14,6 +14,7 @@ import { telegramRoute } from "./routes/telegram.js";
 import { terminalWsRoute } from "./routes/terminal-ws.js";
 import { filesRoute } from "./routes/files.js";
 import { voiceRoute } from "./routes/voice.js";
+import { markdownRoute } from "./routes/markdown.js";
 
 // Load env from secrets file if not already set
 function loadEnv(path: string) {
@@ -76,6 +77,7 @@ app.route("/api/audio", audioRoute);
 app.route("/api/telegram", telegramRoute);
 app.route("/api/files", filesRoute);
 app.route("/api/voice", voiceRoute);
+app.route("/api/markdown", markdownRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)
 app.get("/ws/terminal", upgradeWebSocket(terminalWsRoute));

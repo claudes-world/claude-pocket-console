@@ -31,6 +31,19 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_transcripts_user ON transcripts(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_tags_tag ON transcript_tags(tag);
+
+  CREATE TABLE IF NOT EXISTS tldr_cache (
+    content_hash TEXT NOT NULL,
+    prompt_version INTEGER NOT NULL DEFAULT 1,
+    model TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    source_path TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (content_hash, prompt_version, model)
+  );
+  CREATE INDEX IF NOT EXISTS idx_tldr_created ON tldr_cache(created_at DESC);
 `);
 
 export { db };

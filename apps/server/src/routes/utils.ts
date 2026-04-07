@@ -17,7 +17,16 @@ export async function sendToTmux(keys: string) {
 
 /** Load OpenAI key from secrets file if not already in env */
 export function loadOpenAIEnv() {
-  const secretsPath = join(HOME, ".secrets/openai.env");
+  loadSecretsFile(join(HOME, ".secrets/openai.env"));
+}
+
+/** Load Anthropic key from secrets file if not already in env */
+export function loadAnthropicEnv() {
+  loadSecretsFile(join(HOME, ".secrets/anthropic.env"));
+}
+
+/** Shared secrets-file loader — parses KEY=VAL lines, skips comments/blanks. */
+function loadSecretsFile(secretsPath: string) {
   try {
     const content = readFileSync(secretsPath, "utf-8");
     for (const line of content.split("\n")) {
@@ -30,7 +39,7 @@ export function loadOpenAIEnv() {
       if (!process.env[key]) process.env[key] = val;
     }
   } catch {
-    // File may not exist yet
+    // File may not exist yet — feature endpoint must no-op gracefully.
   }
 }
 
