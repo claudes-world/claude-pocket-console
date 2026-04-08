@@ -425,6 +425,8 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       setFileContent(null);
       setFileName("");
       setCollapsedRanges(new Set());
+      // Notify parent that file view has ended to reset the ActionBar.
+      onViewChange?.(null);
     } else if (parentPath) {
       loadDirectory(parentPath);
     }
