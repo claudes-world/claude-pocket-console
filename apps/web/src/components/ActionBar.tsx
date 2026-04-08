@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 import { SORT_OPTIONS, type SortMode } from "./FileViewer";
-import { MarkdownViewer } from "./MarkdownViewer";
 
 /** Hook: swipe-down-to-close — ONLY from header/drag handle area */
 function useSwipeDown(onClose: () => void, threshold = 80) {
@@ -357,16 +356,20 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setTldrError(null);
     setTldrSummary(null);
     setTldrCopied(false);
+    // Client timeout must be slightly LONGER than the server-side claude
+    // CLI timeout (60s). If the client gives up first, the server keeps
+    // running the LLM call for no benefit and the user sees a misleading
+    // "took too long" error while the real answer was still coming. 70s
+    // gives the server its full 60s plus ~10s network + JSON overhead.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 70_000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 35000);
       const res = await fetch("/api/markdown/summarize", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ path: filePath }),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
       if (tldrRequestIdRef.current !== requestId) return;
       const data = await res.json();
       if (tldrRequestIdRef.current !== requestId) return;
@@ -385,6 +388,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
           : `Error: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
+      // Always clear the timeout — prior code only cleared after fetch
+      // resolved, leaking the timeout on fast rejections (network error,
+      // CORS, etc). The cleanup must happen regardless of outcome.
+      clearTimeout(timeout);
       if (tldrRequestIdRef.current === requestId) {
         setTldrLoading(false);
       }
