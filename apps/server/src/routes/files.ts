@@ -107,9 +107,18 @@ app.get("/list", async (c) => {
       return a.name.localeCompare(b.name);
     });
 
+    // Return parent: null ONLY if `resolve(resolved, "..")` is itself
+    // NOT allowed. Using `ALLOWED_ROOTS.includes(resolved)` would break
+    // nested allowed roots — e.g. if both /a/b and /a/b/c are in the
+    // list, a user at /a/b/c could see `parent: null` and be unable to
+    // navigate up to /a/b even though that path is allowed. Use the
+    // same `isPathAllowed` check that gates the request itself, which
+    // canonicalizes via realpath and handles symlinks consistently.
+    const candidateParent = resolve(resolved, "..");
+    const parentAllowed = await isPathAllowed(candidateParent);
     return c.json({
       path: resolved,
-      parent: resolve(resolved, ".."),
+      parent: parentAllowed ? candidateParent : null,
       items,
     });
   } catch (err: any) {
