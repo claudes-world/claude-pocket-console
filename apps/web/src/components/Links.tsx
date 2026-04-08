@@ -89,7 +89,7 @@ const TILE_STYLE = `
     corner-shape: squircle;
   }
   @supports not (corner-shape: squircle) {
-    @supports (mask-image: url("")) or (-webkit-mask-image: url("")) {
+    @supports (mask-image: url(#x)) or (-webkit-mask-image: url(#x)) {
       .cpc-app-squircle {
         -webkit-mask-image: ${SQUIRCLE_MASK};
         mask-image: ${SQUIRCLE_MASK};
@@ -238,7 +238,7 @@ function AppTile({ app }: { app: AppItem }) {
         }}
       >
         {failed ? (
-          <span style={{ fontSize: 32, lineHeight: 1 }}>{app.fallbackEmoji}</span>
+          <span aria-hidden="true" style={{ fontSize: 32, lineHeight: 1 }}>{app.fallbackEmoji}</span>
         ) : (
           <img
             src={app.iconSrc}
