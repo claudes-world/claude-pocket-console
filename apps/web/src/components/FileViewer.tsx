@@ -216,8 +216,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   };
 
   const closePasteSheet = () => {
+    // Block dismissal entirely while a save is in progress — closing
+    // mid-write would orphan the in-flight request and leave the user
+    // confused about whether the file was actually written.
+    if (pasteSaving) return;
     // Guard against accidental dismissal when there is meaningful unsaved content.
-    if (!pasteSaving && pasteContent.trim().length > 0) {
+    if (pasteContent.trim().length > 0) {
       const ok = window.confirm("Discard pasted content?");
       if (!ok) return;
     }

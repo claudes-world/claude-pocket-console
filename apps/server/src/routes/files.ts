@@ -482,8 +482,11 @@ app.post(
       size: Buffer.byteLength(normalized, "utf-8"),
     });
   } catch (err: any) {
+    // Log full error server-side for debugging but DON'T leak raw fs error
+    // text (paths, errno codes) to clients. Gemini security-medium review
+    // flagged this as an info-disclosure surface.
     console.error("[files/paste] write error:", err);
-    return c.json({ error: err?.message || "Failed to write file" }, 500);
+    return c.json({ error: "Failed to write file" }, 500);
   }
   },
 );
