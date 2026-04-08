@@ -52,12 +52,21 @@ test.describe("Paste sheet visibility", () => {
 
     // Branch endpoint — FileViewer actually fetches /api/terminal/dir-branch,
     // not /api/git/branch. (Copilot round-2 review pointed out the earlier
-    // stub was a no-op.)
+    // stub was a no-op.) Shape must match apps/server/src/routes/terminal/git.ts
+    // — { ok, branch, isWorktree, treeType, mainTreePath } — otherwise data.ok
+    // is falsy and FileViewer sets dirBranch/dirTreeInfo to null, making the
+    // test unrepresentative. (Copilot round-3 review.)
     await page.route("**/api/terminal/dir-branch**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ branch: "main", treeType: "main" }),
+        body: JSON.stringify({
+          ok: true,
+          branch: "main",
+          isWorktree: false,
+          treeType: "main",
+          mainTreePath: "/home/claude/claudes-world",
+        }),
       });
     });
 
