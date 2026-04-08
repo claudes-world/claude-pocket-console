@@ -23,6 +23,27 @@ import { resolve, sep } from "node:path";
  * using sync realpath here keeps the call pattern simple without changing the
  * route signatures.
  */
+
+// Memoize realpath(root) results. Allowed roots are static config, so resolving
+// them on every request is needless sync I/O on the hot path. We cache only on
+// success — throws propagate uncached so a temporarily missing root retries on
+// the next call.
+const realRootCache = new Map<string, string>();
+
+function getRealRoot(root: string): string {
+  const key = resolve(root);
+  const cached = realRootCache.get(key);
+  if (cached !== undefined) return cached;
+  const real = realpathSync(key);
+  realRootCache.set(key, real);
+  return real;
+}
+
+/** @internal Test-only hook to reset the memoization cache between cases. */
+export function __resetRealRootCacheForTests(): void {
+  realRootCache.clear();
+}
+
 export function isPathAllowed(absPath: string, allowedRoots: string[]): boolean {
   let realCandidate: string;
   try {
@@ -35,12 +56,17 @@ export function isPathAllowed(absPath: string, allowedRoots: string[]): boolean 
   for (const root of allowedRoots) {
     let realRoot: string;
     try {
-      realRoot = realpathSync(resolve(root));
+      realRoot = getRealRoot(root);
     } catch {
       // Allowed root is missing on disk — skip, don't let it match anything.
       continue;
     }
-    if (realCandidate === realRoot || realCandidate.startsWith(realRoot + sep)) {
+    // When realRoot is the filesystem root (e.g. `/` on Unix, `C:\` on
+    // Windows), `realRoot + sep` yields `//` or `C:\\`, which no valid
+    // child path starts with. Only append a separator if the root doesn't
+    // already end with one.
+    const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+    if (realCandidate === realRoot || realCandidate.startsWith(rootWithSep)) {
       return true;
     }
   }

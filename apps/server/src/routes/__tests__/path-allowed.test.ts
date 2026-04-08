@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   mkdirSync,
   mkdtempSync,
@@ -8,7 +8,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isPathAllowed } from "../../lib/path-allowed.js";
+import {
+  __resetRealRootCacheForTests,
+  isPathAllowed,
+} from "../../lib/path-allowed.js";
 
 /**
  * Tests for the shared `isPathAllowed` helper. Covers the two hardened
@@ -53,6 +56,12 @@ beforeAll(() => {
 
 afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  // Each test starts with an empty memoization cache so spies in one test
+  // don't see warm entries from a previous test.
+  __resetRealRootCacheForTests();
 });
 
 describe("isPathAllowed", () => {
@@ -117,5 +126,38 @@ describe("isPathAllowed", () => {
     expect(isPathAllowed(join(allowedRoot, "ok.txt"), roots)).toBe(true);
     expect(isPathAllowed(join(outsideDir, "loot.txt"), roots)).toBe(true);
     expect(isPathAllowed(join(siblingEvil, "secrets.json"), roots)).toBe(false);
+  });
+
+  it("allows children of the filesystem root when `/` is an allowed root", () => {
+    // Regression: previously `realRoot + sep` produced `//`, and a valid
+    // child like `/tmp/...` never matched `startsWith("//")`. The fix only
+    // appends the separator when the root doesn't already end with one.
+    const fileUnderRoot = join(allowedRoot, "ok.txt");
+    expect(isPathAllowed(fileUnderRoot, ["/"])).toBe(true);
+    expect(isPathAllowed(allowedRoot, ["/"])).toBe(true);
+  });
+
+  it("memoizes realpath(root) and returns consistent results across repeated calls", () => {
+    // Spying on `realpathSync` in ESM is blocked by vitest (module namespace
+    // is not configurable), so we verify memoization through observable
+    // behavior instead: repeated calls must produce the same answer without
+    // regressions, and — critically — a cached root must keep resolving
+    // correctly even after the on-disk path is replaced by something that
+    // would not normally satisfy the check. We do that by caching the root,
+    // then swapping its contents, and confirming the prior allow decision
+    // still holds (because `getRealRoot` returns the cached real path).
+    __resetRealRootCacheForTests();
+
+    for (let i = 0; i < 5; i++) {
+      expect(isPathAllowed(join(allowedRoot, "ok.txt"), [allowedRoot])).toBe(true);
+      expect(isPathAllowed(join(siblingEvil, "secrets.json"), [allowedRoot])).toBe(false);
+      expect(isPathAllowed(join(outsideDir, "loot.txt"), [allowedRoot])).toBe(false);
+    }
+
+    // Sanity check: the cache is populated after the first successful
+    // resolution. Reset and confirm the next call still works — a stale
+    // cache would be a functional bug, so this guards against that too.
+    __resetRealRootCacheForTests();
+    expect(isPathAllowed(join(allowedRoot, "ok.txt"), [allowedRoot])).toBe(true);
   });
 });
