@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { open } from "node:fs/promises";
@@ -366,18 +367,21 @@ app.post("/upload", async (c) => {
 // Paste text content into the current directory as a new file.
 // JSON body: { filename: string, content: string, dir: string }
 // 1MB cap, line endings normalized, filename sanitized, never overwrites.
-app.post("/paste", async (c) => {
-  // Reject oversized requests BEFORE we let Hono buffer/parse the body.
-  // Pre-fix bug: the 1MB check ran after `await c.req.json()`, so an
-  // attacker could force the server to buffer arbitrarily large bodies
-  // into memory before the size check rejected them.
-  const contentLength = Number(c.req.header("content-length") || "0");
-  if (contentLength > 2 * 1024 * 1024) {
-    // 2 MB header cap; the inner content cap is 1 MB but JSON wrapping +
-    // escaping adds overhead, so we allow up to 2 MB at the wire level.
-    return c.json({ error: "Request body too large (max 1MB content)" }, 413);
-  }
-
+//
+// Hono's bodyLimit middleware rejects oversized bodies at the streaming
+// layer BEFORE json() buffers them, so chunked requests or missing
+// Content-Length headers can't exhaust server memory. The 2 MB wire
+// cap allows for JSON wrapping + escaping overhead on top of the 1 MB
+// inner content cap checked below after parse.
+const PASTE_BODY_LIMIT = 2 * 1024 * 1024;
+app.post(
+  "/paste",
+  bodyLimit({
+    maxSize: PASTE_BODY_LIMIT,
+    onError: (c) =>
+      c.json({ error: "Request body too large (max 1MB content)" }, 413),
+  }),
+  async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return c.json({ error: "Invalid JSON body" }, 400);
@@ -496,6 +500,7 @@ app.post("/paste", async (c) => {
     console.error("[files/paste] write error:", err);
     return c.json({ error: err?.message || "Failed to write file" }, 500);
   }
-});
+  },
+);
 
 export { app as filesRoute };
