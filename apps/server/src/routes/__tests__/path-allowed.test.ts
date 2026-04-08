@@ -24,9 +24,11 @@ import {
  * `realpath` calls have real inodes to resolve against.
  */
 
-// On Windows, creating a directory symlink requires Developer Mode or admin
-// rights. Using "junction" avoids that restriction while retaining the same
-// cross-boundary escape behaviour for the purposes of these tests.
+// On Windows, creating a *directory* symlink requires Developer Mode or admin
+// rights. Junctions are a Windows-only alternative for directory links that
+// work without those privileges, so the suite stays runnable on stock Windows
+// CI. File-level symlinks on Windows still require elevated rights; if any
+// file-symlink tests are added they should use a similar platform guard.
 const symlinkType = process.platform === "win32" ? "junction" : undefined;
 
 let sandbox: string;
