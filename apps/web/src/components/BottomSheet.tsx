@@ -84,7 +84,7 @@ export function BottomSheet({ onClose, title, children }: BottomSheetProps) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.6)",
+        background: "rgba(0,0,0,0.85)",
         zIndex: 1000,
         display: "flex",
         flexDirection: "column",
