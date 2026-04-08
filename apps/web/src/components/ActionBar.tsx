@@ -1004,17 +1004,26 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                     input is the (potentially malicious) markdown file. A
                     prompt-injected document could coerce the model into
                     emitting raw HTML, <script>, or javascript: URLs which
-                    MarkdownViewer's marked+dangerouslySetInnerHTML pipeline
-                    would render unsanitized. Strip HTML tags and
-                    javascript: schemes BEFORE handing to MarkdownViewer.
-                    Wave 2 react-markdown migration will make this
-                    defense redundant (rehype-sanitize default). */}
-                <MarkdownViewer
-                  content={tldrSummary
-                    .replace(/<[^>]*>/g, "")
-                    .replace(/\bjavascript:/gi, "")}
-                  fileName="tldr.md"
-                />
+                    MarkdownViewer's marked + dangerouslySetInnerHTML
+                    pipeline would render unsanitized. Render the summary
+                    as plain text inside a <pre> instead of the MarkdownViewer
+                    so no HTML parsing happens at all. This sacrifices
+                    markdown rendering (bold, headings look like raw ##) but
+                    eliminates the attack surface entirely. Wave 2 react-
+                    markdown migration will let us switch back to rich
+                    rendering with rehype-sanitize defenses. */}
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    margin: 0,
+                    fontFamily: "inherit",
+                    fontSize: "inherit",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {tldrSummary}
+                </pre>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
