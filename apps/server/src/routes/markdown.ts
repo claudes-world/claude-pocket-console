@@ -278,7 +278,7 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
 
 app.post("/summarize", async (c) => {
   const started = Date.now();
-  let body: { path?: unknown };
+  let body: { path?: unknown; force?: unknown };
   try {
     body = await c.req.json();
   } catch {
@@ -289,6 +289,10 @@ app.post("/summarize", async (c) => {
   if (!rawPath) {
     return c.json({ ok: false, error: "path required" }, 400);
   }
+  // `force` bypasses the cache for the Regenerate button — fetch a fresh
+  // summary even if a cached one exists. The fresh result still gets
+  // written to cache so subsequent regular requests can hit it.
+  const forceRefresh = body.force === true;
 
   const resolved = resolve(rawPath);
   if (!(await isPathAllowed(resolved))) {
@@ -333,20 +337,23 @@ app.post("/summarize", async (c) => {
   const contentHash = createHash("sha256").update(content).digest("hex");
   const cacheKey = `${contentHash}:${promptVersion}:${model}`;
 
-  // Cache lookup (uses module-scoped prepared statement)
-  const cached = selectCacheStmt.get(contentHash, promptVersion, model) as
-    | { summary: string }
-    | undefined;
+  // Cache lookup (uses module-scoped prepared statement). Skipped when
+  // the client passes force=true (Regenerate button).
+  if (!forceRefresh) {
+    const cached = selectCacheStmt.get(contentHash, promptVersion, model) as
+      | { summary: string }
+      | undefined;
 
-  if (cached) {
-    return c.json({
-      ok: true,
-      summary: cached.summary,
-      cached: true,
-      model,
-      promptVersion,
-      ms: Date.now() - started,
-    });
+    if (cached) {
+      return c.json({
+        ok: true,
+        summary: cached.summary,
+        cached: true,
+        model,
+        promptVersion,
+        ms: Date.now() - started,
+      });
+    }
   }
 
   // In-flight dedupe — collapse simultaneous taps on the same doc.

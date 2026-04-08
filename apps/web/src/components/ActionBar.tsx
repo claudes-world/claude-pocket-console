@@ -355,7 +355,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   // discard the response. (Copilot review caught this.)
   const tldrAbortRef = useRef<AbortController | null>(null);
 
-  const generateTldr = async (filePath: string) => {
+  const generateTldr = async (filePath: string, force = false) => {
     const requestId = ++tldrRequestIdRef.current;
     // Abort any previous in-flight request before starting a new one.
     if (tldrAbortRef.current) {
@@ -377,7 +377,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       const res = await fetch("/api/markdown/summarize", {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ path: filePath }),
+        // `force` bypasses the server-side cache. The Regenerate button
+        // sets this to true so re-tapping after editing the source file
+        // actually re-runs the LLM instead of returning the cached summary.
+        body: JSON.stringify({ path: filePath, force }),
         signal: controller.signal,
       });
       if (tldrRequestIdRef.current !== requestId) return;
@@ -423,8 +426,14 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     };
   }, []);
 
+  // Inline transient error specifically for the copy action — keeps the
+  // summary visible instead of swapping the modal to its error state
+  // (which would hide tldrSummary). Surfaces below the Copy button.
+  const [tldrCopyError, setTldrCopyError] = useState<string | null>(null);
+
   const copyTldr = async () => {
     if (!tldrSummary) return;
+    setTldrCopyError(null);
     try {
       await navigator.clipboard.writeText(tldrSummary);
       setTldrCopied(true);
@@ -434,7 +443,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         tldrCopyTimerRef.current = null;
       }, 1500);
     } catch {
-      setTldrError("Clipboard copy failed");
+      // Don't set tldrError — that would hide the visible summary by
+      // switching the modal into the error UI. The summary is still good;
+      // only the clipboard write failed (transient permission/UA issue).
+      setTldrCopyError("Copy failed — long-press the text to copy manually");
     }
   };
 
@@ -1084,12 +1096,17 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   {tldrCopied ? "Copied" : "Copy"}
                 </button>
                 <button
-                  onClick={() => viewingFile && generateTldr(viewingFile.path)}
+                  onClick={() => viewingFile && generateTldr(viewingFile.path, true)}
                   style={{ ...btnStyle, padding: "10px 14px" }}
                 >
                   Regenerate
                 </button>
               </div>
+              {tldrCopyError && (
+                <div style={{ fontSize: 11, color: "#f7768e", marginTop: 4 }}>
+                  {tldrCopyError}
+                </div>
+              )}
             </div>
           )}
         </BottomSheet>
