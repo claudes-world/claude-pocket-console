@@ -382,7 +382,23 @@ app.post(
       c.json({ error: "Request body too large (max 1MB content)" }, 413),
   }),
   async (c) => {
-  const body = await c.req.json().catch(() => null);
+  // Narrow catch: let BodyLimitError from the streaming middleware propagate
+  // so Hono's onError handler returns the configured 413. A blanket .catch
+  // would swallow it and mis-classify oversized bodies as 400.
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch (err) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "name" in err &&
+      (err as { name?: unknown }).name === "BodyLimitError"
+    ) {
+      throw err;
+    }
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   if (!body || typeof body !== "object") {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
