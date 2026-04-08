@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 /** Hook: swipe-down-to-close — ONLY from header/drag handle area */
 function useSwipeDown(onClose: () => void, threshold = 80) {
@@ -63,7 +64,22 @@ export function BottomSheet({ onClose, title, children }: BottomSheetProps) {
     };
   }, []);
 
-  return (
+  // Render via portal into document.body so the modal escapes any transformed
+  // ancestor in the React tree. The App's tab strip uses
+  // `transform: translateX(...)` to slide between Terminal/Files/Links/Voice
+  // panes, which makes any descendant `position: fixed` element be positioned
+  // relative to the transformed strip (4x viewport width) instead of the
+  // viewport itself. The result was a sheet that visually anchored off-screen
+  // to the left and showed only its empty dark background in the visible Files
+  // pane. createPortal moves the DOM nodes out of the strip entirely so
+  // `position: fixed` resolves to the real viewport again.
+  // See: https://developer.mozilla.org/en-US/docs/Web/CSS/position#fixed
+  //
+  // SSR guard: CPC is a Vite SPA with no server render path, but the
+  // `typeof document` check makes the component safe to drop into a Next.js
+  // or Remix consumer in the future without crashing during prerender.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       style={{
         position: "fixed",
@@ -110,6 +126,7 @@ export function BottomSheet({ onClose, title, children }: BottomSheetProps) {
         </div>
       </div>
       <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
-    </div>
+    </div>,
+    document.body,
   );
 }
