@@ -96,7 +96,7 @@ test.describe("Paste sheet visibility", () => {
     if (!viewportSize) throw new Error("page has no viewport size");
     const viewportEpsilon = 1; // allow subpixel rounding
 
-    expect(box.x).toBeGreaterThanOrEqual(-1);
+    expect(box.x).toBeGreaterThanOrEqual(-viewportEpsilon);
     expect(box.x + box.width).toBeLessThanOrEqual(viewportSize.width + viewportEpsilon);
     expect(box.width).toBeGreaterThan(100);
 
