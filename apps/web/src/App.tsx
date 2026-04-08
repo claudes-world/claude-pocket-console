@@ -4,7 +4,7 @@ import { Terminal } from "./components/Terminal";
 import { FileViewer } from "./components/FileViewer";
 import type { SortMode } from "./components/FileViewer";
 import { Links } from "./components/Links";
-import { ActionBar } from "./components/ActionBar";
+import { ActionBar } from "./components/action-bar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
 
