@@ -424,6 +424,13 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               /compact
               <div style={{ fontSize: 10, color: "#4a5a8a", marginTop: 1 }}>Compress conversation context</div>
             </button>
+            <button
+              onClick={() => { setModal(null); handleAction("/api/terminal/reload-plugins", "Reload plugins"); }}
+              style={{ ...btnStyle, padding: "4px 12px", textAlign: "left" as const, fontFamily: "monospace" }}
+            >
+              /reload-plugins
+              <div style={{ fontSize: 10, color: "#565f89", marginTop: 1 }}>Reload installed plugins, skills, and agents</div>
+            </button>
           </div>
         </BottomSheet>
       )}
