@@ -13,7 +13,12 @@
   --color-muted: #565f89;
   --color-border: #2a2b3d;
   --color-border-alt: #414868;
-  --color-fg-subtle: #3b3d57;
+
+  /* Multi-purpose neutral: used as text, border, background, and stroke
+     across ActionBar, VoiceRecorder, WaveformVisualizer, and App version label.
+     Named --color-subtle (not --color-fg-subtle) so text-subtle, border-subtle,
+     bg-subtle all derive from one token. */
+  --color-subtle: #3b3d57;
 
   --color-accent-blue: #7aa2f7;
   --color-accent-purple: #bb9af7;
