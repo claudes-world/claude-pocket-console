@@ -349,9 +349,18 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   // stale and silently discarded. Also handles the "same file summarized
   // twice" race — an older call for file A cannot overwrite a newer one.
   const tldrRequestIdRef = useRef(0);
+  // Track the in-flight AbortController so a NEW request can abort the
+  // previous one. Without this, the prior fetch keeps running and the
+  // server keeps the expensive summarize call alive even though we'll
+  // discard the response. (Copilot review caught this.)
+  const tldrAbortRef = useRef<AbortController | null>(null);
 
   const generateTldr = async (filePath: string) => {
     const requestId = ++tldrRequestIdRef.current;
+    // Abort any previous in-flight request before starting a new one.
+    if (tldrAbortRef.current) {
+      tldrAbortRef.current.abort();
+    }
     setTldrLoading(true);
     setTldrError(null);
     setTldrSummary(null);
@@ -362,6 +371,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     // "took too long" error while the real answer was still coming. 70s
     // gives the server its full 60s plus ~10s network + JSON overhead.
     const controller = new AbortController();
+    tldrAbortRef.current = controller;
     const timeout = setTimeout(() => controller.abort(), 70_000);
     try {
       const res = await fetch("/api/markdown/summarize", {
@@ -392,6 +402,11 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       // resolved, leaking the timeout on fast rejections (network error,
       // CORS, etc). The cleanup must happen regardless of outcome.
       clearTimeout(timeout);
+      // Clear the abort ref only if it still points at our controller —
+      // a newer request may have already replaced it.
+      if (tldrAbortRef.current === controller) {
+        tldrAbortRef.current = null;
+      }
       if (tldrRequestIdRef.current === requestId) {
         setTldrLoading(false);
       }
@@ -400,7 +415,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   // Track the copy "Copied!" indicator timeout so repeated clicks don't
   // race multiple timers and so we cancel pending state updates if the
-  // component unmounts. (Copilot review caught this.)
+  // component unmounts.
   const tldrCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
