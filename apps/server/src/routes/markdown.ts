@@ -28,15 +28,33 @@ function isPathAllowed(absPath: string): Promise<boolean> {
 // loadEnv() runs, so module-init reads capture process.env before the .env
 // file has been applied. Values set only in ~/.secrets/cpc.env would
 // silently fall back to the defaults. Codex pre-push review caught this.
+//
+// Numeric getters validate the parsed value and fall back to the default
+// on NaN/non-finite/non-positive — both Gemini and Copilot review flagged
+// that bare parseInt() lets a malformed env var (empty string, non-digit,
+// negative) propagate NaN into size checks (`size > NaN` is always false
+// → bypass) and cache keys.
 const CLAUDE_TIMEOUT_MS = 60_000;
+const DEFAULT_MAX_BYTES = 512_000;
+const DEFAULT_PROMPT_VERSION = 1;
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 function getMaxBytes(): number {
-  return parseInt(process.env.CPC_TLDR_MAX_BYTES || "512000", 10);
+  return parsePositiveInt(process.env.CPC_TLDR_MAX_BYTES, DEFAULT_MAX_BYTES);
 }
 function getModel(): string {
   return process.env.CPC_TLDR_MODEL || "claude-haiku-4-5";
 }
 function getPromptVersion(): number {
-  return parseInt(process.env.CPC_TLDR_PROMPT_VERSION || "1", 10);
+  return parsePositiveInt(
+    process.env.CPC_TLDR_PROMPT_VERSION,
+    DEFAULT_PROMPT_VERSION,
+  );
 }
 function getClaudeBin(): string {
   return process.env.CPC_CLAUDE_BIN || "claude";
@@ -103,7 +121,8 @@ const inflight = new Map<string, Promise<{ summary: string }>>();
  *   somehow executes, it cannot modify state
  * - `--strict-mcp-config` forbids discovery of other MCP servers that
  *   might grant tool access via indirection
- * - The document is wrapped in `<document>...</document>` XML tags
+ * - The document is wrapped in `<DOCUMENT-{nonce}>...</DOCUMENT-{nonce}>`
+ *   tags where {nonce} is 16 random hex bytes per request — see callsite
  *   with a preceding instruction that treats everything inside as
  *   untrusted input to summarize, not instructions to follow
  *

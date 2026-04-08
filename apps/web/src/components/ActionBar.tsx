@@ -1152,7 +1152,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               Send to Chat
             </button>
           )}
-          {activeTab === "files" && viewingFile?.name.endsWith(".md") && (
+          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && (
             <button
               onClick={() => {
                 setTldrError(null);
@@ -1166,7 +1166,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               TL;DR
             </button>
           )}
-          {activeTab === "files" && viewingFile?.name.endsWith(".md") && (
+          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && (
             <button onClick={() => { checkAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>
               Audio
             </button>
