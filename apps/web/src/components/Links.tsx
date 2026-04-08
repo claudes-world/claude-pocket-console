@@ -73,9 +73,10 @@ const SQUIRCLE_MASK = `url("data:image/svg+xml,${encodeURIComponent(SQUIRCLE_SVG
 //   Layer 1 at 64px. Gated with a nested @supports (mask-image) check so browsers that
 //   lack BOTH corner-shape AND mask-image still keep the base border-radius fallback.
 // Layer 3 (graceful): bare `border-radius: 22%` rounded rect — the base rule, inherited
-//   by everything that doesn't get upgraded by Layer 1 or Layer 2. Importantly, we never
-//   zero out border-radius in a fallback block; if Layer 2 kicks in, the mask clips the
-//   corners anyway so the rounded rect underneath is invisible.
+//   by everything that doesn't get upgraded by Layer 1 or Layer 2. When Layer 2 kicks in
+//   (mask-supported branch) the nested @supports zeros out the base border-radius so the
+//   masked superellipse isn't visually layered on a rounded rect — the mask defines the
+//   entire shape for those browsers.
 // See https://developer.mozilla.org/en-US/docs/Web/CSS/corner-shape
 const TILE_STYLE = `
   .cpc-app-tile {
