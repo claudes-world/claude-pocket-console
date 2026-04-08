@@ -19,9 +19,6 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Guard against React 18 StrictMode double-invoking the mount effect in dev,
-  // which would otherwise fire two summarize requests on a single open.
-  const startedForPathRef = useRef<string | null>(null);
 
   const generateTldr = async (filePath: string, force = false) => {
     const requestId = ++requestIdRef.current;
@@ -54,11 +51,18 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
   };
 
   useEffect(() => {
-    if (startedForPathRef.current !== viewingFile.path) {
-      startedForPathRef.current = viewingFile.path;
+    // React 18 StrictMode intentionally remounts components in dev, which
+    // would double-fire the summarize request. Defer the call via a
+    // setTimeout so the immediate StrictMode unmount can cancel the first
+    // scheduling, and only the second mount's timer actually runs.
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
       void generateTldr(viewingFile.path);
-    }
+    }, 0);
     return () => {
+      cancelled = true;
+      clearTimeout(timer);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       if (abortRef.current) {
         abortRef.current.abort();
