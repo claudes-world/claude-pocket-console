@@ -425,6 +425,11 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       setFileContent(null);
       setFileName("");
       setCollapsedRanges(new Set());
+      // Notify parent we're no longer viewing a file so ActionBar
+      // swaps back to the file-browser button set. Without this,
+      // loadDirectory's onViewChange(null) never fires on back-out
+      // and the viewer action buttons stay stuck on screen.
+      onViewChange?.(null);
     } else if (parentPath) {
       loadDirectory(parentPath);
     }
