@@ -270,6 +270,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setTldrError(null);
     setTldrSummary(null);
     setTldrCopied(false);
+    // Clear stale clipboard error from a prior summary so the user
+    // doesn't see a "Copy failed..." note hovering under a fresh result.
+    // (Copilot review caught this.)
+    setTldrCopyError(null);
     // Client timeout must be slightly LONGER than the server-side claude
     // CLI timeout (60s). If the client gives up first, the server keeps
     // running the LLM call for no benefit and the user sees a misleading
