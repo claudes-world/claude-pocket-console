@@ -343,15 +343,16 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     }
   };
 
-  // Track which file path the current in-flight TL;DR request belongs to.
-  // If the user switches files mid-request, the late-arriving response
-  // would otherwise overwrite a newer request's state and show A's summary
-  // under B's filename. Stamping the ref at request start and checking it
-  // at response time discards stale responses.
-  const tldrRequestFileRef = useRef<string | null>(null);
+  // Per-request counter to scope TL;DR state to the specific in-flight
+  // call, not just the file path. Every request increments the counter
+  // and captures its own snapshot. Late-arriving responses check that
+  // the counter hasn't moved since they started; if it has, they are
+  // stale and silently discarded. Also handles the "same file summarized
+  // twice" race — an older call for file A cannot overwrite a newer one.
+  const tldrRequestIdRef = useRef(0);
 
   const generateTldr = async (filePath: string) => {
-    tldrRequestFileRef.current = filePath;
+    const requestId = ++tldrRequestIdRef.current;
     setTldrLoading(true);
     setTldrError(null);
     setTldrSummary(null);
@@ -366,10 +367,9 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      // Discard if the user switched files while this request was in flight.
-      if (tldrRequestFileRef.current !== filePath) return;
+      if (tldrRequestIdRef.current !== requestId) return;
       const data = await res.json();
-      if (tldrRequestFileRef.current !== filePath) return;
+      if (tldrRequestIdRef.current !== requestId) return;
       if (!data.ok) {
         setTldrError(data.error || "Failed to generate summary");
       } else {
@@ -378,14 +378,14 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         setTldrMs(Number(data.ms) || 0);
       }
     } catch (err) {
-      if (tldrRequestFileRef.current !== filePath) return;
+      if (tldrRequestIdRef.current !== requestId) return;
       setTldrError(
         err instanceof DOMException && err.name === "AbortError"
           ? "Took too long — Claude may be slow right now"
           : `Error: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
-      if (tldrRequestFileRef.current === filePath) {
+      if (tldrRequestIdRef.current === requestId) {
         setTldrLoading(false);
       }
     }
@@ -1000,7 +1000,21 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   overflowY: "auto",
                 }}
               >
-                <MarkdownViewer content={tldrSummary} fileName="tldr.md" />
+                {/* XSS defense: the TL;DR summary comes from an LLM whose
+                    input is the (potentially malicious) markdown file. A
+                    prompt-injected document could coerce the model into
+                    emitting raw HTML, <script>, or javascript: URLs which
+                    MarkdownViewer's marked+dangerouslySetInnerHTML pipeline
+                    would render unsanitized. Strip HTML tags and
+                    javascript: schemes BEFORE handing to MarkdownViewer.
+                    Wave 2 react-markdown migration will make this
+                    defense redundant (rehype-sanitize default). */}
+                <MarkdownViewer
+                  content={tldrSummary
+                    .replace(/<[^>]*>/g, "")
+                    .replace(/\bjavascript:/gi, "")}
+                  fileName="tldr.md"
+                />
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
