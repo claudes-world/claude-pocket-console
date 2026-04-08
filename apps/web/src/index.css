@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  /* Tokyo Night palette — keep these in sync with the inline-style usage
+     across the existing components. After the Codex migration sweep,
+     components will move from inline styles to Tailwind utility classes
+     (e.g. bg-bg, text-fg, border-border) that reference these tokens. */
+
+  --color-bg: #1a1b26;
+  --color-bg-alt: #16161e;
+  --color-fg: #c0caf5;
+  --color-fg-muted: #a9b1d6;
+  --color-muted: #565f89;
+  --color-border: #2a2b3d;
+  --color-border-alt: #414868;
+
+  /* Multi-purpose neutral: used as text, border, background, and stroke
+     across ActionBar, VoiceRecorder, WaveformVisualizer, and App version label.
+     Named --color-subtle (not --color-fg-subtle) so text-subtle, border-subtle,
+     bg-subtle all derive from one token. */
+  --color-subtle: #3b3d57;
+
+  --color-accent-blue: #7aa2f7;
+  --color-accent-purple: #bb9af7;
+  --color-accent-cyan: #7dcfff;
+  --color-accent-green: #9ece6a;
+  --color-accent-yellow: #e0af68;
+  --color-accent-orange: #ff9e64;
+  --color-accent-red: #f7768e;
+  --color-accent-pink: #ff7a93;
+
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
