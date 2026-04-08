@@ -124,3 +124,29 @@ Read what you need for your current task. Start with the closest AGENTS.md.
 | `~/bin/session-history` | Forensic CLI for JSONL session history (list, search, extract, diff) |
 | `~/bin/transcribe`   | Whisper-based audio transcription via OpenAI API        |
 | `/deploy` skill      | Build web, kill server, restart, verify health           |
+
+---
+
+## Cursor Cloud specific instructions
+
+### Quick reference
+
+| Task | Command |
+|------|---------|
+| Install deps | `pnpm install` (from repo root) |
+| Build all | `pnpm build` |
+| Run tests (web) | `cd apps/web && pnpm test` |
+| Run tests (server) | `cd apps/server && pnpm test` |
+| Dev server (backend) | `cd apps/server && pnpm dev` (port 38830) |
+| Dev server (frontend) | `cd apps/web && pnpm dev` (port 58830) |
+| Both dev servers | `pnpm dev` (via turbo, runs both) |
+
+### Gotchas
+
+- **No lint scripts configured.** `pnpm lint` / `turbo lint` runs zero tasks. TypeScript checking happens via `tsc -b` during `pnpm build`.
+- **Secrets file required for server start.** The server loads `~/.secrets/cpc.env` at startup via `loadEnv()`. If missing, it silently continues (no crash), but all auth-protected endpoints will fail. Create a minimal file with `TELEGRAM_BOT_TOKEN` and `ALLOWED_TELEGRAM_USERS` for dev.
+- **SQLite data directory.** The server auto-creates `~/data/cpc-voice.db`, but `~/data/` must exist. Run `mkdir -p ~/data` before starting the server if it doesn't exist.
+- **Vite base path.** In dev mode, Vite serves at `/dev/` (configured for Caddy reverse proxy). Access the frontend at `http://127.0.0.1:58830/dev/`. The `/api` and `/ws` prefixes are proxied to the backend on port 38830.
+- **Telegram auth in browser.** Outside Telegram's WebView, the frontend shows "Telegram auth unavailable." This is expected. The public health endpoint (`/api/public/health`) is the primary dev verification target.
+- **`better-sqlite3` native build.** Listed in `pnpm-workspace.yaml` under `onlyBuiltDependencies`. Requires a working C++ toolchain (gcc/g++). Usually "just works" with `pnpm install` on Linux with build-essential installed.
+- **tmux session dependency.** The terminal viewer feature requires a running tmux session (default name: `claudes-world`). Not needed for basic server/frontend dev, but needed for the terminal tab feature.
