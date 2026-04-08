@@ -56,17 +56,26 @@ const APPS: AppItem[] = [
 
 // True iOS squircle (superellipse) as inline SVG mask.
 // Used as the @supports-not fallback below the CSS `corner-shape: squircle` primary path.
-const SQUIRCLE_MASK =
-  `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M 50,0 C 10,0 0,10 0,50 0,90 10,100 50,100 90,100 100,90 100,50 100,10 90,0 50,0 Z'/></svg>")`;
+// The SVG is URL-encoded via encodeURIComponent for cross-browser safety (spaces, <, >,
+// quotes parse inconsistently in some WebViews). The non-standard `;utf8` parameter is
+// intentionally dropped — it's not in the data URI spec and the encoded form works
+// without it.
+const SQUIRCLE_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M 50,0 C 10,0 0,10 0,50 0,90 10,100 50,100 90,100 100,90 100,50 100,10 90,0 50,0 Z"/></svg>`;
+const SQUIRCLE_MASK = `url("data:image/svg+xml,${encodeURIComponent(SQUIRCLE_SVG)}")`;
 
 // Squircle technique: tiered fallback chain driven by @supports.
 // Layer 1 (primary): CSS `corner-shape: squircle` + `border-radius: 22%` — native true
 //   squircle available in Safari 26+ (2025) and Chrome 130+ (late 2025). Telegram iOS
 //   WebView wraps WKWebView and inherits Safari's support.
 // Layer 2 (fallback): mask-image with an inline SVG superellipse path for browsers that
-//   do not yet implement `corner-shape`. Indistinguishable from Layer 1 at 64px.
-// Layer 3 (graceful): bare `border-radius: 22%` rounded rect, inherited when neither of
-//   the above applies (no @supports block needed — it's the base rule).
+//   do not yet implement `corner-shape` but do support CSS masks. Indistinguishable from
+//   Layer 1 at 64px. Gated with a nested @supports (mask-image) check so browsers that
+//   lack BOTH corner-shape AND mask-image still keep the base border-radius fallback.
+// Layer 3 (graceful): bare `border-radius: 22%` rounded rect — the base rule, inherited
+//   by everything that doesn't get upgraded by Layer 1 or Layer 2. Importantly, we never
+//   zero out border-radius in a fallback block; if Layer 2 kicks in, the mask clips the
+//   corners anyway so the rounded rect underneath is invisible.
 // See https://developer.mozilla.org/en-US/docs/Web/CSS/corner-shape
 const TILE_STYLE = `
   .cpc-app-tile {
@@ -80,14 +89,15 @@ const TILE_STYLE = `
     corner-shape: squircle;
   }
   @supports not (corner-shape: squircle) {
-    .cpc-app-squircle {
-      border-radius: 0;
-      -webkit-mask-image: ${SQUIRCLE_MASK};
-      mask-image: ${SQUIRCLE_MASK};
-      -webkit-mask-size: 100% 100%;
-      mask-size: 100% 100%;
-      -webkit-mask-repeat: no-repeat;
-      mask-repeat: no-repeat;
+    @supports (mask-image: url("")) or (-webkit-mask-image: url("")) {
+      .cpc-app-squircle {
+        -webkit-mask-image: ${SQUIRCLE_MASK};
+        mask-image: ${SQUIRCLE_MASK};
+        -webkit-mask-size: 100% 100%;
+        mask-size: 100% 100%;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+      }
     }
   }
 `;
@@ -232,9 +242,13 @@ function AppTile({ app }: { app: AppItem }) {
         ) : (
           <img
             src={app.iconSrc}
-            alt={app.name}
+            // Empty alt: the visible name label below is the accessible name for this
+            // link, so the icon is decorative and should be skipped by screen readers.
+            alt=""
             width={64}
             height={64}
+            loading="lazy"
+            decoding="async"
             onError={() => setFailed(true)}
             style={{
               width: "100%",
