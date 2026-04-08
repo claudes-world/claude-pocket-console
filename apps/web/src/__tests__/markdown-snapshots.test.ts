@@ -1,16 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
-import { marked } from "marked";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Marked } from "marked";
 
-// Mirror MarkdownViewer.tsx settings exactly so these snapshots represent
-// the current production rendering for the marked-based baseline. When the
-// react-markdown migration lands, the follow-up PR will add a parallel test
-// that renders the same fixtures through react-markdown and diffs the
-// output — the diff between these snapshots and that one is the actual
-// visible change the migration ships.
-marked.setOptions({ gfm: true, breaks: true });
+// Use the same marked parser options as MarkdownViewer.tsx, but snapshot only
+// the raw HTML emitted by marked.parse(). This is intentionally a parser-level
+// baseline and does not cover any MarkdownViewer post-processing that happens
+// after parsing (for example, React-rendered replacements such as mermaid).
+// When the react-markdown migration lands, a follow-up test can render the
+// same fixtures through the component and compare the resulting DOM output.
+const marked = new Marked({ gfm: true, breaks: true });
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(__dirname, "../__fixtures__/markdown");
 
 describe("MarkdownViewer (marked baseline)", () => {
