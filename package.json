@@ -2,7 +2,7 @@
   "name": "claude-pocket-console",
   "private": true,
   "engines": {
-    "node": ">=20.18"
+    "node": ">=20.18.1"
   },
   "scripts": {
     "dev": "turbo dev",
