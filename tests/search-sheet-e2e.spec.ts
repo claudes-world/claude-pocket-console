@@ -70,23 +70,18 @@ test.describe("Search sheet (Search UX C1/C2/C3)", () => {
       });
     });
 
-    // Mock the search endpoint with a couple of file results so the icon
-    // assertion below has more than one SVG to compare.
+    // Mock the search endpoint with a couple of file results plus a dir
+    // result so the icon assertions below cover both branches of
+    // getFileIcon as they compose through FileSearchSheet.
     //
-    // SCOPE NOTE: this E2E spec covers the FILE branch of getFileIcon as it
-    // composes through FileSearchSheet. It does NOT exercise the folder
-    // branch because there's a known production bug where FileSearchSheet
-    // checks `result.type === "directory"` (FileSearchSheet.tsx:79) while
-    // the live server returns `type: "dir"` (apps/server/src/routes/files.ts).
-    // Adding a dir-result row here would either (a) test the buggy code
-    // path with a fake "directory" string the real server never sends, or
-    // (b) silently fall through to the default DocIcon, which doesn't lock
-    // in the folder-specific contract anyway. The folder branch of
-    // getFileIcon is covered directly by the unit test at
-    // apps/web/src/__tests__/file-icons.test.tsx (the "folders" describe
-    // block), which is the right level for that contract. Once the
-    // dir-vs-directory mismatch in FileSearchSheet is fixed in a separate
-    // PR, this E2E spec can add a dir row and tighten the icon assertion.
+    // SCOPE NOTE: PR #111 fixed the dir-vs-directory mismatch in
+    // FileSearchSheet — it now checks `result.type === "dir"`, which is
+    // what the live server actually returns from
+    // apps/server/src/routes/files.ts. With that fix shipped, this spec
+    // includes a dir row and asserts the folder icon renders, locking in
+    // the contract end-to-end (the unit-level coverage at
+    // apps/web/src/__tests__/file-icons.test.tsx still exercises
+    // getFileIcon directly for the broader extension matrix).
     let searchHits = 0;
     const lastSearchUrls: string[] = [];
     await page.route("**/api/files/search**", async (route) => {
@@ -108,6 +103,12 @@ test.describe("Search sheet (Search UX C1/C2/C3)", () => {
               path: "/home/claude/claudes-world/README.md",
               type: "file",
               relPath: "~/claudes-world/README.md",
+            },
+            {
+              name: "components",
+              path: "/home/claude/claudes-world/components",
+              type: "dir",
+              relPath: "~/claudes-world/components",
             },
           ],
         }),
@@ -164,14 +165,26 @@ test.describe("Search sheet (Search UX C1/C2/C3)", () => {
     // through on a single-row spot check.
     const jsonRow = page.locator('button:has-text("config.json")');
     const mdRow = page.locator('button:has-text("README.md")');
+    const dirRow = page.locator('button:has-text("components")');
     await expect(mdRow).toBeVisible({ timeout: 3000 });
+    await expect(dirRow).toBeVisible({ timeout: 3000 });
 
-    for (const row of [jsonRow, mdRow]) {
+    for (const row of [jsonRow, mdRow, dirRow]) {
       await expect(row.locator("svg").first()).toBeVisible();
       const rowText = (await row.textContent()) ?? "";
       expect(rowText).not.toContain("📄");
       expect(rowText).not.toContain("📁");
     }
+
+    // PR #111 fix lock-in: the dir row must render the FolderIcon, not
+    // the default DocIcon fallback. FolderIcon is the only svg in
+    // file-icons.tsx whose path starts with "M1.5 4" (the folder tab
+    // shape), so locating that path under the dir row asserts that
+    // FileSearchSheet correctly passed `isFolder=true` for `type: "dir"`.
+    // If the #111 fix regresses to `=== "directory"`, getFileIcon would
+    // return DocIcon instead and this path would not exist on the row.
+    const dirRowFolderPath = dirRow.locator('svg path[d^="M1.5 4"]');
+    await expect(dirRowFolderPath).toHaveCount(1);
 
     // ── C3 (#108): toggle scopes the request and persists across reload ────
     // The toggle defaults to ON (see ActionBar.tsx). The "co" search above

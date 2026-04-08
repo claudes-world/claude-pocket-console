@@ -408,11 +408,21 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       // `/home/claude/claudes-world` root while the user is actually
       // viewing a file that lives elsewhere. Codex round-1 flagged this
       // as a stale-scope bug after a hash-nav reload from search results.
+      //
+      // We also need to actually populate `entries` / `parentPath` for that
+      // folder, otherwise hitting back from a file opened via search shows
+      // an empty directory (Copilot round-2 finding on PR #106). We await
+      // loadDirectory first so it doesn't clobber fileContent set by
+      // loadFile (loadDirectory's setFileContent(null) would otherwise
+      // race with loadFile's setFileContent(...)).
       const lastSlash = initialFile.lastIndexOf("/");
-      if (lastSlash > 0) {
-        setCurrentPath(initialFile.slice(0, lastSlash));
-      }
-      loadFile(initialFile, name);
+      const initFromSearch = async () => {
+        if (lastSlash > 0) {
+          await loadDirectory(initialFile.slice(0, lastSlash));
+        }
+        await loadFile(initialFile, name);
+      };
+      void initFromSearch();
     } else {
       loadDirectory(currentPath);
     }
