@@ -342,7 +342,13 @@ app.post("/summarize", async (c) => {
   try {
     content = await readFile(resolved, "utf-8");
   } catch (err: any) {
-    return c.json({ ok: false, error: `Read failed: ${err.message}` }, 500);
+    // Don't echo raw fs error message — can include absolute paths and
+    // errno codes. Log server-side, return generic. (Copilot review.)
+    console.error(
+      `[markdown/summarize] readFile(${resolved}) failed:`,
+      err?.message,
+    );
+    return c.json({ ok: false, error: "Failed to read file" }, 500);
   }
   if (!content.trim()) {
     return c.json({ ok: false, error: "File is empty" }, 400);
