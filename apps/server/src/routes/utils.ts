@@ -1,11 +1,25 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
-export const TMUX_SESSION = process.env.TMUX_SESSION || "claudes-world";
+// TMUX_SESSION is consumed by execAsync (shell) in several helpers, so a
+// malicious `process.env.TMUX_SESSION` like `foo; rm -rf /` would break
+// the fence. Validate once at module load against the canonical tmux
+// session-name charset (alphanumerics, hyphens, underscores) and refuse
+// to start otherwise. Flagged security-critical by cloud Gemini Code
+// Assist reviewer on PR #85.
+const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
+if (!/^[A-Za-z0-9_-]+$/.test(_rawTmuxSession)) {
+  throw new Error(
+    `Invalid TMUX_SESSION name: ${JSON.stringify(_rawTmuxSession)}. ` +
+      `Only alphanumerics, hyphens, and underscores are allowed.`,
+  );
+}
+export const TMUX_SESSION = _rawTmuxSession;
 export const HOME = process.env.HOME || "/home/claude";
 export const CLAUDES_WORLD = join(HOME, "claudes-world");
 export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
@@ -13,24 +27,24 @@ export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
 /**
  * Send literal text to the tmux session and submit it with Enter.
  *
- * Uses the same proven pattern as the /compact endpoint:
- *   1. `-l` (literal) flag so tmux does not try to interpret the string as
- *      key names — this matters for any text containing `/`, `;`, or other
- *      tokens tmux might otherwise reject or buffer.
- *   2. `JSON.stringify` for shell escaping — survives quotes, backslashes,
- *      and embedded `$`/backtick safely.
- *   3. Text and Enter sent as two separate send-keys calls so the literal
- *      text is fully flushed before the submit key is delivered.
+ * Uses `execFile` (no shell) with an argv array so `keys` cannot inject
+ * shell metacharacters — we do not rely on `JSON.stringify` as a shell
+ * quoting strategy (it doesn't escape `$VAR`, backticks, or `$(...)` inside
+ * double-quotes). Two separate calls so the literal text is fully flushed
+ * before the Enter key is delivered.
  *
  * The previous implementation `tmux send-keys -t SESSION "${keys}" Enter`
- * (no `-l`, single call, raw shell interpolation) was observed to hang
- * indefinitely against the live `claudes-world` session when invoked from
- * the /reload-plugins endpoint, leaving zombie tmux clients in the cpc.service
- * cgroup and never delivering the slash command to Claude CLI.
+ * (raw shell interpolation, no `-l`, single call via exec) was observed to
+ * hang indefinitely against the live `claudes-world` tmux session when
+ * invoked from the /reload-plugins endpoint, leaving hung tmux clients in
+ * the cpc.service cgroup and never delivering the slash command to Claude
+ * CLI. The `-l` (literal) flag also matters on its own: without it, tmux
+ * tries to interpret `keys` as key names, which can reject or buffer
+ * arbitrary user input.
  */
 export async function sendToTmux(keys: string) {
-  await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);
-  await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", keys]);
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
 }
 
 /** Load OpenAI key from secrets file if not already in env */
