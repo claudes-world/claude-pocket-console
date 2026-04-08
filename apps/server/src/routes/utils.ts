@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 // rather than reading process.env directly so the validation is
 // unbypassable.
 const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
-if (!/^[A-Za-z0-9_-]+$/.test(_rawTmuxSession)) {
+if (!/^[A-Za-z0-9_.-]+$/.test(_rawTmuxSession)) {
   throw new Error(
     `Invalid TMUX_SESSION name: ${JSON.stringify(_rawTmuxSession)}. ` +
       `Only alphanumerics, hyphens, and underscores are allowed.`,
