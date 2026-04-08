@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
 const app = new Hono();
@@ -266,7 +266,10 @@ app.post("/upload", async (c) => {
   }
 
   try {
-    const fileName = (file as File).name || "uploaded-file";
+    // Strip any directory components from the user-supplied filename so a
+    // value like "../../etc/passwd" cannot escape the validated `resolved`
+    // directory via path.join. basename() returns just the trailing segment.
+    const fileName = basename((file as File).name || "uploaded-file");
     const destPath = join(resolved, fileName);
 
     // Don't overwrite existing files — add suffix

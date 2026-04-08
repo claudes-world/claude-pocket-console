@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import {
   __resetRealRootCacheForTests,
   isPathAllowed,
@@ -135,13 +135,18 @@ describe("isPathAllowed", () => {
     expect(await isPathAllowed(join(siblingEvil, "secrets.json"), roots)).toBe(false);
   });
 
-  it("allows children of the filesystem root when `/` is an allowed root", async () => {
+  it("allows children of the filesystem root when the platform root is an allowed root", async () => {
     // Regression: previously `realRoot + sep` produced `//`, and a valid
     // child like `/tmp/...` never matched `startsWith("//")`. The fix only
     // appends the separator when the root doesn't already end with one.
+    //
+    // Use the platform-specific root via path.parse — on Unix this is "/",
+    // on Windows path.resolve("/") returns the current drive root (e.g.
+    // "D:\\") which may differ from the temp sandbox drive in CI.
+    const platformRoot = parse(allowedRoot).root;
     const fileUnderRoot = join(allowedRoot, "ok.txt");
-    expect(await isPathAllowed(fileUnderRoot, ["/"])).toBe(true);
-    expect(await isPathAllowed(allowedRoot, ["/"])).toBe(true);
+    expect(await isPathAllowed(fileUnderRoot, [platformRoot])).toBe(true);
+    expect(await isPathAllowed(allowedRoot, [platformRoot])).toBe(true);
   });
 
   it("memoizes realpath(root) via an on-disk swap of the root target", async () => {
