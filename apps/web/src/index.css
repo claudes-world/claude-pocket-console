@@ -32,3 +32,107 @@
   --font-sans: system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ============================================================
+   Global button tap feedback
+   ============================================================
+   Applies a subtle "press" animation to every <button> in the
+   app the instant a tap is registered, so the user gets instant
+   visual confirmation their tap landed — even when the button's
+   onClick handler is blocked on a stalled network request
+   (motivating case: tapping Reconnect on an airplane with no
+   internet, no visual affordance, no idea if the tap registered).
+
+   CSS :active fires on touchstart independent of the main JS
+   thread, so the animation runs even if onClick is stuck behind
+   a timed-out fetch. Inline style={} attributes (used across all
+   ~73 existing button call sites) don't declare anything for the
+   :active pseudo-state, so this stylesheet rule wins the
+   specificity battle automatically. Zero call-site edits needed.
+
+   Tempo matches the existing .cpc-app-tile squircle animation
+   in Links.tsx (120ms ease-out) so the whole app shares one
+   motion vocabulary.
+   ============================================================ */
+
+button {
+  /* iOS Safari `:active` quirk — historically mobile Safari does
+     not fire :active on elements unless they are explicitly
+     "tappable" via one of: a touchstart handler on the element
+     or body, `cursor: pointer`, or an `ontouchstart=""` attr.
+     Most existing buttons already set cursor: pointer inline
+     via btnStyle, but several (tab bar, Links close X, ad-hoc
+     inline styles) do not. Setting it globally here closes that
+     gap and guarantees :active fires on every button in the
+     Telegram iOS WebView. Harmless on desktop. Harmless on
+     buttons that already set cursor inline. */
+  cursor: pointer;
+
+  /* Tokyo Night accent-blue at 25% alpha for the iOS native tap
+     recognizer — harmonizes with the tab underline and Search
+     button accents. Fires alongside the :active animation as
+     belt-and-braces feedback. */
+  -webkit-tap-highlight-color: rgba(122, 162, 247, 0.25);
+
+  /* Release tempo: 120ms ease-out matches the existing app-tile
+     squircle press animation for unified feel. Fast enough to
+     feel responsive, slow enough for the press to read as a
+     physical release rather than a snap. */
+  transition: transform 120ms ease-out,
+              filter 120ms ease-out,
+              opacity 120ms ease-out;
+}
+
+/* Disabled buttons get the not-allowed cursor so the
+   cursor: pointer above doesn't lie to the user. */
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.96);
+  filter: brightness(1.12);
+  opacity: 0.85;
+  /* No transition on press-down — the feedback must feel instant
+     on touchstart. The transition on the base rule above handles
+     the release-back when :active is removed on touchend. */
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: filter 120ms ease-out, opacity 120ms ease-out;
+  }
+  button:active:not(:disabled) {
+    transform: none;
+    filter: brightness(1.15);
+    opacity: 0.8;
+    transition-duration: 0ms;
+  }
+}
+
+/* ============================================================
+   App tile squircle edge definition (Links page)
+   ============================================================
+   The Companion app's green duck icon blends into the dark
+   #1a1b26 background because the squircle tile's own #1e1f2e
+   fill is barely one shade lighter. A subtle inset shadow
+   gives the tile a visible edge without drawing a hard border.
+
+   Why inset box-shadow (not border/outline): the .cpc-app-squircle
+   class uses corner-shape: squircle on modern browsers and
+   mask-image fallback on older ones. A CSS `border` on the
+   masked branch would render as the element's rectangular
+   bounding box, breaking the shape. `box-shadow: inset` paints
+   INSIDE the element's painted area and therefore follows the
+   clip/mask geometry on both primary and fallback paths.
+
+   rgba(192,202,245,0.14) is the Tokyo Night fg color at low
+   alpha — neutral-cool so it doesn't compete with icon colors.
+   Rule lives here (not in the injected <style> in Links.tsx)
+   so it's part of the global sheet alongside the other tokens.
+   ============================================================ */
+
+.cpc-app-squircle {
+  box-shadow: inset 0 0 0 1px rgba(192, 202, 245, 0.14);
+}
