@@ -331,7 +331,15 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const tldrCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
+      // Clean up the copy timer.
       if (tldrCopyTimerRef.current) clearTimeout(tldrCopyTimerRef.current);
+      // Also abort any in-flight TL;DR request so it doesn't try to
+      // setState on an unmounted component. (Gemini review caught the
+      // missing abort.)
+      if (tldrAbortRef.current) {
+        tldrAbortRef.current.abort();
+        tldrAbortRef.current = null;
+      }
     };
   }, []);
 
@@ -937,6 +945,11 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               tldrAbortRef.current = null;
             }
             tldrRequestIdRef.current++;
+            // Bumping the request id makes the in-flight finally block
+            // skip its setTldrLoading(false) — explicitly reset here
+            // so reopening the modal doesn't show the spinner forever.
+            // (Copilot review caught this loading-stuck state.)
+            setTldrLoading(false);
             setModal(null);
           }}
           title="TL;DR"

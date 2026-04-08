@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
@@ -208,11 +209,18 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
       rejectCall(err);
     }, CLAUDE_TIMEOUT_MS);
 
-    proc.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf-8");
+    // Set encoding on the streams instead of toString'ing per-chunk —
+    // multi-byte UTF-8 characters (emoji, CJK, etc.) can split across
+    // chunk boundaries and corrupt when decoded chunk-at-a-time. Setting
+    // encoding makes Node deliver decoded strings with proper boundary
+    // handling. (Gemini review caught this.)
+    proc.stdout.setEncoding("utf-8");
+    proc.stderr.setEncoding("utf-8");
+    proc.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
     });
-    proc.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf-8");
+    proc.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
     });
 
     proc.on("error", (err) => {
@@ -292,12 +300,32 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
   });
 }
 
-app.post("/summarize", async (c) => {
+// /summarize body is just { path: string, force?: boolean } so 8 KB
+// is plenty. Hono's bodyLimit middleware rejects oversized bodies at
+// the streaming layer before json() buffers them, matching the pattern
+// PR #75 used for /paste. (Copilot review caught the missing limit.)
+const SUMMARIZE_BODY_LIMIT = 8 * 1024;
+app.post(
+  "/summarize",
+  bodyLimit({
+    maxSize: SUMMARIZE_BODY_LIMIT,
+    onError: (c) => c.json({ ok: false, error: "Request body too large" }, 413),
+  }),
+  async (c) => {
   const started = Date.now();
   let body: { path?: unknown; force?: unknown };
   try {
     body = await c.req.json();
-  } catch {
+  } catch (err) {
+    // Let BodyLimitError propagate to onError, return 400 for parse errors.
+    if (
+      err &&
+      typeof err === "object" &&
+      "name" in err &&
+      (err as { name?: unknown }).name === "BodyLimitError"
+    ) {
+      throw err;
+    }
     return c.json({ ok: false, error: "Invalid JSON body" }, 400);
   }
 
@@ -427,6 +455,7 @@ app.post("/summarize", async (c) => {
         : err?.message || "Summarization failed";
     return c.json({ ok: false, error: msg }, status);
   }
-});
+  },
+);
 
 export { app as markdownRoute };
