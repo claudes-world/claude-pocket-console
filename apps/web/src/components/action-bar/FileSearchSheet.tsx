@@ -76,7 +76,7 @@ export function FileSearchSheet({
             style={{ ...btnStyle, display: "block", width: "100%", padding: "8px 12px", textAlign: "left", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis" }}
           >
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              {getFileIcon(result.name, result.type === "directory")}
+              {getFileIcon(result.name, result.type === "dir")}
               <span>{result.name}</span>
             </span>
             <div style={{ fontSize: 10, color: "#565f89", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>{result.relPath}</div>
