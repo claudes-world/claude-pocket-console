@@ -18,8 +18,12 @@ test.describe("Paste sheet visibility", () => {
     });
 
     // Mock /api/files/list so the FileViewer renders without a real backend.
-    // Returns a tiny fake listing rooted at /home/claude/claudes-world.
+    // The items shape must match the real server response at
+    // apps/server/src/routes/files.ts — { name, path, type, size, modified }.
+    // FileViewer uses entry.path as a React key, so missing path fields
+    // cause key collisions. (Copilot round-2 review.)
     await page.route("**/api/files/list**", async (route) => {
+      const nowIso = new Date().toISOString();
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -27,15 +31,29 @@ test.describe("Paste sheet visibility", () => {
           path: "/home/claude/claudes-world",
           parent: "/home/claude",
           items: [
-            { name: "AGENTS.md", type: "file", size: 1024, mtime: Date.now() / 1000 },
-            { name: "TODO.md", type: "file", size: 512, mtime: Date.now() / 1000 },
+            {
+              name: "AGENTS.md",
+              path: "/home/claude/claudes-world/AGENTS.md",
+              type: "file",
+              size: 1024,
+              modified: nowIso,
+            },
+            {
+              name: "TODO.md",
+              path: "/home/claude/claudes-world/TODO.md",
+              type: "file",
+              size: 512,
+              modified: nowIso,
+            },
           ],
         }),
       });
     });
 
-    // Branch endpoint — the FileViewer fetches it but it's optional.
-    await page.route("**/api/git/branch**", async (route) => {
+    // Branch endpoint — FileViewer actually fetches /api/terminal/dir-branch,
+    // not /api/git/branch. (Copilot round-2 review pointed out the earlier
+    // stub was a no-op.)
+    await page.route("**/api/terminal/dir-branch**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -49,15 +67,15 @@ test.describe("Paste sheet visibility", () => {
     // CSS text-transform capitalizes it visually but Playwright matches the DOM.
     const filesTab = page.locator("button", { hasText: /^files$/ });
     await filesTab.click();
-    await page.waitForTimeout(800);
 
     await page.screenshot({ path: "test-results/paste-before-open.png" });
 
     // Click the "+ Paste" button — it lives in the directory listing area.
+    // Playwright's web-first assertions auto-retry, so no explicit timeouts
+    // are needed. (Gemini round-2 review: waitForTimeout is flaky.)
     const pasteBtn = page.locator("button", { hasText: /Paste/ }).first();
     await expect(pasteBtn).toBeVisible({ timeout: 5000 });
     await pasteBtn.click();
-    await page.waitForTimeout(400);
 
     await page.screenshot({ path: "test-results/paste-after-open.png" });
 
@@ -70,9 +88,16 @@ test.describe("Paste sheet visibility", () => {
     if (!box) throw new Error("textarea has no bounding box");
 
     // The textarea must be within viewport horizontally. The original bug
-    // anchored it at x ~= -25% of viewport width (off-screen left).
+    // anchored it at x ~= -25% of viewport width (off-screen left). Derive
+    // the viewport width from page state instead of hardcoding it so this
+    // stays self-consistent if the setViewportSize call above is changed.
+    const viewportSize = page.viewportSize();
+    expect(viewportSize).not.toBeNull();
+    if (!viewportSize) throw new Error("page has no viewport size");
+    const viewportEpsilon = 1; // allow subpixel rounding
+
     expect(box.x).toBeGreaterThanOrEqual(-1);
-    expect(box.x + box.width).toBeLessThanOrEqual(391);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewportSize.width + viewportEpsilon);
     expect(box.width).toBeGreaterThan(100);
 
     // Save / Cancel buttons should also be visible
