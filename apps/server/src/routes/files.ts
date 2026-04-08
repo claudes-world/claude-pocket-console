@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+  unlink,
+} from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { open } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
@@ -441,6 +447,7 @@ app.post(
         counter === 0
           ? join(resolved, cleanName)
           : join(resolved, `${base}-${counter}${ext}`);
+      let opened = false;
       try {
         const handle = await open(
           candidate,
@@ -450,6 +457,7 @@ app.post(
             fsConstants.O_NOFOLLOW,
           0o644,
         );
+        opened = true;
         try {
           await handle.writeFile(normalized, "utf-8");
         } finally {
@@ -468,6 +476,17 @@ app.post(
             403,
           );
         }
+        // If `open` succeeded but `writeFile`/`close` failed, the file
+        // exists on disk as an empty or partial write. Clean it up so
+        // we don't leave debris in the user's directory. Best-effort
+        // unlink; ignore failures (file might already be gone).
+        if (opened) {
+          try {
+            await unlink(candidate);
+          } catch {
+            // ignore — already gone or unlink not allowed
+          }
+        }
         throw err;
       }
     }
@@ -475,9 +494,12 @@ app.post(
       throw new Error("Could not find available filename");
     }
 
+    // Don't leak the absolute path back to the client (Gemini security-
+    // medium review flagged this as info disclosure). The basename is
+    // sufficient for the UI to show "saved as foo-2.md"; the directory
+    // is whatever the user already typed in the dir field.
     return c.json({
       ok: true,
-      path: finalPath,
       name: basename(finalPath),
       size: Buffer.byteLength(normalized, "utf-8"),
     });

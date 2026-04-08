@@ -37,8 +37,19 @@ function suggestFilename(content: string): string {
  * Mirror the server's filename rules so the Save button can disable
  * before a round trip. The server re-validates regardless.
  */
+/**
+ * Normalize a filename to the canonical form the server will write.
+ * Trims whitespace and strips trailing dots/spaces (Windows-incompatible
+ * but the server's sanitizeFilename does the same so this keeps client
+ * and server in sync — Copilot review caught a drift where the client
+ * validated the trimmed form but sent the unstripped name to the server).
+ */
+function normalizeFilename(name: string): string {
+  return name.trim().replace(/[. ]+$/, "");
+}
+
 function isFilenameValid(name: string): boolean {
-  const trimmed = name.trim().replace(/[. ]+$/, "");
+  const trimmed = normalizeFilename(name);
   if (!trimmed || trimmed.length > 255) return false;
   if (trimmed === "." || trimmed === "..") return false;
   if (/[\x00-\x1f\x7f/\\]/.test(trimmed)) return false;
@@ -242,8 +253,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
   const handlePasteSave = async () => {
     if (pasteSaving) return;
-    // Final client-side guards mirror the server rules.
-    const name = (pasteFilename || suggestFilename(pasteContent)).trim();
+    // Final client-side guards mirror the server rules. Normalize the
+    // filename to the same form that isFilenameValid checks AND that the
+    // server will actually write — without this, "foo." passes validation
+    // (after the inner trim) but the server writes "foo", so the user sees
+    // a different filename than they typed.
+    const name = normalizeFilename(pasteFilename || suggestFilename(pasteContent));
     if (!isFilenameValid(name)) {
       setPasteError("Invalid filename");
       return;
