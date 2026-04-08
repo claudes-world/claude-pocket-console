@@ -23,11 +23,24 @@ function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
 }
 
-const MAX_BYTES = parseInt(process.env.CPC_TLDR_MAX_BYTES || "512000", 10);
-const MODEL = process.env.CPC_TLDR_MODEL || "claude-haiku-4-5";
-const PROMPT_VERSION = parseInt(process.env.CPC_TLDR_PROMPT_VERSION || "1", 10);
+// Env vars are read LAZILY (via getters) instead of snapshotted at module
+// init. Reason: this module is imported by apps/server/src/index.ts BEFORE
+// loadEnv() runs, so module-init reads capture process.env before the .env
+// file has been applied. Values set only in ~/.secrets/cpc.env would
+// silently fall back to the defaults. Codex pre-push review caught this.
 const CLAUDE_TIMEOUT_MS = 60_000;
-const CLAUDE_BIN = process.env.CPC_CLAUDE_BIN || "claude";
+function getMaxBytes(): number {
+  return parseInt(process.env.CPC_TLDR_MAX_BYTES || "512000", 10);
+}
+function getModel(): string {
+  return process.env.CPC_TLDR_MODEL || "claude-haiku-4-5";
+}
+function getPromptVersion(): number {
+  return parseInt(process.env.CPC_TLDR_PROMPT_VERSION || "1", 10);
+}
+function getClaudeBin(): string {
+  return process.env.CPC_CLAUDE_BIN || "claude";
+}
 
 const SYSTEM_PROMPT = `You are a precise, ruthless summarizer of long-form documents for a busy mobile reader who needs the gist in 30 seconds before deciding whether to read the whole thing. Your output must be skim-optimized markdown.
 
@@ -106,11 +119,13 @@ const inflight = new Map<string, Promise<{ summary: string }>>();
  *   on large markdown files
  */
 async function callClaudeCli(content: string): Promise<{ summary: string }> {
+  const model = getModel();
+  const claudeBin = getClaudeBin();
   return new Promise((resolveCall, rejectCall) => {
     const args = [
       "-p",
       "--model",
-      MODEL,
+      model,
       "--append-system-prompt",
       SYSTEM_PROMPT,
       // Prompt injection defense — disable all tools + lock permissions.
@@ -121,7 +136,7 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
       "--strict-mcp-config",
     ];
 
-    const proc = spawn(CLAUDE_BIN, args, {
+    const proc = spawn(claudeBin, args, {
       stdio: ["pipe", "pipe", "pipe"],
       // Inherit environment so the CLI can find its OAuth/keychain
       env: process.env,
@@ -168,7 +183,7 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
       clearTimeout(timeout);
       rejectCall(
         new Error(
-          `Failed to spawn claude CLI (${CLAUDE_BIN}): ${err.message}`,
+          `Failed to spawn claude CLI (${claudeBin}): ${err.message}`,
         ),
       );
     });
@@ -260,9 +275,13 @@ app.post("/summarize", async (c) => {
   if (!st.isFile()) {
     return c.json({ ok: false, error: "Not a file" }, 400);
   }
-  if (st.size > MAX_BYTES) {
+  // Read env values lazily (after loadEnv has run) — see getter definitions.
+  const maxBytes = getMaxBytes();
+  const model = getModel();
+  const promptVersion = getPromptVersion();
+  if (st.size > maxBytes) {
     return c.json(
-      { ok: false, error: `File too large for TL;DR (max ${Math.round(MAX_BYTES / 1024)}KB)` },
+      { ok: false, error: `File too large for TL;DR (max ${Math.round(maxBytes / 1024)}KB)` },
       413,
     );
   }
@@ -280,22 +299,22 @@ app.post("/summarize", async (c) => {
   // Content-addressed cache key including prompt_version + model so prompt
   // or model bumps naturally invalidate without manual cache busting.
   const contentHash = createHash("sha256").update(content).digest("hex");
-  const cacheKey = `${contentHash}:${PROMPT_VERSION}:${MODEL}`;
+  const cacheKey = `${contentHash}:${promptVersion}:${model}`;
 
   // Cache lookup
   const cached = db
     .prepare(
       `SELECT summary FROM tldr_cache WHERE content_hash = ? AND prompt_version = ? AND model = ?`,
     )
-    .get(contentHash, PROMPT_VERSION, MODEL) as { summary: string } | undefined;
+    .get(contentHash, promptVersion, model) as { summary: string } | undefined;
 
   if (cached) {
     return c.json({
       ok: true,
       summary: cached.summary,
       cached: true,
-      model: MODEL,
-      promptVersion: PROMPT_VERSION,
+      model,
+      promptVersion,
       ms: Date.now() - started,
     });
   }
@@ -321,7 +340,7 @@ app.post("/summarize", async (c) => {
         `INSERT OR REPLACE INTO tldr_cache
          (content_hash, prompt_version, model, summary, source_path, input_tokens, output_tokens, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(contentHash, PROMPT_VERSION, MODEL, summary, resolved, 0, 0, Date.now());
+      ).run(contentHash, promptVersion, model, summary, resolved, 0, 0, Date.now());
     } catch (err: any) {
       console.error("[markdown/summarize] cache write failed:", err.message);
       // Non-fatal — return the summary anyway.
@@ -331,8 +350,8 @@ app.post("/summarize", async (c) => {
       ok: true,
       summary,
       cached: false,
-      model: MODEL,
-      promptVersion: PROMPT_VERSION,
+      model,
+      promptVersion,
       ms: Date.now() - started,
     });
   } catch (err: any) {
