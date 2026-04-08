@@ -14,7 +14,7 @@ interface ActionBarProps {
   viewingFile?: { path: string; name: string } | null;
 }
 
-type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-confirm" | "file-options" | "file-search" | "audio-gen" | "confirm-delete" | "reconnect-menu";
+type Modal = null | "commands" | "compact-confirm" | "compact-focus" | "continuity-notes" | "rename" | "fork-name" | "git-status" | "git-menu" | "todo" | "resume" | "new-confirm" | "file-options" | "file-search" | "audio-gen" | "tldr" | "confirm-delete" | "reconnect-menu";
 
 export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
@@ -33,6 +33,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [audioStatus, setAudioStatus] = useState<{ exists: boolean; path?: string } | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
   const [gitBranch, setGitBranch] = useState<{ branch: string; treeType: string } | null>(null);
+  const [tldrLoading, setTldrLoading] = useState(false);
+  const [tldrSummary, setTldrSummary] = useState<string | null>(null);
+  const [tldrError, setTldrError] = useState<string | null>(null);
+  const [tldrCached, setTldrCached] = useState(false);
+  const [tldrMs, setTldrMs] = useState(0);
+  const [tldrCopied, setTldrCopied] = useState(false);
 
   const btnStyle = { padding: "6px 12px", fontSize: 12, borderRadius: 6, background: "#24283b", color: "#a9b1d6", border: "1px solid #2a2b3d", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 };
   const modalCenter = { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
@@ -238,6 +244,126 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAudioLoading(false);
+    }
+  };
+
+  // Per-request counter to scope TL;DR state to the specific in-flight
+  // call, not just the file path. Every request increments the counter
+  // and captures its own snapshot. Late-arriving responses check that
+  // the counter hasn't moved since they started; if it has, they are
+  // stale and silently discarded. Also handles the "same file summarized
+  // twice" race — an older call for file A cannot overwrite a newer one.
+  const tldrRequestIdRef = useRef(0);
+  // Track the in-flight AbortController so a NEW request can abort the
+  // previous one. Without this, the prior fetch keeps running and the
+  // server keeps the expensive summarize call alive even though we'll
+  // discard the response. (Copilot review caught this.)
+  const tldrAbortRef = useRef<AbortController | null>(null);
+
+  const generateTldr = async (filePath: string, force = false) => {
+    const requestId = ++tldrRequestIdRef.current;
+    // Abort any previous in-flight request before starting a new one.
+    if (tldrAbortRef.current) {
+      tldrAbortRef.current.abort();
+    }
+    setTldrLoading(true);
+    setTldrError(null);
+    setTldrSummary(null);
+    setTldrCopied(false);
+    // Clear stale clipboard error from a prior summary so the user
+    // doesn't see a "Copy failed..." note hovering under a fresh result.
+    // (Copilot review caught this.)
+    setTldrCopyError(null);
+    // Client timeout must be slightly LONGER than the server-side claude
+    // CLI timeout (60s). If the client gives up first, the server keeps
+    // running the LLM call for no benefit and the user sees a misleading
+    // "took too long" error while the real answer was still coming. 70s
+    // gives the server its full 60s plus ~10s network + JSON overhead.
+    const controller = new AbortController();
+    tldrAbortRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 70_000);
+    try {
+      const res = await fetch("/api/markdown/summarize", {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        // `force` bypasses the server-side cache. The Regenerate button
+        // sets this to true so re-tapping after editing the source file
+        // actually re-runs the LLM instead of returning the cached summary.
+        body: JSON.stringify({ path: filePath, force }),
+        signal: controller.signal,
+      });
+      if (tldrRequestIdRef.current !== requestId) return;
+      const data = await res.json();
+      if (tldrRequestIdRef.current !== requestId) return;
+      if (!data.ok) {
+        setTldrError(data.error || "Failed to generate summary");
+      } else {
+        setTldrSummary(data.summary);
+        setTldrCached(Boolean(data.cached));
+        setTldrMs(Number(data.ms) || 0);
+      }
+    } catch (err) {
+      if (tldrRequestIdRef.current !== requestId) return;
+      setTldrError(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Took too long — Claude may be slow right now"
+          : `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      // Always clear the timeout — prior code only cleared after fetch
+      // resolved, leaking the timeout on fast rejections (network error,
+      // CORS, etc). The cleanup must happen regardless of outcome.
+      clearTimeout(timeout);
+      // Clear the abort ref only if it still points at our controller —
+      // a newer request may have already replaced it.
+      if (tldrAbortRef.current === controller) {
+        tldrAbortRef.current = null;
+      }
+      if (tldrRequestIdRef.current === requestId) {
+        setTldrLoading(false);
+      }
+    }
+  };
+
+  // Track the copy "Copied!" indicator timeout so repeated clicks don't
+  // race multiple timers and so we cancel pending state updates if the
+  // component unmounts.
+  const tldrCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      // Clean up the copy timer.
+      if (tldrCopyTimerRef.current) clearTimeout(tldrCopyTimerRef.current);
+      // Also abort any in-flight TL;DR request so it doesn't try to
+      // setState on an unmounted component. (Gemini review caught the
+      // missing abort.)
+      if (tldrAbortRef.current) {
+        tldrAbortRef.current.abort();
+        tldrAbortRef.current = null;
+      }
+    };
+  }, []);
+
+  // Inline transient error specifically for the copy action — keeps the
+  // summary visible instead of swapping the modal to its error state
+  // (which would hide tldrSummary). Surfaces below the Copy button.
+  const [tldrCopyError, setTldrCopyError] = useState<string | null>(null);
+
+  const copyTldr = async () => {
+    if (!tldrSummary) return;
+    setTldrCopyError(null);
+    try {
+      await navigator.clipboard.writeText(tldrSummary);
+      setTldrCopied(true);
+      if (tldrCopyTimerRef.current) clearTimeout(tldrCopyTimerRef.current);
+      tldrCopyTimerRef.current = setTimeout(() => {
+        setTldrCopied(false);
+        tldrCopyTimerRef.current = null;
+      }, 1500);
+    } catch {
+      // Don't set tldrError — that would hide the visible summary by
+      // switching the modal into the error UI. The summary is still good;
+      // only the clipboard write failed (transient permission/UA issue).
+      setTldrCopyError("Copy failed — long-press the text to copy manually");
     }
   };
 
@@ -805,6 +931,116 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         </BottomSheet>
       )}
 
+      {/* TL;DR modal */}
+      {modal === "tldr" && viewingFile && (
+        <BottomSheet
+          onClose={() => {
+            // Abort any in-flight summarize call when the user closes
+            // the modal — otherwise the request keeps running and the
+            // server keeps the expensive claude CLI alive even though
+            // the result will be discarded. Bumping the request ref
+            // also makes any late-arriving response a no-op.
+            if (tldrAbortRef.current) {
+              tldrAbortRef.current.abort();
+              tldrAbortRef.current = null;
+            }
+            tldrRequestIdRef.current++;
+            // Bumping the request id makes the in-flight finally block
+            // skip its setTldrLoading(false) — explicitly reset here
+            // so reopening the modal doesn't show the spinner forever.
+            // (Copilot review caught this loading-stuck state.)
+            setTldrLoading(false);
+            setModal(null);
+          }}
+          title="TL;DR"
+        >
+          <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>
+            {viewingFile.name}
+          </div>
+          {tldrLoading && (
+            <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>
+              Summarizing…
+            </div>
+          )}
+          {!tldrLoading && tldrError && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "#f7768e", padding: "8px 10px", background: "#2a1a22", border: "1px solid #4a2d3a", borderRadius: 6 }}>
+                {tldrError}
+              </div>
+              <button
+                onClick={() => viewingFile && generateTldr(viewingFile.path)}
+                style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!tldrLoading && !tldrError && tldrSummary && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 10, color: "#565f89" }}>
+                {tldrCached ? "cached" : `fresh (${tldrMs}ms)`}
+              </div>
+              <div
+                style={{
+                  background: "#16171f",
+                  border: "1px solid #2a2b3d",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  color: "#c0caf5",
+                  maxHeight: "45vh",
+                  overflowY: "auto",
+                }}
+              >
+                {/* XSS defense: the TL;DR summary comes from an LLM whose
+                    input is the (potentially malicious) markdown file. A
+                    prompt-injected document could coerce the model into
+                    emitting raw HTML, <script>, or javascript: URLs which
+                    MarkdownViewer's marked + dangerouslySetInnerHTML
+                    pipeline would render unsanitized. Render the summary
+                    as plain text inside a <pre> instead of the MarkdownViewer
+                    so no HTML parsing happens at all. This sacrifices
+                    markdown rendering (bold, headings look like raw ##) but
+                    eliminates the attack surface entirely. Wave 2 react-
+                    markdown migration will let us switch back to rich
+                    rendering with rehype-sanitize defenses. */}
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    margin: 0,
+                    fontFamily: "inherit",
+                    fontSize: "inherit",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {tldrSummary}
+                </pre>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={copyTldr}
+                  style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}
+                >
+                  {tldrCopied ? "Copied" : "Copy"}
+                </button>
+                <button
+                  onClick={() => viewingFile && generateTldr(viewingFile.path, true)}
+                  style={{ ...btnStyle, padding: "10px 14px" }}
+                >
+                  Regenerate
+                </button>
+              </div>
+              {tldrCopyError && (
+                <div style={{ fontSize: 11, color: "#f7768e", marginTop: 4 }}>
+                  {tldrCopyError}
+                </div>
+              )}
+            </div>
+          )}
+        </BottomSheet>
+      )}
+
       {/* Audio generation modal */}
       {modal === "audio-gen" && viewingFile && (
         <BottomSheet onClose={() => setModal(null)} title="Audio">
@@ -906,7 +1142,21 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
               Send to Chat
             </button>
           )}
-          {activeTab === "files" && viewingFile?.name.endsWith(".md") && (
+          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && (
+            <button
+              onClick={() => {
+                setTldrError(null);
+                setTldrSummary(null);
+                setTldrCopied(false);
+                setModal("tldr");
+                generateTldr(viewingFile.path);
+              }}
+              style={{ ...btnStyle, background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}
+            >
+              TL;DR
+            </button>
+          )}
+          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && (
             <button onClick={() => { checkAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>
               Audio
             </button>
