@@ -170,11 +170,32 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         setError(msg);
         return;
       }
-      const blob = await res.blob();
+      // Re-type the response bytes as octet-stream. iOS Safari / Telegram
+      // in-app webview ignore the `download` attribute on anchors pointing
+      // at blob URLs whose MIME type is something the browser can render
+      // inline (text/markdown, text/plain, text/html, etc.). The result is
+      // that instead of triggering a save, the webview navigates to the
+      // blob URL in-place and shows the raw content, which Liam reported as
+      // "raw markdown in the viewer" for v1.8.0 .md files. Forcing
+      // application/octet-stream keeps the browser from sniffing a
+      // renderable type and reliably routes the click through the normal
+      // file-save path on iOS, Android, and desktop.
+      //
+      // Use Blob.slice() instead of `new Blob([rawBlob], {...})` because
+      // slice returns a view over the existing bytes (zero-copy) whereas
+      // the Blob constructor clones the whole payload. The server caps
+      // downloads at 50MB, and doubling that in WebView RAM has been known
+      // to get the renderer killed mid-download on low-memory iOS devices.
+      const rawBlob = await res.blob();
+      const blob = rawBlob.slice(0, rawBlob.size, "application/octet-stream");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
+      // rel=noopener is a safety belt: if a browser ever opens the link in
+      // a new context instead of downloading, we don't want it to inherit
+      // window.opener access back into the CPC app.
+      a.rel = "noopener";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -425,6 +446,8 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       setFileContent(null);
       setFileName("");
       setCollapsedRanges(new Set());
+      // Notify parent that file view has ended to reset the ActionBar.
+      onViewChange?.(null);
     } else if (parentPath) {
       loadDirectory(parentPath);
     }
@@ -558,34 +581,70 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         </div>
       )}
 
-      {/* Header */}
+      {/* Header
+          Back/Up, Download, and Close all need tap targets that clear
+          Apple HIG's 44x44pt minimum AND leave enough breathing room that
+          neighbors don't eat each other's hit zones on iOS. The previous
+          layout used negative horizontal margins on each button (-6px /
+          -2px / -6px) which collapsed the parent flex `gap` to effectively
+          0px between the Download button and the Close (✕) button. Liam
+          reported "all three buttons are hard to hit" in v1.8.0 UAT — the
+          fix is to drop the negative horizontal margins, bump the parent
+          gap to 12px, and keep the 44x44 floors so every button has a
+          square tap zone with a real corridor between it and its
+          neighbors. The header `padding` is trimmed from `8px 12px` to
+          `4px 8px` so the 44px button heights don't grow the header
+          visibly — with box-sizing: border-box the 44px floor already
+          absorbs the padding, and the buttons themselves still read as
+          inline icons. */}
       <div
         style={{
-          padding: "8px 12px",
+          padding: "4px 8px",
           borderBottom: "1px solid #2a2b3d",
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 12,
           flexShrink: 0,
           minWidth: 0,
           maxWidth: "100%",
           overflow: "hidden",
         }}
       >
+        {/* Back/Up button. When viewing a file it goes back to the
+            directory listing; when in a directory with a parent it goes
+            up one level. At the filesystem root (no file open, no
+            parent) the button is inert — we hide it from the a11y tree
+            and disable clicks so VoiceOver/TalkBack don't announce an
+            actionable control that does nothing, while keeping the
+            layout slot occupied so the header doesn't jump. */}
         <button
           onClick={handleBack}
+          disabled={fileContent === null && parentPath === null}
+          aria-hidden={fileContent === null && parentPath === null ? true : undefined}
+          aria-label={
+            fileContent !== null
+              ? "Back to directory"
+              : parentPath !== null
+                ? "Up one directory"
+                : undefined
+          }
           style={{
             background: "none",
             border: "none",
             color: "#7aa2f7",
-            cursor: "pointer",
+            cursor:
+              fileContent === null && parentPath === null ? "default" : "pointer",
             fontSize: 16,
-            padding: "10px 14px",
-            margin: "-10px -6px",
+            padding: "10px 12px",
             minHeight: 44,
             minWidth: 44,
+            boxSizing: "border-box",
             display: "flex",
             alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            visibility:
+              fileContent === null && parentPath === null ? "hidden" : "visible",
           }}
         >
           {fileContent !== null ? "\u2190 back" : parentPath ? "\u2190 up" : ""}
@@ -598,6 +657,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             flex: 1,
+            minWidth: 0,
           }}
         >
           {fileContent !== null ? fileName : shortPath}
@@ -613,14 +673,15 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
               border: "none",
               color: downloading ? "#565f89" : "#7aa2f7",
               cursor: downloading ? "wait" : "pointer",
-              fontSize: 16,
+              fontSize: 18,
               padding: "10px 12px",
-              margin: "-10px -2px",
               minHeight: 44,
               minWidth: 44,
+              boxSizing: "border-box",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              flexShrink: 0,
             }}
           >
             <FiDownload />
@@ -628,19 +689,21 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         )}
         <button
           onClick={onClose}
+          aria-label="Close file viewer"
           style={{
             background: "none",
             border: "none",
             color: "#565f89",
             cursor: "pointer",
-            fontSize: 14,
-            padding: "10px 14px",
-            margin: "-10px -6px",
+            fontSize: 16,
+            padding: "10px 12px",
             minHeight: 44,
             minWidth: 44,
+            boxSizing: "border-box",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            flexShrink: 0,
           }}
         >
           ✕
@@ -663,7 +726,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
       {/* File content view */}
       {fileContent !== null && !loading && fileName.endsWith(".md") && (
-        <div style={{ flex: 1, overflow: "auto" }}>
+        <div style={{ flex: 1, overflow: "auto", overflowX: "hidden" }}>
           <MarkdownViewer content={fileContent} fileName={fileName} />
         </div>
       )}
