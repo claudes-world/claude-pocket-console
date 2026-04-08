@@ -107,16 +107,18 @@ app.get("/list", async (c) => {
       return a.name.localeCompare(b.name);
     });
 
-    // Return parent: null when `resolved` IS an allowed root, so the
-    // client knows there's no navigable parent and can render the Back/Up
-    // button as inert. Otherwise Copilot's round-1 review pointed out
-    // that the client's `parentPath === null` check never engaged and
-    // users could tap Up at allowed roots, get a 403 Access denied, and
-    // be confused. This is the server-side half of that fix.
-    const isAtAllowedRoot = ALLOWED_ROOTS.includes(resolved);
+    // Return parent: null ONLY if `resolve(resolved, "..")` is itself
+    // NOT allowed. Using `ALLOWED_ROOTS.includes(resolved)` would break
+    // nested allowed roots — e.g. if both /a/b and /a/b/c are in the
+    // list, a user at /a/b/c could see `parent: null` and be unable to
+    // navigate up to /a/b even though that path is allowed. Use the
+    // same `isPathAllowed` check that gates the request itself, which
+    // canonicalizes via realpath and handles symlinks consistently.
+    const candidateParent = resolve(resolved, "..");
+    const parentAllowed = await isPathAllowed(candidateParent);
     return c.json({
       path: resolved,
-      parent: isAtAllowedRoot ? null : resolve(resolved, ".."),
+      parent: parentAllowed ? candidateParent : null,
       items,
     });
   } catch (err: any) {
