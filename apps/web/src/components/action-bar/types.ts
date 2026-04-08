@@ -10,6 +10,7 @@ export interface ActionBarProps {
   fileSortMode?: SortMode;
   setFileSortMode?: (v: SortMode) => void;
   viewingFile?: { path: string; name: string } | null;
+  currentFolder?: string | null;
 }
 
 export type Modal =

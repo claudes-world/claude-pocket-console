@@ -16,7 +16,9 @@ import { StatusLine } from "./StatusLine";
 import { btnStyle, type ActionBarProps, type AudioStatus, type GitBranch, type Modal, type SearchResult, type SessionName } from "./types";
 import { checkAudio, deleteSessionName, fetchGitBranch, fetchGitStatus, fetchSessionNames, fetchTodo, generateAudio, postAction, renameSession, restartSession, runGitCommand, searchFiles, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux } from "./api";
 
-export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile }: ActionBarProps) {
+const SEARCH_SCOPE_KEY = "cpc:search:currentFolderOnly";
+
+export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [compactFocus, setCompactFocus] = useState("");
@@ -29,6 +31,27 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [deleteTarget, setDeleteTarget] = useState<SessionName | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  // "Current folder only" search toggle — default ON, persisted per-user via
+  // localStorage. When ON we pass the folder the user is browsing as a
+  // `scope` query param; when OFF the server falls back to the old global
+  // search across all allowed roots. (Search UX C3.)
+  const [searchCurrentFolderOnly, setSearchCurrentFolderOnly] = useState<boolean>(() => {
+    try {
+      // Default to true unless explicitly set to "false" — so a fresh user
+      // gets the scoped behavior we actually want as the default.
+      return localStorage.getItem(SEARCH_SCOPE_KEY) !== "false";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(SEARCH_SCOPE_KEY, String(searchCurrentFolderOnly)); } catch { /* ignore */ }
+  }, [searchCurrentFolderOnly]);
+  // Keep the latest scope value in a ref so the debounced search callback
+  // (which is a useCallback with a stable identity) can read the freshest
+  // toggle + folder without needing to rebuild on every change.
+  const searchScopeRef = useRef<string | null>(null);
+  searchScopeRef.current = searchCurrentFolderOnly && currentFolder ? currentFolder : null;
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
@@ -121,6 +144,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setSearchResults([]);
   }, []);
 
+  // Ref to the search input handler so an effect below can re-trigger the
+  // debounced search when the scope toggle changes without the effect
+  // having to depend on `handleSearchInput` itself (which would thrash
+  // whenever any of its deps changed).
+  const handleSearchInputRef = useRef<((query: string) => void) | null>(null);
+
   const handleSearchInput = useCallback((query: string) => {
     setSearchQuery(query);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -136,7 +165,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       const controller = new AbortController();
       searchAbortRef.current = controller;
       try {
-        const results = await searchFiles(query, controller.signal);
+        const results = await searchFiles(query, controller.signal, searchScopeRef.current);
         // Only commit results if this fetch is still the latest one — a
         // later call may have aborted us between await and here.
         if (searchAbortRef.current === controller) {
@@ -150,6 +179,20 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       }
     }, 300);
   }, []);
+  handleSearchInputRef.current = handleSearchInput;
+
+  // When the user flips the "current folder only" toggle (or the current
+  // folder itself changes while the sheet is open), re-run the debounced
+  // search so the visible results reflect the new scope. We intentionally
+  // don't depend on `searchQuery` — typing it already schedules its own
+  // search via onChange, so including it here would double-fire.
+  useEffect(() => {
+    if (modal !== "file-search") return;
+    if (searchQuery.length < 2) return;
+    handleSearchInputRef.current?.(searchQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchCurrentFolderOnly, currentFolder, modal]);
+
   const handleCheckAudio = async (filePath: string) => { setAudioStatus(null); setAudioLoading(true); try { setAudioStatus(await checkAudio(filePath)); } catch { setAudioStatus(null); } setAudioLoading(false); };
   const handleGenerateAudio = async (filePath: string) => {
     setAudioLoading(true);
@@ -224,7 +267,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     case "compact-focus": modalNode = <CompactFocusModal value={compactFocus} onChange={setCompactFocus} onBack={() => setModal("compact-confirm")} onSubmit={() => void handleCompact(compactFocus.trim() ? `/compact ${compactFocus.trim()}` : "/compact")} />; break;
     case "continuity-notes": modalNode = <ContinuityNotesModal value={continuityNotes} onChange={setContinuityNotes} onBack={() => setModal("compact-confirm")} onSubmit={() => void handleCompact(`Before compacting, please ensure: 1) README.md is up to date with recent changes. 2) Anything important from this session is saved to the knowledge base or memory. 3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.${continuityNotes.trim() ? ` Additional context from user: "${continuityNotes.trim()}".` : ""}`)} />; break;
     case "file-options": modalNode = <FileOptionsSheet fileShowHidden={fileShowHidden} fileSortMode={fileSortMode} setFileShowHidden={setFileShowHidden} setFileSortMode={setFileSortMode} onClose={() => setModal(null)} />; break;
-    case "file-search": modalNode = <FileSearchSheet searchQuery={searchQuery} searchResults={searchResults} onClose={() => setModal(null)} onChange={handleSearchInput} onSelect={(result) => { setModal(null); window.location.hash = `files&file=${encodeURIComponent(result.path)}`; window.location.reload(); }} />; break;
+    case "file-search": modalNode = <FileSearchSheet searchQuery={searchQuery} searchResults={searchResults} currentFolder={currentFolder ?? null} currentFolderOnly={searchCurrentFolderOnly} onToggleCurrentFolderOnly={setSearchCurrentFolderOnly} onClose={() => setModal(null)} onChange={handleSearchInput} onSelect={(result) => { setModal(null); window.location.hash = `files&file=${encodeURIComponent(result.path)}`; window.location.reload(); }} />; break;
     case "tldr": modalNode = viewingFile ? <TldrModal viewingFile={viewingFile} onClose={() => setModal(null)} /> : null; break;
     case "audio-gen": modalNode = viewingFile ? <AudioGenModal viewingFile={viewingFile} audioLoading={audioLoading} audioStatus={audioStatus} onClose={() => setModal(null)} onGenerate={() => void handleGenerateAudio(viewingFile.path)} onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path); }} /> : null; break;
   }

@@ -116,9 +116,10 @@ export async function runGitCommand(command: string) {
   return data.output || "No output";
 }
 
-export async function searchFiles(query: string, signal?: AbortSignal) {
+export async function searchFiles(query: string, signal?: AbortSignal, scope?: string | null) {
+  const scopeParam = scope ? `&scope=${encodeURIComponent(scope)}` : "";
   const data = await jsonFetch<{ results?: SearchResult[] }>(
-    `/api/files/search?q=${encodeURIComponent(query)}`,
+    `/api/files/search?q=${encodeURIComponent(query)}${scopeParam}`,
     { headers: getAuthHeaders(), signal },
   );
   return data.results || [];

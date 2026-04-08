@@ -93,6 +93,7 @@ interface FileViewerProps {
   sortMode?: SortMode;
   onSortModeChange?: (mode: SortMode) => void;
   onViewChange?: (file: { path: string; name: string } | null) => void;
+  onPathChange?: (path: string) => void;
 }
 
 const EXT_LANG: Record<string, string> = {
@@ -125,7 +126,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export function FileViewer({ onClose, initialFile, showHidden = false, sortMode = "name-asc", onSortModeChange, onViewChange }: FileViewerProps) {
+export function FileViewer({ onClose, initialFile, showHidden = false, sortMode = "name-asc", onSortModeChange, onViewChange, onPathChange }: FileViewerProps) {
   const [currentPath, setCurrentPath] = useState("/home/claude/claudes-world");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -401,11 +402,27 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   useEffect(() => {
     if (initialFile) {
       const name = initialFile.split("/").pop() || "file";
+      // Seed currentPath to the file's parent directory so features that
+      // depend on "what folder am I in right now" (e.g. the Search UX C3
+      // "current folder only" scope) don't stay stuck on the default
+      // `/home/claude/claudes-world` root while the user is actually
+      // viewing a file that lives elsewhere. Codex round-1 flagged this
+      // as a stale-scope bug after a hash-nav reload from search results.
+      const lastSlash = initialFile.lastIndexOf("/");
+      if (lastSlash > 0) {
+        setCurrentPath(initialFile.slice(0, lastSlash));
+      }
       loadFile(initialFile, name);
     } else {
       loadDirectory(currentPath);
     }
   }, []);
+
+  // Notify parent of the browsed directory so features like file search can
+  // scope themselves to the folder the user is currently looking at.
+  useEffect(() => {
+    onPathChange?.(currentPath);
+  }, [currentPath, onPathChange]);
 
   // Fetch git branch for the current directory
   useEffect(() => {
