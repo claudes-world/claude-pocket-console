@@ -269,7 +269,14 @@ app.post("/upload", async (c) => {
     // Strip any directory components from the user-supplied filename so a
     // value like "../../etc/passwd" cannot escape the validated `resolved`
     // directory via path.join. basename() returns just the trailing segment.
-    const fileName = basename((file as File).name || "uploaded-file");
+    let fileName = basename((file as File).name || "uploaded-file");
+    // basename() returns `.`, `..`, or `""` unchanged, which path.join would
+    // then normalize into the parent/current directory. Reject those and
+    // fall back to the default name so the upload always writes a new file
+    // inside the validated root.
+    if (fileName === "" || fileName === "." || fileName === "..") {
+      fileName = "uploaded-file";
+    }
     const destPath = join(resolved, fileName);
 
     // Don't overwrite existing files — add suffix
