@@ -958,9 +958,75 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
             {viewingFile.name}
           </div>
           {tldrLoading && (
-            <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>
-              Summarizing…
-            </div>
+            <>
+              {/* Loading animation for the 15-20s LLM generation window.
+                  Pure CSS keyframes (no new deps). Three signals so the UI
+                  never looks frozen: (1) a rotating teal spinner, (2) a
+                  pulsing "Generating summary…" label, and (3) three
+                  bouncing dots. Tokyo Night palette: bg #1a1b26, text
+                  #c0caf5, accent #7dcfff. */}
+              <style>{`
+                @keyframes tldr-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                @keyframes tldr-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+                @keyframes tldr-bounce {
+                  0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+                  40%           { transform: translateY(-4px); opacity: 1; }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                  [data-tldr-spinner], [data-tldr-label], [data-tldr-dot] {
+                    animation: none !important;
+                  }
+                  [data-tldr-spinner] { border-top-color: #7dcfff; }
+                  [data-tldr-label]   { opacity: 1; }
+                  [data-tldr-dot]     { opacity: 0.9; }
+                }
+              `}</style>
+              <div
+                role="status"
+                aria-live="polite"
+                aria-label="Generating summary"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  padding: "28px 16px",
+                  minHeight: 140,
+                }}
+              >
+                <div
+                  data-tldr-spinner=""
+                  aria-hidden="true"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    border: "3px solid #2a2b3d",
+                    borderTopColor: "#7dcfff",
+                    animation: "tldr-spin 0.9s linear infinite",
+                  }}
+                />
+                <div
+                  data-tldr-label=""
+                  style={{
+                    fontSize: 13,
+                    color: "#c0caf5",
+                    animation: "tldr-pulse 1.6s ease-in-out infinite",
+                  }}
+                >
+                  Generating summary…
+                </div>
+                <div aria-hidden="true" style={{ display: "flex", gap: 5 }}>
+                  <span data-tldr-dot="" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7dcfff", animation: "tldr-bounce 1.2s ease-in-out 0s infinite" }} />
+                  <span data-tldr-dot="" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7dcfff", animation: "tldr-bounce 1.2s ease-in-out 0.15s infinite" }} />
+                  <span data-tldr-dot="" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7dcfff", animation: "tldr-bounce 1.2s ease-in-out 0.3s infinite" }} />
+                </div>
+                <div style={{ fontSize: 11, color: "#a9b1d6" }}>
+                  typically 15-20 seconds
+                </div>
+              </div>
+            </>
           )}
           {!tldrLoading && tldrError && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
