@@ -263,7 +263,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     // server will actually write — without this, "foo." passes validation
     // (after the inner trim) but the server writes "foo", so the user sees
     // a different filename than they typed.
-    const name = normalizeFilename(pasteFilename || suggestFilename(pasteContent));
+    //
+    // Treat whitespace-only filename as empty so we fall through to the
+    // suggested name instead of normalizing "   " → "" and rejecting.
+    // (Copilot caught this consistency drift with the save-disabled check.)
+    const userTyped = pasteFilename.trim();
+    const name = normalizeFilename(userTyped || suggestFilename(pasteContent));
     if (!isFilenameValid(name)) {
       setPasteError("Invalid filename");
       return;
@@ -888,9 +893,14 @@ function PasteSheetBody({
   const byteLength = useMemo(() => new Blob([content]).size, [content]);
   const lineCount = useMemo(() => (content ? content.split("\n").length : 0), [content]);
   const overLimit = byteLength > PASTE_MAX_BYTES;
-  const nameOk = filename.trim().length === 0 || isFilenameValid(filename);
+  // Treat whitespace-only filename as empty so a string like "   " doesn't
+  // pass through as a "user-provided name" and then normalize to empty.
+  // (Copilot review caught the inconsistency between the save-disabled check
+  // and the handlePasteSave OR-fallback.)
+  const trimmedName = filename.trim();
+  const nameOk = trimmedName.length === 0 || isFilenameValid(filename);
   const saveDisabled =
-    saving || content.length === 0 || overLimit || (filename.trim().length > 0 && !nameOk);
+    saving || content.length === 0 || overLimit || (trimmedName.length > 0 && !nameOk);
 
   const shortDir = currentPath.replace("/home/claude/", "~/");
 
