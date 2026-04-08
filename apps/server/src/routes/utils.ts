@@ -10,8 +10,9 @@ const execFileAsync = promisify(execFile);
 // malicious `process.env.TMUX_SESSION` like `foo; rm -rf /` would break
 // the fence. Validate once at module load against the canonical tmux
 // session-name charset (alphanumerics, hyphens, underscores) and refuse
-// to start otherwise. Flagged security-critical by cloud Gemini Code
-// Assist reviewer on PR #85.
+// to start otherwise. Every TMUX_SESSION consumer in the codebase (this
+// module + terminal-ws.ts) must import THIS constant rather than reading
+// process.env directly so the validation is unbypassable.
 const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
 if (!/^[A-Za-z0-9_-]+$/.test(_rawTmuxSession)) {
   throw new Error(
@@ -43,7 +44,10 @@ export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
  * arbitrary user input.
  */
 export async function sendToTmux(keys: string) {
-  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", keys]);
+  // The `--` separator stops tmux from interpreting `keys` as an option
+  // if the first character is a hyphen. execFile already prevents shell
+  // injection but this also prevents tmux-level argument confusion.
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys]);
   await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
 }
 
