@@ -2,7 +2,7 @@ import { spawn, execSync } from "node:child_process";
 import type { WSContext } from "hono/ws";
 import { checkAuth, validateSession, validateJwtToken, getAllowedUsers } from "../auth.js";
 // Import the validated TMUX_SESSION from routes/utils so we inherit the
-// `/^[A-Za-z0-9_-]+$/` character-set check that runs once at module load.
+// `/^[A-Za-z0-9_.-]+$/` character-set check that runs once at module load.
 // Keeping a local unvalidated copy would bypass that fence and leave the
 // execSync call below vulnerable to env-var shell injection. Flagged
 // security-high by cloud Gemini Code Assist on round-2 review of PR #85.
