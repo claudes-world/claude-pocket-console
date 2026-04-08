@@ -45,6 +45,7 @@ export function App() {
     try { localStorage.setItem(HIDDEN_KEY, fileShowHidden ? "1" : "0"); } catch { /* ignore */ }
   }, [fileShowHidden]);
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
+  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
@@ -303,7 +304,7 @@ export function App() {
             <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} />
+            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <Links onClose={() => setActiveTab("terminal")} />
@@ -325,6 +326,7 @@ export function App() {
           fileSortMode={fileSortMode}
           setFileSortMode={setFileSortMode}
           viewingFile={viewingFile}
+          currentFolder={currentFolder}
         />
       </div>
     </div>

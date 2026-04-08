@@ -5,14 +5,59 @@ import { btnStyle, type SearchResult } from "./types";
 interface FileSearchSheetProps {
   searchQuery: string;
   searchResults: SearchResult[];
+  currentFolder: string | null;
+  currentFolderOnly: boolean;
+  onToggleCurrentFolderOnly: (value: boolean) => void;
   onClose: () => void;
   onChange: (value: string) => void;
   onSelect: (result: SearchResult) => void;
 }
 
-export function FileSearchSheet({ searchQuery, searchResults, onClose, onChange, onSelect }: FileSearchSheetProps) {
+export function FileSearchSheet({
+  searchQuery,
+  searchResults,
+  currentFolder,
+  currentFolderOnly,
+  onToggleCurrentFolderOnly,
+  onClose,
+  onChange,
+  onSelect,
+}: FileSearchSheetProps) {
+  const shortFolder = currentFolder ? currentFolder.replace("/home/claude/", "~/") : null;
+  // When the toggle is on but no folder is available (edge case — file viewer
+  // hasn't reported a path yet), fall back to global so the user isn't stuck
+  // with a scope that resolves to nothing. The label flags this state.
+  const scopeActive = currentFolderOnly && !!currentFolder;
   return (
     <BottomSheet onClose={onClose} title="Search Files">
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 2px 10px",
+          fontSize: 12,
+          color: "#a9b1d6",
+          cursor: "pointer",
+          userSelect: "none",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={currentFolderOnly}
+          onChange={(e) => onToggleCurrentFolderOnly(e.target.checked)}
+          style={{ accentColor: "#7aa2f7", width: 14, height: 14, cursor: "pointer" }}
+        />
+        <span>Current folder only</span>
+        {scopeActive && shortFolder && (
+          <span style={{ color: "#565f89", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {shortFolder}
+          </span>
+        )}
+        {currentFolderOnly && !currentFolder && (
+          <span style={{ color: "#e0af68" }}>no folder — searching globally</span>
+        )}
+      </label>
       <input
         value={searchQuery}
         onChange={(e) => onChange(e.target.value)}
