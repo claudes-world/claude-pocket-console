@@ -177,6 +177,11 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    // Track the SIGKILL escalation timer so the close handler can clear
+    // it on a clean exit. Without this, the timer fires later and tries
+    // to SIGKILL an already-exited process — Node treats it as a no-op
+    // but it's still a leaked timer reference. (Gemini review caught this.)
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
 
     const timeout = setTimeout(() => {
       if (settled) return;
@@ -190,12 +195,13 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
       } catch {
         // ignore
       }
-      setTimeout(() => {
+      killTimer = setTimeout(() => {
         try {
           proc.kill("SIGKILL");
         } catch {
           // ignore — process may have already exited
         }
+        killTimer = null;
       }, 5_000);
       const err: Error & { name?: string } = new Error("claude CLI timed out");
       err.name = "AbortError";
@@ -235,15 +241,25 @@ async function callClaudeCli(content: string): Promise<{ summary: string }> {
     });
 
     proc.on("close", (code) => {
+      // Always clear the SIGKILL escalation timer on exit, even if we
+      // already settled — the timer was scheduled by the timeout path
+      // and would otherwise fire on an already-exited child.
+      if (killTimer) {
+        clearTimeout(killTimer);
+        killTimer = null;
+      }
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       if (code !== 0) {
-        rejectCall(
-          new Error(
-            `claude CLI exited ${code}: ${stderr.slice(0, 200) || "(no stderr)"}`,
-          ),
+        // Don't leak claude CLI stderr to the client — it can include
+        // paths, auth hints, or diagnostic output the browser shouldn't
+        // see. Log full stderr server-side and return a generic message.
+        // (Copilot review caught this info-disclosure surface.)
+        console.error(
+          `[markdown/summarize] claude CLI exited ${code}: ${stderr.slice(0, 1000) || "(no stderr)"}`,
         );
+        rejectCall(new Error(`claude CLI exited ${code}`));
         return;
       }
       const summary = stdout.trim();
