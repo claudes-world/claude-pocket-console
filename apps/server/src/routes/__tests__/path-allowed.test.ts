@@ -21,8 +21,13 @@ import {
  *   2. Symlink escape (symlink inside an allowed root pointing outside)
  *
  * Each test builds a fresh temp directory layout on disk so the helper's
- * `realpathSync` calls have real inodes to resolve against.
+ * `realpath` calls have real inodes to resolve against.
  */
+
+// On Windows, creating a directory symlink requires Developer Mode or admin
+// rights. Using "junction" avoids that restriction while retaining the same
+// cross-boundary escape behaviour for the purposes of these tests.
+const symlinkType = process.platform === "win32" ? "junction" : undefined;
 
 let sandbox: string;
 let allowedRoot: string;
@@ -51,7 +56,7 @@ beforeAll(() => {
   // The pre-fix check would allow this because `resolved.startsWith(root)`
   // is true for the symlink path itself; the realpath resolution in the
   // fix catches the escape.
-  symlinkSync(outsideDir, join(allowedRoot, "escape-link"));
+  symlinkSync(outsideDir, join(allowedRoot, "escape-link"), symlinkType);
 });
 
 afterAll(() => {
@@ -65,80 +70,80 @@ beforeEach(() => {
 });
 
 describe("isPathAllowed", () => {
-  it("allows a file directly inside the allowed root", () => {
-    expect(isPathAllowed(join(allowedRoot, "ok.txt"), [allowedRoot])).toBe(true);
+  it("allows a file directly inside the allowed root", async () => {
+    expect(await isPathAllowed(join(allowedRoot, "ok.txt"), [allowedRoot])).toBe(true);
   });
 
-  it("allows a nested file inside the allowed root", () => {
+  it("allows a nested file inside the allowed root", async () => {
     expect(
-      isPathAllowed(join(allowedRoot, "sub", "nested", "deep.txt"), [allowedRoot]),
+      await isPathAllowed(join(allowedRoot, "sub", "nested", "deep.txt"), [allowedRoot]),
     ).toBe(true);
   });
 
-  it("allows the allowed root itself", () => {
-    expect(isPathAllowed(allowedRoot, [allowedRoot])).toBe(true);
+  it("allows the allowed root itself", async () => {
+    expect(await isPathAllowed(allowedRoot, [allowedRoot])).toBe(true);
   });
 
-  it("rejects the sibling-prefix bypass (`root-evil` vs `root`)", () => {
+  it("rejects the sibling-prefix bypass (`root-evil` vs `root`)", async () => {
     // Classic `startsWith`-only bypass: `/tmp/x/root-evil/secrets.json`
     // starts with `/tmp/x/root` as a string. The separator boundary in
     // the fix prevents this from matching.
     expect(
-      isPathAllowed(join(siblingEvil, "secrets.json"), [allowedRoot]),
+      await isPathAllowed(join(siblingEvil, "secrets.json"), [allowedRoot]),
     ).toBe(false);
   });
 
-  it("rejects the sibling-prefix directory itself", () => {
-    expect(isPathAllowed(siblingEvil, [allowedRoot])).toBe(false);
+  it("rejects the sibling-prefix directory itself", async () => {
+    expect(await isPathAllowed(siblingEvil, [allowedRoot])).toBe(false);
   });
 
-  it("rejects a `..` path-traversal that escapes the root after normalization", () => {
+  it("rejects a `..` path-traversal that escapes the root after normalization", async () => {
     const traversal = join(allowedRoot, "..", "root-evil", "secrets.json");
-    expect(isPathAllowed(traversal, [allowedRoot])).toBe(false);
+    expect(await isPathAllowed(traversal, [allowedRoot])).toBe(false);
   });
 
-  it("rejects an absolute path entirely outside the allowed root", () => {
-    expect(isPathAllowed(join(outsideDir, "loot.txt"), [allowedRoot])).toBe(false);
+  it("rejects an absolute path entirely outside the allowed root", async () => {
+    expect(await isPathAllowed(join(outsideDir, "loot.txt"), [allowedRoot])).toBe(false);
   });
 
-  it("rejects a symlink that lives inside the root but points outside", () => {
+  it("rejects a symlink that lives inside the root but points outside", async () => {
     // The symlink itself is at `allowedRoot/escape-link`, which would pass
     // a naive prefix check. After realpath resolution the target is
     // `outsideDir`, which is NOT under the allowed root.
     const escapeTarget = join(allowedRoot, "escape-link", "loot.txt");
-    expect(isPathAllowed(escapeTarget, [allowedRoot])).toBe(false);
+    expect(await isPathAllowed(escapeTarget, [allowedRoot])).toBe(false);
   });
 
-  it("rejects a non-existent path (realpath throws)", () => {
+  it("rejects a non-existent path (realpath rejects)", async () => {
     expect(
-      isPathAllowed(join(allowedRoot, "does-not-exist.txt"), [allowedRoot]),
+      await isPathAllowed(join(allowedRoot, "does-not-exist.txt"), [allowedRoot]),
     ).toBe(false);
   });
 
-  it("rejects when the candidate does not exist even if the parent does", () => {
+  it("rejects when the candidate does not exist even if the parent does", async () => {
     expect(
-      isPathAllowed(join(allowedRoot, "sub", "nope", "file.txt"), [allowedRoot]),
+      await isPathAllowed(join(allowedRoot, "sub", "nope", "file.txt"), [allowedRoot]),
     ).toBe(false);
   });
 
-  it("matches against any root when multiple are allowed", () => {
+  it("matches against any root when multiple are allowed", async () => {
     const roots = [outsideDir, allowedRoot];
-    expect(isPathAllowed(join(allowedRoot, "ok.txt"), roots)).toBe(true);
-    expect(isPathAllowed(join(outsideDir, "loot.txt"), roots)).toBe(true);
-    expect(isPathAllowed(join(siblingEvil, "secrets.json"), roots)).toBe(false);
+    expect(await isPathAllowed(join(allowedRoot, "ok.txt"), roots)).toBe(true);
+    expect(await isPathAllowed(join(outsideDir, "loot.txt"), roots)).toBe(true);
+    expect(await isPathAllowed(join(siblingEvil, "secrets.json"), roots)).toBe(false);
   });
 
-  it("allows children of the filesystem root when `/` is an allowed root", () => {
+  it("allows children of the filesystem root when `/` is an allowed root", async () => {
     // Regression: previously `realRoot + sep` produced `//`, and a valid
     // child like `/tmp/...` never matched `startsWith("//")`. The fix only
     // appends the separator when the root doesn't already end with one.
     const fileUnderRoot = join(allowedRoot, "ok.txt");
-    expect(isPathAllowed(fileUnderRoot, ["/"])).toBe(true);
-    expect(isPathAllowed(allowedRoot, ["/"])).toBe(true);
+    expect(await isPathAllowed(fileUnderRoot, ["/"])).toBe(true);
+    expect(await isPathAllowed(allowedRoot, ["/"])).toBe(true);
   });
 
-  it("memoizes realpath(root) via an on-disk swap of the root target", () => {
-    // Spying on `realpathSync` in ESM is blocked by vitest (module namespace
+  it("memoizes realpath(root) via an on-disk swap of the root target", async () => {
+    // Spying on `realpath` in ESM is blocked by vitest (module namespace
     // is not configurable), so we verify memoization by observing a behavior
     // that ONLY holds if the cached realpath is being reused: we point a
     // symlink at one directory, prime the cache by calling isPathAllowed
@@ -155,29 +160,29 @@ describe("isPathAllowed", () => {
     mkdirSync(swapTargetB, { recursive: true });
     writeFileSync(join(swapTargetA, "a.txt"), "a");
     writeFileSync(join(swapTargetB, "b.txt"), "b");
-    symlinkSync(swapTargetA, swapLink);
+    symlinkSync(swapTargetA, swapLink, symlinkType);
 
     try {
       // Prime the cache: getRealRoot(swapLink) resolves to swapTargetA.
-      expect(isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(true);
+      expect(await isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(true);
 
       // Swap the symlink to point at B. A NON-memoized implementation
       // would now resolve swapLink -> swapTargetB and reject a.txt.
       rmSync(swapLink);
-      symlinkSync(swapTargetB, swapLink);
+      symlinkSync(swapTargetB, swapLink, symlinkType);
 
       // With memoization, the cached realpath (swapTargetA) is still used,
       // so a.txt remains allowed.
-      expect(isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(true);
+      expect(await isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(true);
       // And b.txt — which IS under the current target of the symlink but
       // NOT under the cached realpath — is NOT allowed.
-      expect(isPathAllowed(join(swapTargetB, "b.txt"), [swapLink])).toBe(false);
+      expect(await isPathAllowed(join(swapTargetB, "b.txt"), [swapLink])).toBe(false);
 
       // Reset the cache; the next call re-resolves and picks up the swap,
       // so the behavior inverts: a.txt is now rejected, b.txt is allowed.
       __resetRealRootCacheForTests();
-      expect(isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(false);
-      expect(isPathAllowed(join(swapTargetB, "b.txt"), [swapLink])).toBe(true);
+      expect(await isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(false);
+      expect(await isPathAllowed(join(swapTargetB, "b.txt"), [swapLink])).toBe(true);
     } finally {
       rmSync(swapLink, { force: true });
       rmSync(swapTargetA, { recursive: true, force: true });

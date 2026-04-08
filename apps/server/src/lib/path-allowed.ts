@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 
 /**
@@ -13,30 +13,36 @@ import { resolve, sep } from "node:path";
  *      boundary lands on a real path separator.
  *
  *   2. Symlink escape: a symlink that lives inside an allowed root but points
- *      outside it would otherwise defeat the check. We call `fs.realpathSync`
+ *      outside it would otherwise defeat the check. We call `fs.promises.realpath`
  *      on both the candidate and the root so the comparison happens on the
- *      real on-disk location. Non-existent paths cause `realpathSync` to
- *      throw, which we treat as a rejection.
+ *      real on-disk location. Non-existent paths cause `realpath` to
+ *      reject, which we treat as a rejection.
  *
- * The function is intentionally synchronous: each callsite already does an
- * `await stat(...)` or `await readdir(...)` immediately after the check, so
- * using sync realpath here keeps the call pattern simple without changing the
- * route signatures.
+ * The function is async so that realpath resolution never blocks the event
+ * loop, which matters under concurrent load and avoids a DoS vector.
  */
 
-// Memoize realpath(root) results. Allowed roots are static config, so resolving
-// them on every request is needless sync I/O on the hot path. We cache only on
-// success — throws propagate uncached so a temporarily missing root retries on
-// the next call.
-const realRootCache = new Map<string, string>();
+// Memoize realpath(root) results by caching the Promise itself. Allowed roots
+// are static config, so resolving them on every request is needless I/O.
+// Caching the Promise (not just the resolved string) ensures concurrent
+// requests for the same uncached root share a single in-flight call.
+// If the Promise rejects, the entry is removed so the next request retries
+// (e.g. if a root was temporarily missing). A guard prevents a delayed
+// rejection from evicting a newer entry added after a cache clear.
+const realRootCache = new Map<string, Promise<string>>();
 
-function getRealRoot(root: string): string {
+function getRealRoot(root: string): Promise<string> {
   const key = resolve(root);
   const cached = realRootCache.get(key);
   if (cached !== undefined) return cached;
-  const real = realpathSync(key);
-  realRootCache.set(key, real);
-  return real;
+  const p = realpath(key);
+  p.catch(() => {
+    // Only evict if this exact Promise is still the cached entry so that a
+    // delayed rejection from a stale call cannot remove a newer entry.
+    if (realRootCache.get(key) === p) realRootCache.delete(key);
+  });
+  realRootCache.set(key, p);
+  return p;
 }
 
 /**
@@ -53,10 +59,13 @@ export function __resetRealRootCacheForTests(): void {
   realRootCache.clear();
 }
 
-export function isPathAllowed(absPath: string, allowedRoots: string[]): boolean {
+export async function isPathAllowed(
+  absPath: string,
+  allowedRoots: string[],
+): Promise<boolean> {
   let realCandidate: string;
   try {
-    realCandidate = realpathSync(resolve(absPath));
+    realCandidate = await realpath(resolve(absPath));
   } catch {
     // Non-existent path, broken symlink, or permission denied — reject.
     return false;
@@ -65,7 +74,7 @@ export function isPathAllowed(absPath: string, allowedRoots: string[]): boolean 
   for (const root of allowedRoots) {
     let realRoot: string;
     try {
-      realRoot = getRealRoot(root);
+      realRoot = await getRealRoot(root);
     } catch {
       // Allowed root is missing on disk — skip, don't let it match anything.
       continue;

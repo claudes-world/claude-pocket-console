@@ -16,7 +16,7 @@ const ALLOWED_ROOTS = [
   "/home/claude/claudes-world/.claude",
 ];
 
-function isPathAllowed(absPath: string): boolean {
+function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
 }
 
@@ -35,7 +35,7 @@ app.get("/list", async (c) => {
   const dir = c.req.query("path") || BASE_DIR;
   const resolved = resolve(dir);
 
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -96,7 +96,7 @@ app.get("/read", async (c) => {
   }
 
   const resolved = resolve(filePath);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -161,7 +161,7 @@ app.get("/download", async (c) => {
   }
 
   const resolved = resolve(filePath);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -261,7 +261,7 @@ app.post("/upload", async (c) => {
   }
 
   const resolved = resolve(dir);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
