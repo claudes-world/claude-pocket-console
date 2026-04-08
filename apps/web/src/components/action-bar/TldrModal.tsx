@@ -1,0 +1,121 @@
+import { useEffect, useRef, useState } from "react";
+import { BottomSheet } from "../BottomSheet";
+import { summarizeMarkdown } from "./api";
+import { btnStyle } from "./types";
+
+interface TldrModalProps {
+  viewingFile: { path: string; name: string };
+  onClose: () => void;
+}
+
+export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cached, setCached] = useState(false);
+  const [ms, setMs] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guard against React 18 StrictMode double-invoking the mount effect in dev,
+  // which would otherwise fire two summarize requests on a single open.
+  const startedForPathRef = useRef<string | null>(null);
+
+  const generateTldr = async (filePath: string, force = false) => {
+    const requestId = ++requestIdRef.current;
+    abortRef.current?.abort();
+    setLoading(true);
+    setError(null);
+    setSummary(null);
+    setCopied(false);
+    setCopyError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 70_000);
+    try {
+      const data = await summarizeMarkdown(filePath, force, controller.signal);
+      if (requestIdRef.current !== requestId) return;
+      if (!data.ok) setError(data.error || "Failed to generate summary");
+      else {
+        setSummary(data.summary || "");
+        setCached(Boolean(data.cached));
+        setMs(Number(data.ms) || 0);
+      }
+    } catch (err) {
+      if (requestIdRef.current !== requestId) return;
+      setError(err instanceof DOMException && err.name === "AbortError" ? "Took too long — Claude may be slow right now" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      clearTimeout(timeout);
+      if (abortRef.current === controller) abortRef.current = null;
+      if (requestIdRef.current === requestId) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (startedForPathRef.current !== viewingFile.path) {
+      startedForPathRef.current = viewingFile.path;
+      void generateTldr(viewingFile.path);
+    }
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+    };
+  }, [viewingFile.path]);
+
+  const copyTldr = async () => {
+    if (!summary) return;
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        setCopied(false);
+        copyTimerRef.current = null;
+      }, 1500);
+    } catch {
+      setCopyError("Copy failed — long-press the text to copy manually");
+    }
+  };
+
+  const handleClose = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    requestIdRef.current++;
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <BottomSheet onClose={handleClose} title="TL;DR">
+      <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>{viewingFile.name}</div>
+      {loading && <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>Summarizing…</div>}
+      {!loading && error && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "#f7768e", padding: "8px 10px", background: "#2a1a22", border: "1px solid #4a2d3a", borderRadius: 6 }}>{error}</div>
+          <button onClick={() => void generateTldr(viewingFile.path)} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>Retry</button>
+        </div>
+      )}
+      {!loading && !error && summary && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 10, color: "#565f89" }}>{cached ? "cached" : `fresh (${ms}ms)`}</div>
+          <div style={{ background: "#16171f", border: "1px solid #2a2b3d", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#c0caf5", maxHeight: "45vh", overflowY: "auto" }}>
+            <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "inherit", fontSize: "inherit", lineHeight: 1.5 }}>{summary}</pre>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={copyTldr} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>{copied ? "Copied" : "Copy"}</button>
+            <button onClick={() => void generateTldr(viewingFile.path, true)} style={{ ...btnStyle, padding: "10px 14px" }}>Regenerate</button>
+          </div>
+          {copyError && <div style={{ fontSize: 11, color: "#f7768e", marginTop: 4 }}>{copyError}</div>}
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
