@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { open } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
 const app = new Hono();
@@ -365,6 +367,17 @@ app.post("/upload", async (c) => {
 // JSON body: { filename: string, content: string, dir: string }
 // 1MB cap, line endings normalized, filename sanitized, never overwrites.
 app.post("/paste", async (c) => {
+  // Reject oversized requests BEFORE we let Hono buffer/parse the body.
+  // Pre-fix bug: the 1MB check ran after `await c.req.json()`, so an
+  // attacker could force the server to buffer arbitrarily large bodies
+  // into memory before the size check rejected them.
+  const contentLength = Number(c.req.header("content-length") || "0");
+  if (contentLength > 2 * 1024 * 1024) {
+    // 2 MB header cap; the inner content cap is 1 MB but JSON wrapping +
+    // escaping adds overhead, so we allow up to 2 MB at the wire level.
+    return c.json({ error: "Request body too large (max 1MB content)" }, 413);
+  }
+
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return c.json({ error: "Invalid JSON body" }, 400);
@@ -401,7 +414,7 @@ app.post("/paste", async (c) => {
   }
 
   const resolved = resolve(dir);
-  if (!isPathAllowed(resolved)) {
+  if (!(await isPathAllowed(resolved))) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -419,8 +432,60 @@ app.post("/paste", async (c) => {
   const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
   try {
-    const finalPath = await pickAvailablePath(resolved, cleanName);
-    await writeFile(finalPath, normalized, "utf-8");
+    // Atomic exclusive create with O_NOFOLLOW to defeat both:
+    // (a) the TOCTOU race in pickAvailablePath (stat-then-write window where
+    //     two concurrent callers pick the same suffix), and
+    // (b) symlink-redirected writes (an attacker placing a symlink inside
+    //     an allowed dir that points outside the allowed root would otherwise
+    //     trick the write into landing outside ALLOWED_ROOTS).
+    //
+    // Try the chosen filename, then incrementing suffixes until O_EXCL
+    // succeeds or we give up.
+    const dotIdx = cleanName.lastIndexOf(".");
+    const hasExt = dotIdx > 0;
+    const base = hasExt ? cleanName.slice(0, dotIdx) : cleanName;
+    const ext = hasExt ? cleanName.slice(dotIdx) : "";
+
+    let finalPath = "";
+    for (let counter = 0; counter <= 9999; counter++) {
+      const candidate =
+        counter === 0
+          ? join(resolved, cleanName)
+          : join(resolved, `${base}-${counter}${ext}`);
+      try {
+        const handle = await open(
+          candidate,
+          fsConstants.O_WRONLY |
+            fsConstants.O_CREAT |
+            fsConstants.O_EXCL |
+            fsConstants.O_NOFOLLOW,
+          0o644,
+        );
+        try {
+          await handle.writeFile(normalized, "utf-8");
+        } finally {
+          await handle.close();
+        }
+        finalPath = candidate;
+        break;
+      } catch (err: any) {
+        // EEXIST → file already exists at this suffix, try next.
+        // ELOOP / EMLINK → candidate path is a symlink; reject the upload
+        //                 entirely instead of silently picking another name.
+        if (err && err.code === "EEXIST") continue;
+        if (err && (err.code === "ELOOP" || err.code === "EMLINK")) {
+          return c.json(
+            { error: "Refusing to write through symlink" },
+            403,
+          );
+        }
+        throw err;
+      }
+    }
+    if (!finalPath) {
+      throw new Error("Could not find available filename");
+    }
+
     return c.json({
       ok: true,
       path: finalPath,
