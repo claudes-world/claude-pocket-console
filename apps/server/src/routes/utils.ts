@@ -10,9 +10,27 @@ export const HOME = process.env.HOME || "/home/claude";
 export const CLAUDES_WORLD = join(HOME, "claudes-world");
 export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
 
-/** Send keys to the tmux session */
+/**
+ * Send literal text to the tmux session and submit it with Enter.
+ *
+ * Uses the same proven pattern as the /compact endpoint:
+ *   1. `-l` (literal) flag so tmux does not try to interpret the string as
+ *      key names — this matters for any text containing `/`, `;`, or other
+ *      tokens tmux might otherwise reject or buffer.
+ *   2. `JSON.stringify` for shell escaping — survives quotes, backslashes,
+ *      and embedded `$`/backtick safely.
+ *   3. Text and Enter sent as two separate send-keys calls so the literal
+ *      text is fully flushed before the submit key is delivered.
+ *
+ * The previous implementation `tmux send-keys -t SESSION "${keys}" Enter`
+ * (no `-l`, single call, raw shell interpolation) was observed to hang
+ * indefinitely against the live `claudes-world` session when invoked from
+ * the /reload-plugins endpoint, leaving zombie tmux clients in the cpc.service
+ * cgroup and never delivering the slash command to Claude CLI.
+ */
 export async function sendToTmux(keys: string) {
-  await execAsync(`tmux send-keys -t ${TMUX_SESSION} "${keys}" Enter`);
+  await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);
+  await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
 }
 
 /** Load OpenAI key from secrets file if not already in env */
