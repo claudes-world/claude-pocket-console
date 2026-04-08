@@ -1,6 +1,16 @@
 import { Hono } from "hono";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { bodyLimit } from "hono/body-limit";
+import {
+  open,
+  readdir,
+  readFile,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
+import { constants as fsConstants } from "node:fs";
+import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -15,9 +25,28 @@ const ALLOWED_ROOTS = [
   "/home/claude/claudes-world/.claude",
 ];
 
-function isPathAllowed(absPath: string): boolean {
-  const resolved = resolve(absPath);
-  return ALLOWED_ROOTS.some((root) => resolved.startsWith(root));
+function isPathAllowed(absPath: string): Promise<boolean> {
+  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+}
+
+/**
+ * Sanitize a user-supplied filename. Returns null if the name is unsafe.
+ * Accepts dotfiles (e.g. .gitignore) but rejects the literal "." and "..",
+ * slashes, control chars, null bytes, reserved names, and empty/long names.
+ */
+function sanitizeFilename(raw: string): string | null {
+  if (typeof raw !== "string") return null;
+  // Strip control chars (0x00-0x1f, 0x7f) and trim
+  let cleaned = raw.replace(/[\x00-\x1f\x7f]/g, "").trim();
+  // Collapse trailing dots and spaces (Windows/fat32 footgun + hidden extension tricks)
+  cleaned = cleaned.replace(/[. ]+$/, "");
+  if (cleaned.length === 0 || cleaned.length > 255) return null;
+  if (cleaned.includes("/") || cleaned.includes("\\")) return null;
+  if (cleaned === "." || cleaned === "..") return null;
+  // Windows reserved names (we're Linux, but files may be transferred/shared)
+  const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+  if (WIN_RESERVED.test(cleaned)) return null;
+  return cleaned;
 }
 
 // List available root directories
@@ -35,7 +64,7 @@ app.get("/list", async (c) => {
   const dir = c.req.query("path") || BASE_DIR;
   const resolved = resolve(dir);
 
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -96,7 +125,7 @@ app.get("/read", async (c) => {
   }
 
   const resolved = resolve(filePath);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -161,7 +190,7 @@ app.get("/download", async (c) => {
   }
 
   const resolved = resolve(filePath);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -261,12 +290,22 @@ app.post("/upload", async (c) => {
   }
 
   const resolved = resolve(dir);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
   try {
-    const fileName = (file as File).name || "uploaded-file";
+    // Strip any directory components from the user-supplied filename so a
+    // value like "../../etc/passwd" cannot escape the validated `resolved`
+    // directory via path.join. basename() returns just the trailing segment.
+    let fileName = basename((file as File).name || "uploaded-file");
+    // basename() returns `.`, `..`, or `""` unchanged, which path.join would
+    // then normalize into the parent/current directory. Reject those and
+    // fall back to the default name so the upload always writes a new file
+    // inside the validated root.
+    if (fileName === "" || fileName === "." || fileName === "..") {
+      fileName = "uploaded-file";
+    }
     const destPath = join(resolved, fileName);
 
     // Don't overwrite existing files — add suffix
@@ -296,5 +335,182 @@ app.post("/upload", async (c) => {
     return c.json({ error: err.message }, 500);
   }
 });
+
+// Paste text content into the current directory as a new file.
+// JSON body: { filename: string, content: string, dir: string }
+// 1MB cap, line endings normalized, filename sanitized, never overwrites.
+//
+// Hono's bodyLimit middleware rejects oversized bodies at the streaming
+// layer BEFORE json() buffers them, so chunked requests or missing
+// Content-Length headers can't exhaust server memory. The 2 MB wire
+// cap allows for JSON wrapping + escaping overhead on top of the 1 MB
+// inner content cap checked below after parse.
+const PASTE_BODY_LIMIT = 2 * 1024 * 1024;
+app.post(
+  "/paste",
+  bodyLimit({
+    maxSize: PASTE_BODY_LIMIT,
+    onError: (c) =>
+      c.json(
+        { error: "Request body too large (max 2MB wire / 1MB content)" },
+        413,
+      ),
+  }),
+  async (c) => {
+  // Narrow catch: let BodyLimitError from the streaming middleware propagate
+  // so Hono's onError handler returns the configured 413. A blanket .catch
+  // would swallow it and mis-classify oversized bodies as 400.
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch (err) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "name" in err &&
+      (err as { name?: unknown }).name === "BodyLimitError"
+    ) {
+      throw err;
+    }
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const { filename, content, dir } = body as {
+    filename?: unknown;
+    content?: unknown;
+    dir?: unknown;
+  };
+
+  if (typeof content !== "string") {
+    return c.json({ error: "content required (string)" }, 400);
+  }
+  if (typeof filename !== "string") {
+    return c.json({ error: "filename required (string)" }, 400);
+  }
+  if (typeof dir !== "string") {
+    return c.json({ error: "dir required (string)" }, 400);
+  }
+  if (content.length === 0) {
+    return c.json({ error: "content is empty" }, 400);
+  }
+
+  // 1 MB cap (matches /read). JSON.stringify already decoded the string,
+  // so we measure the UTF-8 byte length of the actual content.
+  const byteLength = Buffer.byteLength(content, "utf-8");
+  if (byteLength > 1024 * 1024) {
+    return c.json({ error: "Content too large (max 1MB)" }, 413);
+  }
+
+  const cleanName = sanitizeFilename(filename);
+  if (!cleanName) {
+    return c.json({ error: "Invalid filename" }, 400);
+  }
+
+  const resolved = resolve(dir);
+  if (!(await isPathAllowed(resolved))) {
+    return c.json({ error: "Access denied" }, 403);
+  }
+
+  // Destination must exist and be a directory. We do NOT auto-create.
+  try {
+    const st = await stat(resolved);
+    if (!st.isDirectory()) {
+      return c.json({ error: "Destination is not a directory" }, 400);
+    }
+  } catch {
+    return c.json({ error: "Destination directory does not exist" }, 404);
+  }
+
+  // Normalize line endings: CRLF and lone CR both become LF.
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  try {
+    // Atomic exclusive create with O_NOFOLLOW to defeat both:
+    // (a) the TOCTOU race in pickAvailablePath (stat-then-write window where
+    //     two concurrent callers pick the same suffix), and
+    // (b) symlink-redirected writes (an attacker placing a symlink inside
+    //     an allowed dir that points outside the allowed root would otherwise
+    //     trick the write into landing outside ALLOWED_ROOTS).
+    //
+    // Try the chosen filename, then incrementing suffixes until O_EXCL
+    // succeeds or we give up.
+    const dotIdx = cleanName.lastIndexOf(".");
+    const hasExt = dotIdx > 0;
+    const base = hasExt ? cleanName.slice(0, dotIdx) : cleanName;
+    const ext = hasExt ? cleanName.slice(dotIdx) : "";
+
+    let finalPath = "";
+    for (let counter = 0; counter <= 9999; counter++) {
+      const candidate =
+        counter === 0
+          ? join(resolved, cleanName)
+          : join(resolved, `${base}-${counter}${ext}`);
+      let opened = false;
+      try {
+        const handle = await open(
+          candidate,
+          fsConstants.O_WRONLY |
+            fsConstants.O_CREAT |
+            fsConstants.O_EXCL |
+            fsConstants.O_NOFOLLOW,
+          0o644,
+        );
+        opened = true;
+        try {
+          await handle.writeFile(normalized, "utf-8");
+        } finally {
+          await handle.close();
+        }
+        finalPath = candidate;
+        break;
+      } catch (err: any) {
+        // EEXIST → file already exists at this suffix, try next.
+        // ELOOP / EMLINK → candidate path is a symlink; reject the upload
+        //                 entirely instead of silently picking another name.
+        if (err && err.code === "EEXIST") continue;
+        if (err && (err.code === "ELOOP" || err.code === "EMLINK")) {
+          return c.json(
+            { error: "Refusing to write through symlink" },
+            403,
+          );
+        }
+        // If `open` succeeded but `writeFile`/`close` failed, the file
+        // exists on disk as an empty or partial write. Clean it up so
+        // we don't leave debris in the user's directory. Best-effort
+        // unlink; ignore failures (file might already be gone).
+        if (opened) {
+          try {
+            await unlink(candidate);
+          } catch {
+            // ignore — already gone or unlink not allowed
+          }
+        }
+        throw err;
+      }
+    }
+    if (!finalPath) {
+      throw new Error("Could not find available filename");
+    }
+
+    // Don't leak the absolute path back to the client (Gemini security-
+    // medium review flagged this as info disclosure). The basename is
+    // sufficient for the UI to show "saved as foo-2.md"; the directory
+    // is whatever the user already typed in the dir field.
+    return c.json({
+      ok: true,
+      name: basename(finalPath),
+      size: Buffer.byteLength(normalized, "utf-8"),
+    });
+  } catch (err: any) {
+    // Log full error server-side for debugging but DON'T leak raw fs error
+    // text (paths, errno codes) to clients. Gemini security-medium review
+    // flagged this as an info-disclosure surface.
+    console.error("[files/paste] write error:", err);
+    return c.json({ error: "Failed to write file" }, 500);
+  }
+  },
+);
 
 export { app as filesRoute };
