@@ -183,7 +183,7 @@ function ErrorFallback({ error, onRetry, onReload }: ErrorFallbackProps) {
           width: "100%",
           maxWidth: 480,
           background: "#16161e",
-          border: "1px solid #292e42",
+          border: "1px solid #2a2b3d",
           borderRadius: 8,
           padding: 12,
         }}
