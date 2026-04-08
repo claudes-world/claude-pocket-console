@@ -7,12 +7,12 @@ export const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 // TMUX_SESSION is consumed by execAsync (shell) in several helpers, so a
-// malicious `process.env.TMUX_SESSION` like `foo; rm -rf /` would break
-// the fence. Validate once at module load against the canonical tmux
-// session-name charset (alphanumerics, hyphens, underscores) and refuse
-// to start otherwise. Every TMUX_SESSION consumer in the codebase (this
-// module + terminal-ws.ts) must import THIS constant rather than reading
-// process.env directly so the validation is unbypassable.
+// malicious `process.env.TMUX_SESSION` would break the fence. Validate
+// once at module load against the canonical tmux session-name charset
+// (alphanumerics, hyphens, underscores) and refuse to start otherwise.
+// Every TMUX_SESSION consumer in the codebase must import THIS constant
+// rather than reading process.env directly so the validation is
+// unbypassable.
 const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
 if (!/^[A-Za-z0-9_-]+$/.test(_rawTmuxSession)) {
   throw new Error(
@@ -43,12 +43,24 @@ export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
  * tries to interpret `keys` as key names, which can reject or buffer
  * arbitrary user input.
  */
+// 5-second cap on each tmux invocation. Prevents the hang-forever failure
+// mode that originally motivated this PR — if tmux send-keys ever stalls
+// again, the promise rejects after 5s instead of wedging the HTTP handler.
+// On timeout execFile SIGTERMs the child and surfaces the rejection to
+// the caller; the catch in the /reload-plugins route already handles that
+// path and returns a non-OK JSON response to the client.
+const TMUX_TIMEOUT_MS = 5_000;
+
 export async function sendToTmux(keys: string) {
   // The `--` separator stops tmux from interpreting `keys` as an option
   // if the first character is a hyphen. execFile already prevents shell
   // injection but this also prevents tmux-level argument confusion.
-  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys]);
-  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys], {
+    timeout: TMUX_TIMEOUT_MS,
+  });
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"], {
+    timeout: TMUX_TIMEOUT_MS,
+  });
 }
 
 /** Load OpenAI key from secrets file if not already in env */
