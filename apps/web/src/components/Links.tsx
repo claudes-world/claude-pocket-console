@@ -49,7 +49,7 @@ const APPS: AppItem[] = [
     id: "t3",
     name: "T3",
     url: "https://t3.claude.do",
-    iconSrc: "/apps/t3-1024.png",
+    iconSrc: "/apps/t3-blueprint-256.png",
     fallbackEmoji: "🌀",
   },
 ];
