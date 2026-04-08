@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -16,8 +17,7 @@ const ALLOWED_ROOTS = [
 ];
 
 function isPathAllowed(absPath: string): boolean {
-  const resolved = resolve(absPath);
-  return ALLOWED_ROOTS.some((root) => resolved.startsWith(root));
+  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
 }
 
 // List available root directories
