@@ -3,6 +3,23 @@ import type { AudioStatus, GitBranch, SearchResult, SessionName } from "./types"
 
 async function jsonFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
+  if (!res.ok) {
+    // On 4xx/5xx, try to extract a structured server error from the JSON
+    // body before falling back to status text. This preserves actionable
+    // messages like `{ ok: false, error: "File is empty" }` that routes
+    // return on failure, while still handling non-JSON error pages (HTML
+    // from a reverse proxy, for example) without throwing a SyntaxError
+    // on res.json(). (Gemini round-3: non-JSON error. Codex round-4:
+    // don't lose structured error bodies.)
+    let serverError: string | undefined;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body && typeof body.error === "string") serverError = body.error;
+    } catch {
+      // Body wasn't JSON — fall through to generic status-text error.
+    }
+    throw new Error(serverError ?? `Request failed: ${res.status} ${res.statusText}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -99,10 +116,10 @@ export async function runGitCommand(command: string) {
   return data.output || "No output";
 }
 
-export async function searchFiles(query: string) {
+export async function searchFiles(query: string, signal?: AbortSignal) {
   const data = await jsonFetch<{ results?: SearchResult[] }>(
     `/api/files/search?q=${encodeURIComponent(query)}`,
-    { headers: getAuthHeaders() },
+    { headers: getAuthHeaders(), signal },
   );
   return data.results || [];
 }

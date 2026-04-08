@@ -23,6 +23,8 @@ export function ResumeSheet({ sessionNames, onClose, onResume, onDelete }: Resum
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(session); }}
+                aria-label="Delete saved session name"
+                title="Delete saved session name"
                 style={{ ...btnStyle, padding: "0 12px", color: "#f7768e", background: "#2a2020", border: "1px solid #3a2a2a", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
               >
                 ✕

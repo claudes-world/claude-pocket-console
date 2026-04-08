@@ -33,6 +33,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [audioLoading, setAudioLoading] = useState(false);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const loadGitBranch = async () => {
@@ -47,13 +48,19 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     return () => clearInterval(interval);
   }, []);
 
-  // Clear the debounced file-search timer on unmount so the callback
-  // can't fire and setState on an unmounted component (Copilot review).
+  // Clear the debounced file-search timer and abort any in-flight fetch on
+  // unmount so the callback can't fire and setState on an unmounted
+  // component, and a slow earlier response can't overwrite nothing either.
+  // (Copilot round-3 timer review + Gemini round-3 race review.)
   useEffect(() => {
     return () => {
       if (searchTimerRef.current) {
         clearTimeout(searchTimerRef.current);
         searchTimerRef.current = null;
+      }
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
       }
     };
   }, []);
@@ -76,14 +83,129 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const loadSessionNames = async () => { try { setSessionNames(await fetchSessionNames()); } catch { setSessionNames([]); } };
   const removeSessionName = async (ts: number) => { try { await deleteSessionName(ts); setSessionNames((prev) => prev.filter((s) => s.ts !== ts)); } catch {} setDeleteTarget(null); setModal("resume"); };
   const handleCompact = async (message: string, label = "Compact") => { setModal(null); setStatus(`${label}...`); try { const data = await sendCompactCommand(message); setStatus(data.ok ? `${label} sent` : `Failed: ${data.error}`); } catch (err) { setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`); } };
-  const handleRename = async () => { if (!renameName.trim()) return; setModal(null); setStatus("Renaming..."); void sendToTmux(`/rename ${renameName.trim()}`); try { const data = await renameSession(renameName.trim()); setStatus(data.ok ? `Renamed to "${renameName.trim()}"` : `Failed: ${data.error}`); } catch { setStatus(`Renamed to "${renameName.trim()}"`); } setTimeout(() => setStatus(null), 2000); };
+  const handleRename = async () => {
+    if (!renameName.trim()) return;
+    setModal(null);
+    setStatus("Renaming...");
+    void sendToTmux(`/rename ${renameName.trim()}`);
+    try {
+      const data = await renameSession(renameName.trim());
+      setStatus(data.ok ? `Renamed to "${renameName.trim()}"` : `Failed: ${data.error}`);
+    } catch (err) {
+      // Previously this catch swallowed the error and optimistically reported
+      // success because the in-tmux /rename side-effect had already happened.
+      // But after jsonFetch started throwing on !res.ok (round-4 fix #1),
+      // server-side rejections (400/409) land here too, and a false success
+      // would hide real failures. Report the error instead. (Codex round-4
+      // review re-pass.)
+      setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setTimeout(() => setStatus(null), 2000);
+  };
   const handleFork = () => { const name = forkName.trim(); setModal(null); void sendToTmux(name ? `/fork\n/rename ${name}` : "/fork"); setStatus(name ? `Forked as "${name}"` : "Forked"); setTimeout(() => setStatus(null), 2000); };
   const handleGitAction = async (action: { label: string; command: string }) => { setGitOutput(`Running ${action.label}...`); setModal("git-status"); try { setGitOutput(await runGitCommand(action.command)); } catch { setGitOutput("Failed to run command"); } };
-  const handleSearchInput = useCallback((query: string) => { setSearchQuery(query); if (searchTimerRef.current) clearTimeout(searchTimerRef.current); searchTimerRef.current = setTimeout(async () => { if (query.length < 2) { setSearchResults([]); return; } try { setSearchResults(await searchFiles(query)); } catch { setSearchResults([]); } }, 300); }, []);
+  const resetFileSearch = useCallback(() => {
+    // Cancel any pending debounce and abort any in-flight request, then
+    // clear query+results. Needed when re-opening the search sheet so a
+    // stale fetch started before the previous close can't land and
+    // repopulate results under an empty query. (Codex round-4 review.)
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+      searchAbortRef.current = null;
+    }
+    setSearchQuery("");
+    setSearchResults([]);
+  }, []);
+
+  const handleSearchInput = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    // Abort any in-flight search before kicking off the debounce for a new
+    // one, so a slow earlier response can't land after a faster later one
+    // and overwrite the displayed results. (Gemini round-3 race review.)
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+      searchAbortRef.current = null;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      if (query.length < 2) { setSearchResults([]); return; }
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      try {
+        const results = await searchFiles(query, controller.signal);
+        // Only commit results if this fetch is still the latest one — a
+        // later call may have aborted us between await and here.
+        if (searchAbortRef.current === controller) {
+          setSearchResults(results);
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (searchAbortRef.current === controller) setSearchResults([]);
+      } finally {
+        if (searchAbortRef.current === controller) searchAbortRef.current = null;
+      }
+    }, 300);
+  }, []);
   const handleCheckAudio = async (filePath: string) => { setAudioStatus(null); setAudioLoading(true); try { setAudioStatus(await checkAudio(filePath)); } catch { setAudioStatus(null); } setAudioLoading(false); };
-  const handleGenerateAudio = async (filePath: string) => { setAudioLoading(true); setStatus("Generating audio..."); try { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 60000); const data = await generateAudio(filePath, controller.signal); clearTimeout(timeout); if (data.ok) { setAudioStatus({ exists: true, path: data.path }); setStatus("Audio generated"); } else setStatus(`Failed: ${data.error}`); } catch (err) { setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`); } finally { setAudioLoading(false); } };
-  const handleSendAudio = async (audioPath: string) => { setAudioLoading(true); setStatus("Sending to Telegram..."); try { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 30000); const data = await sendAudioTelegram(audioPath, controller.signal); clearTimeout(timeout); setStatus(data.ok ? "Sent to Telegram" : `Failed: ${data.error}`); } catch (err) { setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`); } finally { setAudioLoading(false); } };
-  const handleRestartSession = async () => { setModal(null); setStatus("Restarting session..."); try { const data = await restartSession(); setStatus(data.ok ? "Session restarted" : `Failed: ${data.error}`); } catch { setStatus("Restart failed"); } setTimeout(() => setStatus(null), 3000); };
+  const handleGenerateAudio = async (filePath: string) => {
+    setAudioLoading(true);
+    setStatus("Generating audio...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+      try {
+        const data = await generateAudio(filePath, controller.signal);
+        if (data.ok) { setAudioStatus({ exists: true, path: data.path }); setStatus("Audio generated"); }
+        else setStatus(`Failed: ${data.error}`);
+      } finally {
+        // clearTimeout in finally so a thrown fetch doesn't leave the
+        // 60s timeout dangling and accumulating. (Copilot round-3 review.)
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+  const handleSendAudio = async (audioPath: string) => {
+    setAudioLoading(true);
+    setStatus("Sending to Telegram...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const data = await sendAudioTelegram(audioPath, controller.signal);
+        setStatus(data.ok ? "Sent to Telegram" : `Failed: ${data.error}`);
+      } finally {
+        // clearTimeout in finally so a thrown fetch doesn't leave the
+        // 30s timeout dangling and accumulating. (Copilot round-3 review.)
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+  const handleRestartSession = async () => {
+    setModal(null);
+    setStatus("Restarting session...");
+    try {
+      const data = await restartSession();
+      setStatus(data.ok ? "Session restarted" : `Failed: ${data.error}`);
+    } catch (err) {
+      // Surface the server error text (now extracted by jsonFetch from a
+      // { error } body on non-2xx responses) instead of a generic message.
+      // (Codex round-4 review re-pass.)
+      setStatus(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setTimeout(() => setStatus(null), 3000);
+  };
   const handleSendToChat = async () => { if (!viewingFile) return; setStatus("Sharing..."); try { const data = await sendFileToChat(viewingFile.path); setStatus(data.ok ? "Sent to chat" : "Failed"); } catch { setStatus("Failed"); } setTimeout(() => setStatus(null), 2000); };
 
   let modalNode: ReactNode = null;
@@ -114,11 +236,11 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
         <div style={{ display: "flex", gap: "8px", overflowX: "auto" }}>
           <button onClick={() => { setModal("todo"); void loadTodo(); }} style={{ ...btnStyle, background: "#3a3520", color: "#e0af68", border: "1px solid #5a4a30" }}>TODO</button>
           {activeTab === "terminal" && <>
-            {onReconnect && <div style={{ display: "flex", flexShrink: 0 }}><button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>Reconnect</button><button onClick={() => setModal("reconnect-menu")} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>}
-            <div style={{ display: "flex", flexShrink: 0 }}><button onClick={() => { setModal("git-status"); void loadGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>Git</button><button onClick={() => setModal("git-menu")} style={{ ...btnStyle, borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>
+            {onReconnect && <div style={{ display: "flex", flexShrink: 0 }}><button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>Reconnect</button><button onClick={() => setModal("reconnect-menu")} aria-label="Open reconnect menu" title="Open reconnect menu" style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>}
+            <div style={{ display: "flex", flexShrink: 0 }}><button onClick={() => { setModal("git-status"); void loadGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>Git</button><button onClick={() => setModal("git-menu")} aria-label="Open git menu" title="Open git menu" style={{ ...btnStyle, borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>
             <button onClick={() => setModal("commands")} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>/commands</button>
           </>}
-          {activeTab === "files" && !viewingFile && <><button onClick={() => { setSearchQuery(""); setSearchResults([]); setModal("file-search"); }} style={{ ...btnStyle, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}>Search</button><button onClick={() => setModal("file-options")} style={btnStyle}>Options</button></>}
+          {activeTab === "files" && !viewingFile && <><button onClick={() => { resetFileSearch(); setModal("file-search"); }} style={{ ...btnStyle, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}>Search</button><button onClick={() => setModal("file-options")} style={btnStyle}>Options</button></>}
           {activeTab === "files" && viewingFile && <button onClick={() => void handleSendToChat()} style={{ ...btnStyle, background: "#1a2a3a", color: "#7dcfff", border: "1px solid #2d4a5a" }}>Send to Chat</button>}
           {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => setModal("tldr")} style={{ ...btnStyle, background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>TL;DR</button>}
           {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => { void handleCheckAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>Audio</button>}
