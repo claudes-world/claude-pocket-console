@@ -398,12 +398,26 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     }
   };
 
+  // Track the copy "Copied!" indicator timeout so repeated clicks don't
+  // race multiple timers and so we cancel pending state updates if the
+  // component unmounts. (Copilot review caught this.)
+  const tldrCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (tldrCopyTimerRef.current) clearTimeout(tldrCopyTimerRef.current);
+    };
+  }, []);
+
   const copyTldr = async () => {
     if (!tldrSummary) return;
     try {
       await navigator.clipboard.writeText(tldrSummary);
       setTldrCopied(true);
-      setTimeout(() => setTldrCopied(false), 1500);
+      if (tldrCopyTimerRef.current) clearTimeout(tldrCopyTimerRef.current);
+      tldrCopyTimerRef.current = setTimeout(() => {
+        setTldrCopied(false);
+        tldrCopyTimerRef.current = null;
+      }, 1500);
     } catch {
       setTldrError("Clipboard copy failed");
     }
@@ -974,7 +988,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
           </div>
           {tldrLoading && (
             <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>
-              Summarizing with Claude Haiku...
+              Summarizing…
             </div>
           )}
           {!tldrLoading && tldrError && (
