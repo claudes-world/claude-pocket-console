@@ -107,6 +107,22 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 10, color: "#565f89" }}>{cached ? "cached" : `fresh (${ms}ms)`}</div>
           <div style={{ background: "#16171f", border: "1px solid #2a2b3d", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#c0caf5", maxHeight: "45vh", overflowY: "auto" }}>
+            {/*
+              XSS defense: the TL;DR summary comes from an LLM whose input is
+              the (potentially malicious) markdown file. A prompt-injected
+              document could coerce the model into emitting raw HTML,
+              <script>, or javascript: URLs which a MarkdownViewer + marked
+              + dangerouslySetInnerHTML pipeline would render unsanitized.
+              Render the summary as plain text inside a <pre> instead, so no
+              HTML parsing happens at all. This sacrifices markdown rendering
+              (bold, headings appear as literal ## and **) but eliminates
+              the attack surface entirely. A planned react-markdown
+              migration will let us switch back to rich rendering with
+              rehype-sanitize / no rehype-raw defenses — see
+              ~/claudes-world/TODO.md "Render TL;DR summary with
+              react-markdown". (Comment restored after cloud Gemini
+              round-2 review on PR #84.)
+            */}
             <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "inherit", fontSize: "inherit", lineHeight: 1.5 }}>{summary}</pre>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

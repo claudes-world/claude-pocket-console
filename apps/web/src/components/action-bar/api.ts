@@ -12,7 +12,12 @@ export async function postAction(endpoint: string) {
     headers: getAuthHeaders(),
   });
   const data = await res.json();
-  return { ok: res.ok, ...data } as { ok: boolean; output?: string; error?: string };
+  // Derive `ok` explicitly so a JSON `ok` field in the body cannot override
+  // the HTTP status — and so it can't arrive as `undefined` either. A false
+  // `data.ok` is respected (server says "http 200 but operationally failed"),
+  // but a missing one falls back to `res.ok`. (Copilot round-2 review.)
+  const ok = res.ok && data.ok !== false;
+  return { ...data, ok } as { ok: boolean; output?: string; error?: string };
 }
 
 export async function fetchGitStatus() {
@@ -51,11 +56,20 @@ export async function fetchGitBranch() {
 }
 
 export async function sendToTmux(keys: string, raw = false) {
-  await fetch("/api/terminal/send-keys", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(raw ? { keys, raw: true } : { keys }),
-  });
+  // Most callers fire-and-forget via `void sendToTmux(...)`. Swallow fetch
+  // failures here so those call sites don't produce unhandled promise
+  // rejections in the browser. The API itself doesn't return a useful
+  // success signal — it's best-effort "type this into the tmux pane".
+  // (Copilot round-2 review.)
+  try {
+    await fetch("/api/terminal/send-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(raw ? { keys, raw: true } : { keys }),
+    });
+  } catch {
+    // Intentionally swallowed.
+  }
 }
 
 export async function sendCompactCommand(message: string) {
