@@ -98,6 +98,19 @@ List anything that requires the reader to do something. If nothing, write: "None
 // Keyed by cache tuple to match lookup semantics.
 const inflight = new Map<string, Promise<{ summary: string }>>();
 
+// Prepare cache statements once at module load instead of on every request.
+// Gemini medium review on PR #72 flagged this as a perf concern under
+// concurrent load. better-sqlite3 already caches plans internally but the
+// JS-side prepare() call still has overhead per request.
+const selectCacheStmt = db.prepare(
+  `SELECT summary FROM tldr_cache WHERE content_hash = ? AND prompt_version = ? AND model = ?`,
+);
+const insertCacheStmt = db.prepare(
+  `INSERT OR REPLACE INTO tldr_cache
+   (content_hash, prompt_version, model, summary, source_path, input_tokens, output_tokens, created_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+);
+
 /**
  * Shell out to the Claude Code CLI to summarize the document.
  *
@@ -320,12 +333,10 @@ app.post("/summarize", async (c) => {
   const contentHash = createHash("sha256").update(content).digest("hex");
   const cacheKey = `${contentHash}:${promptVersion}:${model}`;
 
-  // Cache lookup
-  const cached = db
-    .prepare(
-      `SELECT summary FROM tldr_cache WHERE content_hash = ? AND prompt_version = ? AND model = ?`,
-    )
-    .get(contentHash, promptVersion, model) as { summary: string } | undefined;
+  // Cache lookup (uses module-scoped prepared statement)
+  const cached = selectCacheStmt.get(contentHash, promptVersion, model) as
+    | { summary: string }
+    | undefined;
 
   if (cached) {
     return c.json({
@@ -351,15 +362,21 @@ app.post("/summarize", async (c) => {
   try {
     const { summary } = await flight;
 
-    // Persist to cache. input_tokens/output_tokens are not exposed by
-    // the CLI surface so we record 0 — kept in the schema for forward
-    // compat with a possible future direct-API path.
+    // Persist to cache (uses module-scoped prepared statement).
+    // input_tokens/output_tokens are not exposed by the CLI surface so
+    // we record 0 — kept in the schema for forward compat with a
+    // possible future direct-API path.
     try {
-      db.prepare(
-        `INSERT OR REPLACE INTO tldr_cache
-         (content_hash, prompt_version, model, summary, source_path, input_tokens, output_tokens, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(contentHash, promptVersion, model, summary, resolved, 0, 0, Date.now());
+      insertCacheStmt.run(
+        contentHash,
+        promptVersion,
+        model,
+        summary,
+        resolved,
+        0,
+        0,
+        Date.now(),
+      );
     } catch (err: any) {
       console.error("[markdown/summarize] cache write failed:", err.message);
       // Non-fatal — return the summary anyway.

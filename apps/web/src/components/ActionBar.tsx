@@ -997,7 +997,22 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
       {/* TL;DR modal */}
       {modal === "tldr" && viewingFile && (
-        <BottomSheet onClose={() => setModal(null)} title="TL;DR">
+        <BottomSheet
+          onClose={() => {
+            // Abort any in-flight summarize call when the user closes
+            // the modal — otherwise the request keeps running and the
+            // server keeps the expensive claude CLI alive even though
+            // the result will be discarded. Bumping the request ref
+            // also makes any late-arriving response a no-op.
+            if (tldrAbortRef.current) {
+              tldrAbortRef.current.abort();
+              tldrAbortRef.current = null;
+            }
+            tldrRequestIdRef.current++;
+            setModal(null);
+          }}
+          title="TL;DR"
+        >
           <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>
             {viewingFile.name}
           </div>
