@@ -11,8 +11,14 @@ const gitVersion = (() => {
   }
 })();
 
-export default defineConfig({
+// When served behind Caddy at `cpc.claude.do/dev/`, the Vite dev server must
+// emit asset URLs with the `/dev/` prefix so that `/@vite/client`,
+// `/src/main.tsx`, and `/@react-refresh` resolve through the same reverse
+// proxy rule. Production builds (command === "build") keep the default
+// absolute root so the built bundle is served directly at `cpc.claude.do/`.
+export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss()],
+  base: command === "serve" ? "/dev/" : "/",
   define: {
     __APP_VERSION__: JSON.stringify(gitVersion),
   },
@@ -37,4 +43,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
