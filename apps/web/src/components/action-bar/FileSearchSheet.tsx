@@ -1,4 +1,5 @@
 import { BottomSheet } from "../BottomSheet";
+import { getFileIcon } from "../file-icons";
 import { btnStyle, type SearchResult } from "./types";
 
 interface FileSearchSheetProps {
@@ -29,8 +30,10 @@ export function FileSearchSheet({ searchQuery, searchResults, onClose, onChange,
             onClick={() => onSelect(result)}
             style={{ ...btnStyle, display: "block", width: "100%", padding: "8px 12px", textAlign: "left", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis" }}
           >
-            <span style={{ color: result.type === "directory" ? "#e0af68" : "#7aa2f7" }}>{result.type === "directory" ? "\uD83D\uDCC1 " : "\uD83D\uDCC4 "}</span>
-            {result.name}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {getFileIcon(result.name, result.type === "directory")}
+              <span>{result.name}</span>
+            </span>
             <div style={{ fontSize: 10, color: "#565f89", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>{result.relPath}</div>
           </button>
         ))}
