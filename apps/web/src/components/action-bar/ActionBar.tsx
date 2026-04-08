@@ -35,10 +35,27 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const loadGitBranch = async () => { try { setGitBranch(await fetchGitBranch()); } catch {} };
+    const loadGitBranch = async () => {
+      try {
+        setGitBranch(await fetchGitBranch());
+      } catch (err) {
+        console.error("Failed to fetch git branch:", err);
+      }
+    };
     void loadGitBranch();
     const interval = setInterval(loadGitBranch, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Clear the debounced file-search timer on unmount so the callback
+  // can't fire and setState on an unmounted component (Copilot review).
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {

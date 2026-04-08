@@ -15,8 +15,8 @@ export function ResumeSheet({ sessionNames, onClose, onResume, onDelete }: Resum
         <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>No saved sessions</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {sessionNames.map((session, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+          {sessionNames.map((session) => (
+            <div key={session.ts} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
               <button onClick={() => onResume(session)} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left", flex: 1 }}>
                 {session.name}
                 <div style={{ fontSize: 10, color: "#565f89", marginTop: 2 }}>{new Date(session.ts).toLocaleDateString()}</div>

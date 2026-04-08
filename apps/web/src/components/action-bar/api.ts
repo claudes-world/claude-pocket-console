@@ -67,8 +67,10 @@ export async function sendToTmux(keys: string, raw = false) {
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify(raw ? { keys, raw: true } : { keys }),
     });
-  } catch {
-    // Intentionally swallowed.
+  } catch (err) {
+    // Swallowed so fire-and-forget callers don't throw unhandled rejections,
+    // but log so the failure is still traceable in the browser console.
+    console.error("sendToTmux failed:", err);
   }
 }
 

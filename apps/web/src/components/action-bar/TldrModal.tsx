@@ -113,15 +113,12 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
               document could coerce the model into emitting raw HTML,
               <script>, or javascript: URLs which a MarkdownViewer + marked
               + dangerouslySetInnerHTML pipeline would render unsanitized.
-              Render the summary as plain text inside a <pre> instead, so no
-              HTML parsing happens at all. This sacrifices markdown rendering
-              (bold, headings appear as literal ## and **) but eliminates
-              the attack surface entirely. A planned react-markdown
-              migration will let us switch back to rich rendering with
-              rehype-sanitize / no rehype-raw defenses — see
-              ~/claudes-world/TODO.md "Render TL;DR summary with
-              react-markdown". (Comment restored after cloud Gemini
-              round-2 review on PR #84.)
+              Render the summary as plain text inside a <pre> instead, so
+              no HTML parsing happens at all. This sacrifices markdown
+              rendering (bold, headings appear as literal ## and **) but
+              eliminates the attack surface entirely. A planned
+              react-markdown migration will let us switch back to rich
+              rendering with rehype-sanitize / no rehype-raw defenses.
             */}
             <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "inherit", fontSize: "inherit", lineHeight: 1.5 }}>{summary}</pre>
           </div>

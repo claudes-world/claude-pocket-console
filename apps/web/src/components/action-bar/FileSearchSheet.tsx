@@ -23,9 +23,9 @@ export function FileSearchSheet({ searchQuery, searchResults, onClose, onChange,
         {searchResults.length === 0 && searchQuery.length >= 2 && (
           <div style={{ fontSize: 12, color: "#565f89", padding: 12, textAlign: "center" }}>No results</div>
         )}
-        {searchResults.map((result, i) => (
+        {searchResults.map((result) => (
           <button
-            key={i}
+            key={result.path}
             onClick={() => onSelect(result)}
             style={{ ...btnStyle, display: "block", width: "100%", padding: "8px 12px", textAlign: "left", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis" }}
           >
