@@ -39,8 +39,17 @@ function getRealRoot(root: string): string {
   return real;
 }
 
-/** @internal Test-only hook to reset the memoization cache between cases. */
+/**
+ * @internal Test-only hook to reset the memoization cache between cases.
+ * Gated behind NODE_ENV === "test" so accidental production calls throw
+ * instead of silently clearing the cache on a live process.
+ */
 export function __resetRealRootCacheForTests(): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "__resetRealRootCacheForTests may only be called with NODE_ENV=test",
+    );
+  }
   realRootCache.clear();
 }
 

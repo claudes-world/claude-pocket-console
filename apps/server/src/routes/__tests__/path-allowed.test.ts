@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -137,27 +138,52 @@ describe("isPathAllowed", () => {
     expect(isPathAllowed(allowedRoot, ["/"])).toBe(true);
   });
 
-  it("memoizes realpath(root) and returns consistent results across repeated calls", () => {
+  it("memoizes realpath(root) via an on-disk swap of the root target", () => {
     // Spying on `realpathSync` in ESM is blocked by vitest (module namespace
-    // is not configurable), so we verify memoization through observable
-    // behavior instead: repeated calls must produce the same answer without
-    // regressions, and — critically — a cached root must keep resolving
-    // correctly even after the on-disk path is replaced by something that
-    // would not normally satisfy the check. We do that by caching the root,
-    // then swapping its contents, and confirming the prior allow decision
-    // still holds (because `getRealRoot` returns the cached real path).
+    // is not configurable), so we verify memoization by observing a behavior
+    // that ONLY holds if the cached realpath is being reused: we point a
+    // symlink at one directory, prime the cache by calling isPathAllowed
+    // against the symlink root, then swap the symlink to point at a
+    // different directory. A non-memoized implementation would see the
+    // NEW target and reject paths under the OLD one; a memoized
+    // implementation keeps using the cached (old) real path.
     __resetRealRootCacheForTests();
 
-    for (let i = 0; i < 5; i++) {
-      expect(isPathAllowed(join(allowedRoot, "ok.txt"), [allowedRoot])).toBe(true);
-      expect(isPathAllowed(join(siblingEvil, "secrets.json"), [allowedRoot])).toBe(false);
-      expect(isPathAllowed(join(outsideDir, "loot.txt"), [allowedRoot])).toBe(false);
+    const swapTargetA = join(sandbox, "swap-a");
+    const swapTargetB = join(sandbox, "swap-b");
+    const swapLink = join(sandbox, "swap-link");
+    mkdirSync(swapTargetA, { recursive: true });
+    mkdirSync(swapTargetB, { recursive: true });
+    writeFileSync(join(swapTargetA, "a.txt"), "a");
+    writeFileSync(join(swapTargetB, "b.txt"), "b");
+    symlinkSync(swapTargetA, swapLink);
+
+    try {
+      // Prime the cache: getRealRoot(swapLink) resolves to swapTargetA.
+      expect(isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(true);
+
+      // Swap the symlink to point at B. A NON-memoized implementation
+      // would now resolve swapLink -> swapTargetB and reject a.txt.
+      rmSync(swapLink);
+      symlinkSync(swapTargetB, swapLink);
+
+      // With memoization, the cached realpath (swapTargetA) is still used,
+      // so a.txt remains allowed.
+      expect(isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(true);
+      // And b.txt — which IS under the current target of the symlink but
+      // NOT under the cached realpath — is NOT allowed.
+      expect(isPathAllowed(join(swapTargetB, "b.txt"), [swapLink])).toBe(false);
+
+      // Reset the cache; the next call re-resolves and picks up the swap,
+      // so the behavior inverts: a.txt is now rejected, b.txt is allowed.
+      __resetRealRootCacheForTests();
+      expect(isPathAllowed(join(swapTargetA, "a.txt"), [swapLink])).toBe(false);
+      expect(isPathAllowed(join(swapTargetB, "b.txt"), [swapLink])).toBe(true);
+    } finally {
+      rmSync(swapLink, { force: true });
+      rmSync(swapTargetA, { recursive: true, force: true });
+      rmSync(swapTargetB, { recursive: true, force: true });
+      __resetRealRootCacheForTests();
     }
-
-    // Sanity check: the cache is populated after the first successful
-    // resolution. Reset and confirm the next call still works — a stale
-    // cache would be a functional bug, so this guards against that too.
-    __resetRealRootCacheForTests();
-    expect(isPathAllowed(join(allowedRoot, "ok.txt"), [allowedRoot])).toBe(true);
   });
 });
