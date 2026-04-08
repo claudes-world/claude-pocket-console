@@ -3,7 +3,8 @@
 @theme {
   /* Tokyo Night palette — keep these in sync with the inline-style usage
      across the existing components. After the Codex migration sweep,
-     inline styles will use these tokens via tw classes like bg-bg, text-fg, etc. */
+     components will move from inline styles to Tailwind utility classes
+     (e.g. bg-bg, text-fg, border-border) that reference these tokens. */
 
   --color-bg: #1a1b26;
   --color-bg-alt: #16161e;
