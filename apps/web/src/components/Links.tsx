@@ -91,6 +91,11 @@ const TILE_STYLE = `
   @supports not (corner-shape: squircle) {
     @supports (mask-image: url(#x)) or (-webkit-mask-image: url(#x)) {
       .cpc-app-squircle {
+        /* Zero out border-radius inside the mask branch so the masked
+           superellipse is not visually layered on a standard rounded rect.
+           The base rule above (border-radius: 22%) still applies to Layer 3
+           browsers that lack both corner-shape AND mask-image. */
+        border-radius: 0;
         -webkit-mask-image: ${SQUIRCLE_MASK};
         mask-image: ${SQUIRCLE_MASK};
         -webkit-mask-size: 100% 100%;
