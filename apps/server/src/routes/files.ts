@@ -43,40 +43,6 @@ function sanitizeFilename(raw: string): string | null {
   return cleaned;
 }
 
-/**
- * Find a non-colliding absolute path in `dir` for the given `name`.
- * If `name` exists, inserts a numeric suffix before the extension:
- *   foo.md -> foo-1.md -> foo-2.md ...
- * Shared by /upload and /paste.
- *
- * NOTE: This walk is not race-free — two concurrent callers may both
- * decide the same suffix is free. Matches the legacy /upload behavior;
- * worth revisiting if concurrent writes become common.
- */
-async function pickAvailablePath(dir: string, name: string): Promise<string> {
-  const destPath = join(dir, name);
-  let finalPath = destPath;
-  let counter = 1;
-  // Find an unused path by probing stat() for each candidate.
-  while (true) {
-    try {
-      await stat(finalPath);
-    } catch {
-      return finalPath;
-    }
-    const dotIdx = name.lastIndexOf(".");
-    const hasExt = dotIdx > 0; // ignore leading dot (dotfile with no ext)
-    const base = hasExt ? name.slice(0, dotIdx) : name;
-    const ext = hasExt ? name.slice(dotIdx) : "";
-    finalPath = join(dir, `${base}-${counter}${ext}`);
-    counter++;
-    if (counter > 9999) {
-      // Pathological case — give up rather than loop forever.
-      throw new Error("Could not find available filename");
-    }
-  }
-}
-
 // List available root directories
 app.get("/roots", (c) => {
   return c.json({
@@ -379,7 +345,10 @@ app.post(
   bodyLimit({
     maxSize: PASTE_BODY_LIMIT,
     onError: (c) =>
-      c.json({ error: "Request body too large (max 1MB content)" }, 413),
+      c.json(
+        { error: "Request body too large (max 2MB wire / 1MB content)" },
+        413,
+      ),
   }),
   async (c) => {
   // Narrow catch: let BodyLimitError from the streaming middleware propagate
@@ -509,7 +478,7 @@ app.post(
     return c.json({
       ok: true,
       path: finalPath,
-      name: finalPath.split("/").pop(),
+      name: basename(finalPath),
       size: Buffer.byteLength(normalized, "utf-8"),
     });
   } catch (err: any) {

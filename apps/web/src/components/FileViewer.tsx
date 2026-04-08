@@ -269,9 +269,21 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           dir: currentPath,
         }),
       });
-      const data = await res.json();
+      // Wrap json() in try/catch — non-JSON error responses (proxy errors,
+      // empty bodies, HTML 502 pages) would otherwise throw a confusing
+      // "unexpected token" parse error instead of a useful HTTP status.
+      let data: { error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        if (!res.ok) {
+          setPasteError(`Save failed (HTTP ${res.status})`);
+          return;
+        }
+        // Success status but unparseable body — treat as success.
+      }
       if (!res.ok) {
-        setPasteError(data.error || "Save failed");
+        setPasteError(data?.error || `Save failed (HTTP ${res.status})`);
         return;
       }
       // Success: close sheet and refresh listing so the new file appears.
