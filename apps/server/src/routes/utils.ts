@@ -9,7 +9,11 @@ const execFileAsync = promisify(execFile);
 // TMUX_SESSION is consumed by execAsync (shell) in several helpers, so a
 // malicious `process.env.TMUX_SESSION` would break the fence. Validate
 // once at module load against the canonical tmux session-name charset
-// (alphanumerics, hyphens, underscores) and refuse to start otherwise.
+// (alphanumerics, hyphens, underscores, dots) and refuse to start
+// otherwise. Dots are allowed because real tmux session names in use
+// here include them (e.g. "claudes-world" plus dotted variants from
+// knowledge/ADR work); tmux itself accepts them. See PR #100 round 5
+// for the regex expansion.
 // Every TMUX_SESSION consumer in the codebase must import THIS constant
 // rather than reading process.env directly so the validation is
 // unbypassable.
@@ -17,7 +21,7 @@ const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
 if (!/^[A-Za-z0-9_.-]+$/.test(_rawTmuxSession)) {
   throw new Error(
     `Invalid TMUX_SESSION name: ${JSON.stringify(_rawTmuxSession)}. ` +
-      `Only alphanumerics, hyphens, and underscores are allowed.`,
+      `Only alphanumerics, hyphens, underscores, and dots are allowed.`,
   );
 }
 export const TMUX_SESSION = _rawTmuxSession;

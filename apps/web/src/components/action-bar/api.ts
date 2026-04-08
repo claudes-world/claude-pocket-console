@@ -57,11 +57,28 @@ export async function fetchSessionNames() {
 }
 
 export async function deleteSessionName(ts: number) {
-  await fetch("/api/session/names", {
+  // fetch() only rejects on network errors, so a 4xx/5xx would otherwise
+  // resolve successfully and the UI would optimistically filter the row
+  // out — only for it to reappear on the next page load because the
+  // server never actually deleted it. Check res.ok and throw with any
+  // structured server error body so callers' catch blocks surface the
+  // real failure. (Copilot PR #106 review; mirrors the jsonFetch pattern
+  // from PR #98 round 4 split B1 above.)
+  const res = await fetch("/api/session/names", {
     method: "DELETE",
     headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ ts }),
   });
+  if (!res.ok) {
+    let serverError: string | undefined;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body && typeof body.error === "string") serverError = body.error;
+    } catch {
+      // Body wasn't JSON — fall through to generic status-text error.
+    }
+    throw new Error(serverError ?? `Request failed: ${res.status} ${res.statusText}`);
+  }
 }
 
 export async function fetchGitBranch() {
