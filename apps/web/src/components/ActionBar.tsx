@@ -1018,9 +1018,19 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
                   Generating summary…
                 </div>
                 <div aria-hidden="true" style={{ display: "flex", gap: 5 }}>
-                  <span data-tldr-dot="" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7dcfff", animation: "tldr-bounce 1.2s ease-in-out 0s infinite" }} />
-                  <span data-tldr-dot="" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7dcfff", animation: "tldr-bounce 1.2s ease-in-out 0.15s infinite" }} />
-                  <span data-tldr-dot="" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7dcfff", animation: "tldr-bounce 1.2s ease-in-out 0.3s infinite" }} />
+                  {[0, 0.15, 0.3].map((delay) => (
+                    <span
+                      key={delay}
+                      data-tldr-dot=""
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: "#7dcfff",
+                        animation: `tldr-bounce 1.2s ease-in-out ${delay}s infinite`,
+                      }}
+                    />
+                  ))}
                 </div>
                 <div style={{ fontSize: 11, color: "#a9b1d6" }}>
                   typically 15-20 seconds
