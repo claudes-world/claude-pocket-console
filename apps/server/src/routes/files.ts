@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
+import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -15,9 +16,8 @@ const ALLOWED_ROOTS = [
   "/home/claude/claudes-world/.claude",
 ];
 
-function isPathAllowed(absPath: string): boolean {
-  const resolved = resolve(absPath);
-  return ALLOWED_ROOTS.some((root) => resolved.startsWith(root));
+function isPathAllowed(absPath: string): Promise<boolean> {
+  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
 }
 
 /**
@@ -89,7 +89,7 @@ app.get("/list", async (c) => {
   const dir = c.req.query("path") || BASE_DIR;
   const resolved = resolve(dir);
 
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -150,7 +150,7 @@ app.get("/read", async (c) => {
   }
 
   const resolved = resolve(filePath);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -215,7 +215,7 @@ app.get("/download", async (c) => {
   }
 
   const resolved = resolve(filePath);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -315,13 +315,37 @@ app.post("/upload", async (c) => {
   }
 
   const resolved = resolve(dir);
-  if (!isPathAllowed(resolved)) {
+  if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
   try {
-    const fileName = (file as File).name || "uploaded-file";
-    const finalPath = await pickAvailablePath(resolved, fileName);
+    // Strip any directory components from the user-supplied filename so a
+    // value like "../../etc/passwd" cannot escape the validated `resolved`
+    // directory via path.join. basename() returns just the trailing segment.
+    let fileName = basename((file as File).name || "uploaded-file");
+    // basename() returns `.`, `..`, or `""` unchanged, which path.join would
+    // then normalize into the parent/current directory. Reject those and
+    // fall back to the default name so the upload always writes a new file
+    // inside the validated root.
+    if (fileName === "" || fileName === "." || fileName === "..") {
+      fileName = "uploaded-file";
+    }
+    const destPath = join(resolved, fileName);
+
+    // Don't overwrite existing files — add suffix
+    let finalPath = destPath;
+    let counter = 1;
+    try {
+      while (await stat(finalPath)) {
+        const ext = fileName.includes(".") ? "." + fileName.split(".").pop() : "";
+        const base = fileName.includes(".") ? fileName.slice(0, fileName.lastIndexOf(".")) : fileName;
+        finalPath = join(resolved, `${base}-${counter}${ext}`);
+        counter++;
+      }
+    } catch {
+      // File doesn't exist — good, use this path
+    }
 
     const arrayBuffer = await (file as File).arrayBuffer();
     await writeFile(finalPath, Buffer.from(arrayBuffer));
