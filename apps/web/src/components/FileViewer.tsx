@@ -241,6 +241,10 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
   const handlePasteContentChange = (next: string) => {
     setPasteContent(next);
+    // Editing the content clears any stale validation/save error so the
+    // user isn't stuck looking at an old "Invalid filename" or 413 message
+    // after they've already corrected it. (Copilot review caught this.)
+    setPasteError(null);
     if (!pasteFilenameEditedRef.current) {
       setPasteFilename(suggestFilename(next));
     }
@@ -249,6 +253,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   const handlePasteFilenameChange = (next: string) => {
     pasteFilenameEditedRef.current = true;
     setPasteFilename(next);
+    setPasteError(null);
   };
 
   const handlePasteSave = async () => {
