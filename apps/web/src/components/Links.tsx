@@ -42,14 +42,14 @@ const APPS: AppItem[] = [
     id: "companion",
     name: "Companion",
     url: "https://companion.claude.do",
-    iconSrc: "/apps/companion-512.png",
+    iconSrc: `${import.meta.env.BASE_URL}apps/companion-512.png`,
     fallbackEmoji: "🦆",
   },
   {
     id: "t3",
     name: "T3",
     url: "https://t3.claude.do",
-    iconSrc: "/apps/t3-blueprint-256.png",
+    iconSrc: `${import.meta.env.BASE_URL}apps/t3-blueprint-256.png`,
     fallbackEmoji: "🌀",
   },
 ];
