@@ -54,57 +54,12 @@ const APPS: AppItem[] = [
   },
 ];
 
-// True iOS squircle (superellipse) as inline SVG mask.
-// Used as the @supports-not fallback below the CSS `corner-shape: squircle` primary path.
-// The SVG is URL-encoded via encodeURIComponent for cross-browser safety (spaces, <, >,
-// quotes parse inconsistently in some WebViews). The non-standard `;utf8` parameter is
-// intentionally dropped — it's not in the data URI spec and the encoded form works
-// without it.
-const SQUIRCLE_SVG =
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M 50,0 C 10,0 0,10 0,50 0,90 10,100 50,100 90,100 100,90 100,50 100,10 90,0 50,0 Z"/></svg>`;
-const SQUIRCLE_MASK = `url("data:image/svg+xml,${encodeURIComponent(SQUIRCLE_SVG)}")`;
-
-// Squircle technique: tiered fallback chain driven by @supports.
-// Layer 1 (primary): CSS `corner-shape: squircle` + `border-radius: 22%` — native true
-//   squircle available in Safari 26+ (2025) and Chrome 130+ (late 2025). Telegram iOS
-//   WebView wraps WKWebView and inherits Safari's support.
-// Layer 2 (fallback): mask-image with an inline SVG superellipse path for browsers that
-//   do not yet implement `corner-shape` but do support CSS masks. Indistinguishable from
-//   Layer 1 at 64px. Gated with a nested @supports (mask-image) check so browsers that
-//   lack BOTH corner-shape AND mask-image still keep the base border-radius fallback.
-// Layer 3 (graceful): bare `border-radius: 22%` rounded rect — the base rule, inherited
-//   by everything that doesn't get upgraded by Layer 1 or Layer 2. When Layer 2 kicks in
-//   (mask-supported branch) the nested @supports zeros out the base border-radius so the
-//   masked superellipse isn't visually layered on a rounded rect — the mask defines the
-//   entire shape for those browsers.
-// See https://developer.mozilla.org/en-US/docs/Web/CSS/corner-shape
 const TILE_STYLE = `
   .cpc-app-tile {
     transition: transform 120ms ease-out;
   }
   .cpc-app-tile:active {
     transform: scale(0.92);
-  }
-  .cpc-app-squircle {
-    border-radius: 22%;
-    corner-shape: squircle;
-  }
-  @supports not (corner-shape: squircle) {
-    @supports (mask-image: url(#x)) or (-webkit-mask-image: url(#x)) {
-      .cpc-app-squircle {
-        /* Zero out border-radius inside the mask branch so the masked
-           superellipse is not visually layered on a standard rounded rect.
-           The base rule above (border-radius: 22%) still applies to Layer 3
-           browsers that lack both corner-shape AND mask-image. */
-        border-radius: 0;
-        -webkit-mask-image: ${SQUIRCLE_MASK};
-        mask-image: ${SQUIRCLE_MASK};
-        -webkit-mask-size: 100% 100%;
-        mask-size: 100% 100%;
-        -webkit-mask-repeat: no-repeat;
-        mask-repeat: no-repeat;
-      }
-    }
   }
 `;
 
@@ -231,7 +186,6 @@ function AppTile({ app }: { app: AppItem }) {
       }}
     >
       <div
-        className="cpc-app-squircle"
         style={{
           width: 64,
           height: 64,
