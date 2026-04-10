@@ -18,9 +18,12 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
   const [copyError, setCopyError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const generateTldr = async (filePath: string, force = false) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     const requestId = ++requestIdRef.current;
     abortRef.current?.abort();
     setLoading(true);
@@ -46,6 +49,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
     } finally {
       clearTimeout(timeout);
       if (abortRef.current === controller) abortRef.current = null;
+      if (abortRef.current === null) inFlightRef.current = false;
       if (requestIdRef.current === requestId) setLoading(false);
     }
   };
@@ -68,6 +72,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
         abortRef.current.abort();
         abortRef.current = null;
       }
+      inFlightRef.current = false;
     };
   }, [viewingFile.path]);
 
@@ -92,6 +97,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
       abortRef.current.abort();
       abortRef.current = null;
     }
+    inFlightRef.current = false;
     requestIdRef.current++;
     setLoading(false);
     onClose();
@@ -184,7 +190,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
       {!loading && error && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontSize: 12, color: "#f7768e", padding: "8px 10px", background: "#2a1a22", border: "1px solid #4a2d3a", borderRadius: 6 }}>{error}</div>
-          <button onClick={() => void generateTldr(viewingFile.path)} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>Retry</button>
+          <button disabled={loading} onClick={() => void generateTldr(viewingFile.path)} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>Retry</button>
         </div>
       )}
       {!loading && !error && summary && (
@@ -208,7 +214,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={copyTldr} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>{copied ? "Copied" : "Copy"}</button>
-            <button onClick={() => void generateTldr(viewingFile.path, true)} style={{ ...btnStyle, padding: "10px 14px" }}>Regenerate</button>
+            <button disabled={loading} onClick={() => void generateTldr(viewingFile.path, true)} style={{ ...btnStyle, padding: "10px 14px" }}>Regenerate</button>
           </div>
           {copyError && <div style={{ fontSize: 11, color: "#f7768e", marginTop: 4 }}>{copyError}</div>}
         </div>
