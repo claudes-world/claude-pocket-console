@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { marked } from "marked";
+import { Children, isValidElement, type ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import rehypeSlug from "rehype-slug";
 import { MermaidDiagram } from "./MermaidDiagram";
 
 interface MarkdownViewerProps {
@@ -8,67 +10,90 @@ interface MarkdownViewerProps {
   fileName: string;
 }
 
-// Configure marked for safe rendering
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+export const markdownRemarkPlugins = [remarkGfm, remarkBreaks];
 
-export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
-  const html = useMemo(() => {
-    return marked.parse(content) as string;
-  }, [content]);
+// rehype-slug is pinned to major 6 in package.json. Heading IDs are a contract
+// for deep links, TOC state, and collapsible headings.
+export const markdownRehypePlugins = [rehypeSlug];
 
-  const contentRef = useRef<HTMLDivElement | null>(null);
+function getLanguage(className?: string): string {
+  return (
+    className
+      ?.split(/\s+/)
+      .find((part) => part.startsWith("language-"))
+      ?.replace("language-", "") ?? ""
+  );
+}
 
-  // After marked renders the HTML, find any ```mermaid code blocks and
-  // replace them with a React-rendered MermaidDiagram component. We track
-  // each root we create so we can unmount them on cleanup to avoid leaks.
-  useEffect(() => {
-    const container = contentRef.current;
-    if (!container) return;
+function getTextContent(children: ReactNode): string {
+  return Children.toArray(children)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number") {
+        return String(child);
+      }
 
-    const codeBlocks = container.querySelectorAll<HTMLElement>(
-      "code.language-mermaid"
+      return "";
+    })
+    .join("");
+}
+
+function CodeBlock({ className, children, node: _node, ...props }: any) {
+  const language = getLanguage(className);
+
+  if (language === "mermaid") {
+    return (
+      <div className="mermaid-mount">
+        <MermaidDiagram source={getTextContent(children).trim()} />
+      </div>
     );
-    const roots: Root[] = [];
-
-    codeBlocks.forEach((codeEl) => {
-      const pre = codeEl.closest("pre");
-      if (!pre || !pre.parentNode) return;
-
-      const source = codeEl.textContent ?? "";
-      const mountPoint = document.createElement("div");
-      mountPoint.className = "mermaid-mount";
-      pre.parentNode.replaceChild(mountPoint, pre);
-
-      const root = createRoot(mountPoint);
-      root.render(<MermaidDiagram source={source} />);
-      roots.push(root);
-    });
-
-    return () => {
-      // Defer unmount to avoid "synchronously unmounting a root while React
-      // was already rendering" warnings (React 18+ StrictMode double-invoke).
-      const toUnmount = roots.slice();
-      queueMicrotask(() => {
-        toUnmount.forEach((root) => {
-          try {
-            root.unmount();
-          } catch {
-            // Best-effort cleanup.
-          }
-        });
-      });
-    };
-  }, [html]);
+  }
 
   return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+}
+
+function ScrollableTable({ children, node: _node, ...props }: any) {
+  return (
+    <div className="md-table-scroll">
+      <table {...props}>{children}</table>
+    </div>
+  );
+}
+
+function isMermaidCodeChild(child: ReactNode): boolean {
+  return (
+    isValidElement<{ className?: string }>(child) &&
+    getLanguage(child.props.className) === "mermaid"
+  );
+}
+
+function PreBlock({ children, node: _node, ...props }: any) {
+  const childArray = Children.toArray(children);
+
+  if (childArray.length === 1 && isMermaidCodeChild(childArray[0])) {
+    return <>{children}</>;
+  }
+
+  return <pre {...props}>{children}</pre>;
+}
+
+export const markdownComponents: Components = {
+  code: CodeBlock,
+  table: ScrollableTable,
+  pre: PreBlock,
+};
+
+export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
+  return (
     <div
+      className="md-viewer-scroll"
       style={{
         padding: "16px 16px",
         overflowY: "auto",
-        overflowX: "auto",
+        overflowX: "hidden",
         height: "100%",
         width: "100%",
         maxWidth: "100%",
@@ -149,12 +174,18 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           white-space: pre;
           max-width: none;
         }
-        .md-content table {
-          display: block;
-          overflow-x: auto;
+        .md-content .md-table-scroll {
           width: 100%;
-          border-collapse: collapse;
+          max-width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
           margin: 12px 0;
+        }
+        .md-content table {
+          width: max-content;
+          min-width: 100%;
+          border-collapse: collapse;
+          margin: 0;
           font-size: 13px;
         }
         .md-content th {
@@ -244,11 +275,15 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           margin: 0;
         }
       `}</style>
-      <div
-        ref={contentRef}
-        className="md-content"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className="md-content">
+        <ReactMarkdown
+          remarkPlugins={markdownRemarkPlugins}
+          rehypePlugins={markdownRehypePlugins}
+          components={markdownComponents}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }
