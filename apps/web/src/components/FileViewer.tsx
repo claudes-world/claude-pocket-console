@@ -753,7 +753,15 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
       {/* File content view */}
       {fileContent !== null && !loading && fileName.endsWith(".md") && (
-        <div style={{ flex: 1, overflow: "auto", overflowX: "hidden" }}>
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+            overflowX: "hidden",
+            minWidth: 0,
+            boxSizing: "border-box",
+          }}
+        >
           <MarkdownViewer content={fileContent} fileName={fileName} />
         </div>
       )}

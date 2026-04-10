@@ -21,12 +21,22 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
 
   const contentRef = useRef<HTMLDivElement | null>(null);
 
-  // After marked renders the HTML, find any ```mermaid code blocks and
-  // replace them with a React-rendered MermaidDiagram component. We track
-  // each root we create so we can unmount them on cleanup to avoid leaks.
+  // After marked renders the HTML, add local scroll wrappers for tables, then
+  // replace ```mermaid code blocks with React-rendered MermaidDiagram nodes.
+  // We track each root we create so cleanup can unmount it without leaks.
   useEffect(() => {
     const container = contentRef.current;
     if (!container) return;
+
+    container.querySelectorAll<HTMLTableElement>("table").forEach((table) => {
+      if (table.parentElement?.classList.contains("md-table-scroll")) return;
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "md-table-scroll";
+      wrapper.dataset.wrapped = "true";
+      table.parentNode?.insertBefore(wrapper, table);
+      wrapper.appendChild(table);
+    });
 
     const codeBlocks = container.querySelectorAll<HTMLElement>(
       "code.language-mermaid"
@@ -65,13 +75,17 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
 
   return (
     <div
+      className="md-viewer-scroll"
       style={{
         padding: "16px 16px",
         overflowY: "auto",
-        overflowX: "auto",
+        // X-axis scroll lives in semantic child scrollers (<pre>, .md-table-scroll, .mermaid-container), not on the shell itself.
+        overflowX: "hidden",
         height: "100%",
         width: "100%",
         maxWidth: "100%",
+        minWidth: 0,
+        boxSizing: "border-box",
       }}
     >
       <style>{`
@@ -82,7 +96,9 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           color: #c0caf5;
           overflow-wrap: break-word;
           word-break: break-word;
+          width: 100%;
           max-width: 100%;
+          box-sizing: border-box;
         }
         .md-content * {
           max-width: 100%;
@@ -136,6 +152,9 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
           margin: 12px 0;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
         }
         .md-content pre code {
           background: none;
@@ -149,12 +168,20 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           white-space: pre;
           max-width: none;
         }
-        .md-content table {
-          display: block;
-          overflow-x: auto;
+        .md-content .md-table-scroll {
           width: 100%;
-          border-collapse: collapse;
+          max-width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          box-sizing: border-box;
           margin: 12px 0;
+        }
+        .md-content table {
+          width: max-content;
+          min-width: 100%;
+          max-width: none;
+          border-collapse: collapse;
+          margin: 0;
           font-size: 13px;
         }
         .md-content th {
