@@ -49,7 +49,6 @@ export default defineConfig(({ command }) => ({
             "@xterm/addon-fit",
             "@xterm/addon-web-links",
           ],
-          "vendor-marked": ["marked"],
         },
       },
     },
