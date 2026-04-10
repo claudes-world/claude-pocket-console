@@ -47,7 +47,7 @@ const APPS: AppItem[] = [
   },
   {
     id: "t3",
-    name: "T3",
+    name: "T3 Code",
     url: "https://t3.claude.do",
     iconSrc: `${import.meta.env.BASE_URL}apps/t3-blueprint-256.png`,
     fallbackEmoji: "🌀",
