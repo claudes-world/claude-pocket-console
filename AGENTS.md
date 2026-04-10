@@ -81,6 +81,9 @@ Read what you need for your current task. Start with the closest AGENTS.md.
 - [Telegram WebView Rules](docs/reference/telegram-webview-rules.md) -- platform constraints
 - [Modal System](docs/reference/modal-system.md) -- ActionBar modals and BottomSheet
 
+### Environment Setup (CI / cloud agents)
+- [Cursor Cloud Agent Instructions](docs/reference/cursor-cloud-agent-instructions.md) -- CI/cloud-agent VM setup, secrets, gotchas
+
 ### Guides (how to do things)
 - [Adding a Modal](docs/guides/adding-a-modal.md) -- step-by-step checklist
 - [Deploying](docs/guides/deploying.md) -- build, restart, verify
@@ -124,9 +127,3 @@ Read what you need for your current task. Start with the closest AGENTS.md.
 | `~/bin/session-history` | Forensic CLI for JSONL session history (list, search, extract, diff) |
 | `~/bin/transcribe`   | Whisper-based audio transcription via OpenAI API        |
 | `/deploy` skill      | Build web, kill server, restart, verify health           |
-
----
-
-## Cursor Cloud specific instructions
-
-For Cursor Cloud agent setup, commands, and gotchas, read [docs/reference/cursor-cloud-agent-instructions.md](docs/reference/cursor-cloud-agent-instructions.md).

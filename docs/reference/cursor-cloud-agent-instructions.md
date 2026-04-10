@@ -1,4 +1,4 @@
-# Cursor Cloud agent instructions
+# Cursor Cloud Agent Instructions
 
 These instructions apply specifically to Cursor Cloud Agent environments.
 
