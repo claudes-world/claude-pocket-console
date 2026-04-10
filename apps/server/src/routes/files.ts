@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { randomBytes } from "node:crypto";
 import {
   open,
   readdir,
@@ -8,13 +9,25 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { constants as fsConstants } from "node:fs";
+import { Readable } from "node:stream";
 import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
+const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const DOWNLOAD_TICKET_TTL_MS = 60 * 1000;
+
+type DownloadTicket = {
+  path: string;
+  expiresAt: number;
+  used: boolean;
+};
+
+const downloadTickets = new Map<string, DownloadTicket>();
 
 // Allowed root directories the file viewer can access
 const ALLOWED_ROOTS = [
@@ -27,6 +40,62 @@ const ALLOWED_ROOTS = [
 
 function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+}
+
+function pruneExpiredDownloadTickets(now = Date.now()) {
+  for (const [ticket, record] of downloadTickets) {
+    if (record.expiresAt <= now) {
+      downloadTickets.delete(ticket);
+    }
+  }
+}
+
+async function getDownloadableFile(filePath: string): Promise<
+  | { ok: true; path: string; size: number; name: string }
+  | { ok: false; status: 400 | 403 | 413 | 500; error: string }
+> {
+  const resolved = resolve(filePath);
+  if (!await isPathAllowed(resolved)) {
+    return { ok: false, status: 403, error: "Access denied" };
+  }
+
+  try {
+    const st = await stat(resolved);
+    if (!st.isFile()) {
+      return { ok: false, status: 400, error: "Not a file" };
+    }
+
+    if (st.size > DOWNLOAD_MAX_BYTES) {
+      return { ok: false, status: 413, error: "File too large (max 50MB)" };
+    }
+
+    return {
+      ok: true,
+      path: resolved,
+      size: st.size,
+      name: basename(resolved) || "file",
+    };
+  } catch (err) {
+    console.error("[files/download] stat error:", err);
+    return { ok: false, status: 500, error: "Failed to read file" };
+  }
+}
+
+function createDownloadResponse(file: { path: string; size: number; name: string }) {
+  const encodedName = encodeURIComponent(file.name);
+  const safeName = file.name.replace(/["\r\n]/g, "") || "file";
+  const body = Readable.toWeb(createReadStream(file.path)) as unknown as BodyInit;
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(file.size),
+      "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 /**
@@ -192,61 +261,65 @@ app.get("/read", async (c) => {
 });
 
 // Download file (raw bytes, preserves binary content)
+app.post("/download-ticket", async (c) => {
+  pruneExpiredDownloadTickets();
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!body || typeof body !== "object" || typeof (body as { path?: unknown }).path !== "string") {
+    return c.json({ error: "path required" }, 400);
+  }
+
+  const file = await getDownloadableFile((body as { path: string }).path);
+  if (!file.ok) {
+    return c.json({ error: file.error }, file.status);
+  }
+
+  const ticket = randomBytes(16).toString("hex");
+  downloadTickets.set(ticket, {
+    path: file.path,
+    expiresAt: Date.now() + DOWNLOAD_TICKET_TTL_MS,
+    used: false,
+  });
+
+  return c.json({ ticket });
+});
+
 app.get("/download", async (c) => {
+  const ticket = c.req.query("ticket");
+  if (ticket) {
+    pruneExpiredDownloadTickets();
+
+    const record = downloadTickets.get(ticket);
+    if (!record || record.used || record.expiresAt <= Date.now()) {
+      return c.json({ error: "invalid or expired ticket" }, 403);
+    }
+
+    record.used = true;
+    const file = await getDownloadableFile(record.path);
+    if (!file.ok) {
+      return c.json({ error: file.error }, file.status);
+    }
+
+    return createDownloadResponse(file);
+  }
+
   const filePath = c.req.query("path");
   if (!filePath) {
     return c.json({ error: "path parameter required" }, 400);
   }
 
-  const resolved = resolve(filePath);
-  if (!await isPathAllowed(resolved)) {
-    return c.json({ error: "Access denied" }, 403);
+  const file = await getDownloadableFile(filePath);
+  if (!file.ok) {
+    return c.json({ error: file.error }, file.status);
   }
 
-  try {
-    const st = await stat(resolved);
-    if (!st.isFile()) {
-      return c.json({ error: "Not a file" }, 400);
-    }
-
-    // Cap download size at 50MB for safety
-    if (st.size > 50 * 1024 * 1024) {
-      return c.json({ error: "File too large (max 50MB)" }, 413);
-    }
-
-    const content = await readFile(resolved);
-    const baseName = resolved.split("/").pop() || "file";
-
-    // Basic content-type guess by extension (keeps browsers from mis-sniffing)
-    const ext = baseName.split(".").pop()?.toLowerCase() || "";
-    const typeMap: Record<string, string> = {
-      md: "text/markdown", txt: "text/plain", json: "application/json",
-      js: "application/javascript", ts: "application/typescript",
-      html: "text/html", css: "text/css", csv: "text/csv",
-      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-      gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
-      pdf: "application/pdf", mp3: "audio/mpeg", mp4: "video/mp4",
-      webm: "video/webm", wav: "audio/wav", ogg: "audio/ogg",
-      zip: "application/zip", gz: "application/gzip",
-    };
-    const contentType = typeMap[ext] || "application/octet-stream";
-
-    // RFC 5987 encoding for Content-Disposition filename to handle unicode safely
-    const encodedName = encodeURIComponent(baseName);
-
-    return new Response(new Uint8Array(content), {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": String(content.length),
-        "Content-Disposition": `attachment; filename="${baseName.replace(/"/g, "")}"; filename*=UTF-8''${encodedName}`,
-        "Cache-Control": "no-store",
-      },
-    });
-  } catch (err) {
-    console.error("[files/download] error:", err);
-    return c.json({ error: "Failed to read file" }, 500);
-  }
+  return createDownloadResponse(file);
 });
 
 // Fuzzy file/path search — BFS across all allowed roots.
