@@ -8,7 +8,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { constants as fsConstants } from "node:fs";
 import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
 
@@ -107,9 +107,18 @@ app.get("/list", async (c) => {
       return a.name.localeCompare(b.name);
     });
 
+    // Return parent: null ONLY if `resolve(resolved, "..")` is itself
+    // NOT allowed. Using `ALLOWED_ROOTS.includes(resolved)` would break
+    // nested allowed roots — e.g. if both /a/b and /a/b/c are in the
+    // list, a user at /a/b/c could see `parent: null` and be unable to
+    // navigate up to /a/b even though that path is allowed. Use the
+    // same `isPathAllowed` check that gates the request itself, which
+    // canonicalizes via realpath and handles symlinks consistently.
+    const candidateParent = resolve(resolved, "..");
+    const parentAllowed = await isPathAllowed(candidateParent);
     return c.json({
       path: resolved,
-      parent: resolve(resolved, ".."),
+      parent: parentAllowed ? candidateParent : null,
       items,
     });
   } catch (err: any) {
@@ -240,17 +249,46 @@ app.get("/download", async (c) => {
   }
 });
 
-// Fuzzy file/path search — BFS across all allowed roots
+// Fuzzy file/path search — BFS across all allowed roots.
+//
+// Optional `scope` query param narrows the walk to a single folder (Search
+// UX C3: the "current folder only" toggle in the file-search sheet). The
+// scope is subjected to the same `isPathAllowed` check as every other file
+// route so a client can't pass `../../etc` and escape the allowlist. When
+// present we seed the BFS queue with just that folder instead of every
+// allowed root, which is faster AND avoids results leaking in from siblings.
 app.get("/search", async (c) => {
   const qRaw = c.req.query("q")?.toLowerCase() || "";
   if (qRaw.length < 2) return c.json({ results: [] });
   const q = qRaw;
 
+  const scopeRaw = c.req.query("scope");
+  let roots: string[] = ALLOWED_ROOTS;
+  if (scopeRaw) {
+    const scopeResolved = resolve(scopeRaw);
+    // Reject scopes that aren't inside an allowed root. Same check as every
+    // other file route — realpath-canonicalizing both sides and enforcing a
+    // true path-segment boundary — so a symlink escape or sibling-prefix
+    // bypass can't smuggle an out-of-tree path in via `?scope=`.
+    if (!(await isPathAllowed(scopeResolved))) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    roots = [scopeResolved];
+  }
+
   const results: { name: string; path: string; type: string; relPath: string }[] = [];
   const MAX = 25;
 
   // BFS queue: [dirPath, depth]
-  const queue: [string, number][] = ALLOWED_ROOTS.map((r) => [r, 0]);
+  const queue: [string, number][] = roots.map((r) => [r, 0]);
+
+  // Pre-compute the scope prefix (with trailing separator so we get a true
+  // path-segment boundary and `/a/b-evil` can't match scope `/a/b`). The
+  // scope itself is also a valid match, so we check for equality separately.
+  const scopeMatchRoot = scopeRaw ? resolve(scopeRaw) : null;
+  const scopeMatchPrefix = scopeMatchRoot
+    ? (scopeMatchRoot.endsWith(sep) ? scopeMatchRoot : scopeMatchRoot + sep)
+    : null;
 
   while (queue.length > 0 && results.length < MAX) {
     const [dir, depth] = queue.shift()!;
@@ -262,8 +300,15 @@ app.get("/search", async (c) => {
         if (e.name.startsWith(".") && !e.name.startsWith(".claude")) continue;
         const full = join(dir, e.name);
         const relPath = full.replace("/home/claude/", "~/");
+        // Defence in depth: even though the BFS is seeded from the scope
+        // root, also drop anything whose path doesn't start with the scope
+        // (with a trailing-separator boundary). A compromised readdir or
+        // weird symlink can't then leak siblings into a scoped query.
+        const inScope = scopeMatchPrefix === null
+          || full === scopeMatchRoot
+          || full.startsWith(scopeMatchPrefix);
         // Match against filename OR relative path (supports partial paths)
-        if (e.name.toLowerCase().includes(q) || relPath.toLowerCase().includes(q)) {
+        if (inScope && (e.name.toLowerCase().includes(q) || relPath.toLowerCase().includes(q))) {
           results.push({
             name: e.name,
             path: full,

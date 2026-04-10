@@ -1,18 +1,70 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
-export const TMUX_SESSION = process.env.TMUX_SESSION || "claudes-world";
+// TMUX_SESSION is consumed by execAsync (shell) in several helpers, so a
+// malicious `process.env.TMUX_SESSION` would break the fence. Validate
+// once at module load against the canonical tmux session-name charset
+// (alphanumerics, hyphens, underscores, dots) and refuse to start
+// otherwise. Dots are allowed because real tmux session names in use
+// here include them (e.g. "claudes-world" plus dotted variants from
+// knowledge/ADR work); tmux itself accepts them. See PR #100 round 5
+// for the regex expansion.
+// Every TMUX_SESSION consumer in the codebase must import THIS constant
+// rather than reading process.env directly so the validation is
+// unbypassable.
+const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
+if (!/^[A-Za-z0-9_.-]+$/.test(_rawTmuxSession)) {
+  throw new Error(
+    `Invalid TMUX_SESSION name: ${JSON.stringify(_rawTmuxSession)}. ` +
+      `Only alphanumerics, hyphens, underscores, and dots are allowed.`,
+  );
+}
+export const TMUX_SESSION = _rawTmuxSession;
 export const HOME = process.env.HOME || "/home/claude";
 export const CLAUDES_WORLD = join(HOME, "claudes-world");
 export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
 
-/** Send keys to the tmux session */
+/**
+ * Send literal text to the tmux session and submit it with Enter.
+ *
+ * Uses `execFile` (no shell) with an argv array so `keys` cannot inject
+ * shell metacharacters — we do not rely on `JSON.stringify` as a shell
+ * quoting strategy (it doesn't escape `$VAR`, backticks, or `$(...)` inside
+ * double-quotes). Two separate calls so the literal text is fully flushed
+ * before the Enter key is delivered.
+ *
+ * The previous implementation `tmux send-keys -t SESSION "${keys}" Enter`
+ * (raw shell interpolation, no `-l`, single call via exec) was observed to
+ * hang indefinitely against the live `claudes-world` tmux session when
+ * invoked from the /reload-plugins endpoint, leaving hung tmux clients in
+ * the cpc.service cgroup and never delivering the slash command to Claude
+ * CLI. The `-l` (literal) flag also matters on its own: without it, tmux
+ * tries to interpret `keys` as key names, which can reject or buffer
+ * arbitrary user input.
+ */
+// 5-second cap on each tmux invocation. Prevents the hang-forever failure
+// mode that originally motivated this PR — if tmux send-keys ever stalls
+// again, the promise rejects after 5s instead of wedging the HTTP handler.
+// On timeout execFile SIGTERMs the child and surfaces the rejection to
+// the caller; the catch in the /reload-plugins route already handles that
+// path and returns a non-OK JSON response to the client.
+const TMUX_TIMEOUT_MS = 5_000;
+
 export async function sendToTmux(keys: string) {
-  await execAsync(`tmux send-keys -t ${TMUX_SESSION} "${keys}" Enter`);
+  // The `--` separator stops tmux from interpreting `keys` as an option
+  // if the first character is a hyphen. execFile already prevents shell
+  // injection but this also prevents tmux-level argument confusion.
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys], {
+    timeout: TMUX_TIMEOUT_MS,
+  });
+  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"], {
+    timeout: TMUX_TIMEOUT_MS,
+  });
 }
 
 /** Load OpenAI key from secrets file if not already in env */
