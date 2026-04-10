@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactNode } from "react";
+import React, { Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -37,7 +37,7 @@ function getTextContent(children: ReactNode): string {
     .join("");
 }
 
-function CodeBlock({ className, children, node: _node, ...props }: any) {
+function CodeBlock({ className, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: any; className?: string }) {
   const language = getLanguage(className);
 
   if (language === "mermaid") {
@@ -55,7 +55,7 @@ function CodeBlock({ className, children, node: _node, ...props }: any) {
   );
 }
 
-function ScrollableTable({ children, node: _node, ...props }: any) {
+function ScrollableTable({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'table'> & { node?: any }) {
   return (
     <div className="md-table-scroll">
       <table {...props}>{children}</table>
@@ -70,7 +70,7 @@ function isMermaidCodeChild(child: ReactNode): boolean {
   );
 }
 
-function PreBlock({ children, node: _node, ...props }: any) {
+function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'pre'> & { node?: any }) {
   const childArray = Children.toArray(children);
 
   if (childArray.length === 1 && isMermaidCodeChild(childArray[0])) {
