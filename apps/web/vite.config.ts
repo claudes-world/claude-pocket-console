@@ -36,12 +36,17 @@ export default defineConfig(({ command }) => ({
         deps.filter((d) => !d.includes("mermaid")),
     },
     rollupOptions: {
+      // Gate the bundle visualizer behind ANALYZE=true so it doesn't slow
+      // every production build (gzipSize/brotliSize are expensive) and so
+      // the report doesn't land in `dist/` where it could get accidentally
+      // deployed. Run `ANALYZE=true pnpm --filter @cpc/web build` to emit
+      // `apps/web/bundle-stats.html` for inspection.
       plugins:
-        command === "build"
+        command === "build" && process.env.ANALYZE === "true"
           ? [
               visualizer({
                 template: "treemap",
-                filename: "dist/bundle-stats.html",
+                filename: "bundle-stats.html",
                 gzipSize: true,
                 brotliSize: true,
               }),
