@@ -31,8 +31,9 @@ loadOpenAIEnv();
 const app = new Hono();
 
 function getUserId(c: any): string | null {
-  const user = c.get("telegramUser") as TelegramUser | undefined;
-  return user ? String(user.id) : null;
+  const telegramUser = c.get("telegramUser") as TelegramUser | undefined;
+  if (!telegramUser?.id) return null;
+  return String(telegramUser.id);
 }
 
 function countWords(text: string): number {
@@ -71,6 +72,7 @@ app.post("/transcribe", async (c) => {
   }
 });
 
+// TODO: Extract repeated auth check into Hono middleware (Gemini review finding)
 // POST /transcripts — create a new transcript
 app.post("/transcripts", async (c) => {
   const userId = getUserId(c);
