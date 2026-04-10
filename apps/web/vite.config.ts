@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { visualizer } from "rollup-plugin-visualizer";
 import { execSync } from "node:child_process";
 
 const gitVersion = (() => {
@@ -35,6 +36,17 @@ export default defineConfig(({ command }) => ({
         deps.filter((d) => !d.includes("mermaid")),
     },
     rollupOptions: {
+      plugins:
+        command === "build"
+          ? [
+              visualizer({
+                template: "treemap",
+                filename: "dist/bundle-stats.html",
+                gzipSize: true,
+                brotliSize: true,
+              }),
+            ]
+          : [],
       output: {
         // Split heavy, rarely-changing vendor libraries into their own
         // content-hashed chunks so browsers can cache them across app-code
