@@ -56,20 +56,16 @@ app.post("/save", async (c) => {
     return c.json({ error: "Access denied" }, 403);
   }
 
-  // Upsert: insert or update title on conflict
+  // Upsert: insert or update title on conflict, returning the id in one query
   const stmt = db.prepare(`
     INSERT INTO reading_list (user_id, path, title)
     VALUES (?, ?, ?)
     ON CONFLICT(user_id, path) DO UPDATE SET
       title = COALESCE(excluded.title, reading_list.title)
+    RETURNING id
   `);
 
-  stmt.run(userId, path, title ?? basename(path));
-
-  // Retrieve the row to return the id
-  const row = db.prepare(
-    "SELECT id FROM reading_list WHERE user_id = ? AND path = ?"
-  ).get(userId, path) as { id: number };
+  const row = stmt.get(userId, path, title ?? basename(path)) as { id: number };
 
   return c.json({ ok: true, id: row.id });
 });
@@ -103,7 +99,7 @@ app.get("/check", (c) => {
     return c.json({ saved: {} });
   }
 
-  const paths = pathsParam.split(",").filter(Boolean);
+  const paths = [...new Set(pathsParam.split(",").filter(Boolean))];
   if (paths.length === 0) {
     return c.json({ saved: {} });
   }
@@ -146,30 +142,28 @@ app.post("/delete", async (c) => {
   const { id, path } = body;
 
   if (id !== undefined) {
-    // Delete by id — verify ownership
-    const existing = db.prepare(
-      "SELECT id FROM reading_list WHERE id = ? AND user_id = ?"
-    ).get(id, userId);
+    // Delete by id — ownership enforced in WHERE clause
+    const result = db.prepare(
+      "DELETE FROM reading_list WHERE id = ? AND user_id = ?"
+    ).run(id, userId);
 
-    if (!existing) {
+    if (result.changes === 0) {
       return c.json({ error: "Not found" }, 404);
     }
 
-    db.prepare("DELETE FROM reading_list WHERE id = ? AND user_id = ?").run(id, userId);
     return c.json({ ok: true });
   }
 
   if (path && typeof path === "string") {
-    // Delete by path — verify ownership
-    const existing = db.prepare(
-      "SELECT id FROM reading_list WHERE path = ? AND user_id = ?"
-    ).get(path, userId);
+    // Delete by path — ownership enforced in WHERE clause
+    const result = db.prepare(
+      "DELETE FROM reading_list WHERE path = ? AND user_id = ?"
+    ).run(path, userId);
 
-    if (!existing) {
+    if (result.changes === 0) {
       return c.json({ error: "Not found" }, 404);
     }
 
-    db.prepare("DELETE FROM reading_list WHERE path = ? AND user_id = ?").run(path, userId);
     return c.json({ ok: true });
   }
 
