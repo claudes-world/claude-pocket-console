@@ -29,7 +29,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
     if (!container) return;
 
     container.querySelectorAll<HTMLTableElement>("table").forEach((table) => {
-      if (table.parentElement?.classList.contains("md-table-scroll")) return;
+      if (table.closest(".md-table-scroll")) return;
 
       const wrapper = document.createElement("div");
       wrapper.className = "md-table-scroll";
