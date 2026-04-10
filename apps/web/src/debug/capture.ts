@@ -37,8 +37,8 @@ let captureUnhandledRejection = true;
 
 // --- Ring buffer store ---
 
-const entries: DebugEntry[] = [];
-let listeners: Array<() => void> = [];
+let entries: DebugEntry[] = [];
+const listeners = new Set<() => void>();
 
 function generateId(): string {
   try {
@@ -57,10 +57,9 @@ function getTimestamp(): number {
 }
 
 function pushEntry(entry: DebugEntry): void {
-  if (entries.length >= MAX_ENTRIES) {
-    entries.shift();
-  }
-  entries.push(entry);
+  const nextEntries =
+    entries.length >= MAX_ENTRIES ? entries.slice(1) : entries;
+  entries = [...nextEntries, entry];
   // Notify subscribers
   for (const fn of listeners) {
     try {
@@ -95,7 +94,7 @@ export function getEntryCount(): number {
 
 /** Clear all captured entries */
 export function clearEntries(): void {
-  entries.length = 0;
+  entries = [];
   for (const fn of listeners) {
     try {
       fn();
@@ -107,9 +106,9 @@ export function clearEntries(): void {
 
 /** Subscribe to entry changes. Returns unsubscribe function. */
 export function subscribe(fn: () => void): () => void {
-  listeners.push(fn);
+  listeners.add(fn);
   return () => {
-    listeners = listeners.filter((l) => l !== fn);
+    listeners.delete(fn);
   };
 }
 

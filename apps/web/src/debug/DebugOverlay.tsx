@@ -130,12 +130,15 @@ export function DebugOverlay() {
   const allEntries = useSyncExternalStore(subscribe, getEntries);
 
   const filtered = filter
-    ? (allEntries as DebugEntry[]).filter(
-        (e) =>
-          e.message.toLowerCase().includes(filter.toLowerCase()) ||
-          e.detail.toLowerCase().includes(filter.toLowerCase()),
-      )
-    : (allEntries as DebugEntry[]);
+    ? (() => {
+        const lc = filter.toLowerCase();
+        return allEntries.filter(
+          (e) =>
+            e.message.toLowerCase().includes(lc) ||
+            e.detail.toLowerCase().includes(lc),
+        );
+      })()
+    : allEntries;
 
   const handleClear = useCallback(() => {
     clearEntries();
