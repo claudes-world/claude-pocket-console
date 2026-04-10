@@ -124,3 +124,9 @@ Read what you need for your current task. Start with the closest AGENTS.md.
 | `~/bin/session-history` | Forensic CLI for JSONL session history (list, search, extract, diff) |
 | `~/bin/transcribe`   | Whisper-based audio transcription via OpenAI API        |
 | `/deploy` skill      | Build web, kill server, restart, verify health           |
+
+---
+
+## Cursor Cloud specific instructions
+
+For Cursor Cloud agent setup, commands, and gotchas, read [docs/reference/cursor-cloud-agent-instructions.md](docs/reference/cursor-cloud-agent-instructions.md).
