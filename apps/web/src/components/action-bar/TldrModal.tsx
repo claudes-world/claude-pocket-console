@@ -49,7 +49,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
     } finally {
       clearTimeout(timeout);
       if (abortRef.current === controller) abortRef.current = null;
-      if (abortRef.current === null) inFlightRef.current = false;
+      inFlightRef.current = false;
       if (requestIdRef.current === requestId) setLoading(false);
     }
   };
