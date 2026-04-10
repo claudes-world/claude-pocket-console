@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 01-headings.md consistently 1`] = `
-"<div class="md-content"><h1 id="heading-level-1">Heading Level 1</h1>
+"<div class="md-content"><h1 id="heading-level-1" data-has-section="true">Heading Level 1</h1><section class="cpc-section" id="section-heading-level-1" data-fold-slug="heading-level-1">
 <p>Some content under an h1 with <strong>bold</strong> text.</p>
 <h2 id="heading-level-2">Heading Level 2</h2>
 <p>A paragraph under h2 with <code>inline code</code> and a <a href="https://example.com">link</a>.</p>
@@ -21,11 +21,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 01-headings.md consi
 <h2 id="another-h2-after-h6">Another H2 After H6</h2>
 <p>Content to test heading-reset behavior.</p>
 <h3 id="nested-h3">Nested h3</h3>
-<p>And some trailing content.</p></div>"
+<p>And some trailing content.</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consistently 1`] = `
-"<div class="md-content"><h1 id="lists">Lists</h1>
+"<div class="md-content"><h1 id="lists" data-has-section="true">Lists</h1><section class="cpc-section" id="section-lists" data-fold-slug="lists">
 <h2 id="unordered">Unordered</h2>
 <ul>
 <li>Apple</li>
@@ -92,11 +92,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consiste
 <li>
 <p>Fourth ordered</p>
 </li>
-</ol></div>"
+</ol></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 03-code-block-short.md consistently 1`] = `
-"<div class="md-content"><h1 id="short-code-block">Short code block</h1>
+"<div class="md-content"><h1 id="short-code-block" data-has-section="true">Short code block</h1><section class="cpc-section" id="section-short-code-block" data-fold-slug="short-code-block">
 <p>Here is a small TypeScript snippet:</p>
 <pre><code class="language-ts">function greet(name: string): string {
   return \`Hello, \${name}!\`;
@@ -107,11 +107,11 @@ greet(&quot;world&quot;);
 <p>And a short bash example:</p>
 <pre><code class="language-bash">pnpm install
 pnpm test
-</code></pre></div>"
+</code></pre></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 04-code-block-wide.md consistently 1`] = `
-"<div class="md-content"><h1 id="wide-code-block-horizontal-scroll-target">Wide code block (horizontal scroll target)</h1>
+"<div class="md-content"><h1 id="wide-code-block-horizontal-scroll-target" data-has-section="true">Wide code block (horizontal scroll target)</h1><section class="cpc-section" id="section-wide-code-block-horizontal-scroll-target" data-fold-slug="wide-code-block-horizontal-scroll-target">
 <p>This fixture exists to pin down the PR #20 regression around wide code blocks and horizontal scrolling.</p>
 <pre><code class="language-ts">// This single line is intentionally very long to force horizontal scrolling inside the rendered &lt;pre&gt;&lt;code&gt; container so we can diff how marked and react-markdown lay out the overflow behavior under the same CSS.
 const veryLongIdentifier = { alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8, iota: 9, kappa: 10, lambda: 11, mu: 12, nu: 13, xi: 14, omicron: 15, pi: 16, rho: 17, sigma: 18, tau: 19, upsilon: 20, phi: 21, chi: 22, psi: 23, omega: 24 };
@@ -122,23 +122,23 @@ function doSomethingThatTakesAbsurdlyManyArgumentsAndReturnsAnAbsurdlyLongInline
 <p>And a short line afterwards to verify the following paragraph wraps normally after a wide code block:</p>
 <pre><code>$ curl -sSL https://example.com/some/very/long/path/that/should/not/wrap/inside/the/pre/block/because/pre/preserves/whitespace/and/horizontal/scroll/should/kick/in?query=param1&amp;query=param2&amp;query=param3
 </code></pre>
-<p>End of wide fixture.</p></div>"
+<p>End of wide fixture.</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 05-table-narrow.md consistently 1`] = `
-"<div class="md-content"><h1 id="narrow-table">Narrow table</h1>
+"<div class="md-content"><h1 id="narrow-table" data-has-section="true">Narrow table</h1><section class="cpc-section" id="section-narrow-table" data-fold-slug="narrow-table">
 <div class="md-table-scroll"><table><thead><tr><th>Name</th><th style="text-align:right">Count</th></tr></thead><tbody><tr><td>Apples</td><td style="text-align:right">3</td></tr><tr><td>Bananas</td><td style="text-align:right">12</td></tr><tr><td>Cherries</td><td style="text-align:right">47</td></tr></tbody></table></div>
-<p>A short paragraph after the table.</p></div>"
+<p>A short paragraph after the table.</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 06-table-wide.md consistently 1`] = `
-"<div class="md-content"><h1 id="wide-table">Wide table</h1>
+"<div class="md-content"><h1 id="wide-table" data-has-section="true">Wide table</h1><section class="cpc-section" id="section-wide-table" data-fold-slug="wide-table">
 <div class="md-table-scroll"><table><thead><tr><th style="text-align:left">Column A</th><th style="text-align:center">Column B</th><th style="text-align:left">Column C (with a long header)</th><th style="text-align:right">Column D</th><th>Column E</th><th>Column F</th></tr></thead><tbody><tr><td style="text-align:left">alpha</td><td style="text-align:center">beta</td><td style="text-align:left">this is a fairly long cell value that should push the column width out</td><td style="text-align:right">1</td><td>true</td><td><code>code</code></td></tr><tr><td style="text-align:left">gamma</td><td style="text-align:center">delta</td><td style="text-align:left">another long cell with <strong>bold</strong> and <em>italic</em> inline styles interleaved</td><td style="text-align:right">22</td><td>false</td><td><a href="https://example.com">link</a></td></tr><tr><td style="text-align:left">epsilon</td><td style="text-align:center">zeta</td><td style="text-align:left">short</td><td style="text-align:right">333</td><td>true</td><td>plain</td></tr><tr><td style="text-align:left">eta</td><td style="text-align:center">theta</td><td style="text-align:left">cell with a pipe escape | inside it</td><td style="text-align:right">4444</td><td>false</td><td><code>x</code></td></tr><tr><td style="text-align:left">iota</td><td style="text-align:center">kappa</td><td style="text-align:left">final row with a <a href="https://example.com/path?a=1&amp;b=2">link</a> embedded</td><td style="text-align:right">55555</td><td>true</td><td>done</td></tr></tbody></table></div>
-<p>Trailing paragraph to verify flow after a wide table.</p></div>"
+<p>Trailing paragraph to verify flow after a wide table.</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 07-blockquote.md consistently 1`] = `
-"<div class="md-content"><h1 id="blockquotes">Blockquotes</h1>
+"<div class="md-content"><h1 id="blockquotes" data-has-section="true">Blockquotes</h1><section class="cpc-section" id="section-blockquotes" data-fold-slug="blockquotes">
 <p>Single-level blockquote:</p>
 <blockquote>
 <p>This is a simple single-level blockquote.<br/>
@@ -176,11 +176,11 @@ It spans two lines of markdown source.</p>
 <blockquote>
 <pre><code class="language-ts">const quoted = &quot;code inside blockquote&quot;;
 </code></pre>
-</blockquote></div>"
+</blockquote></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 08-mixed-inline.md consistently 1`] = `
-"<div class="md-content"><h1 id="mixed-inline-formatting">Mixed inline formatting</h1>
+"<div class="md-content"><h1 id="mixed-inline-formatting" data-has-section="true">Mixed inline formatting</h1><section class="cpc-section" id="section-mixed-inline-formatting" data-fold-slug="mixed-inline-formatting">
 <p>A single dense paragraph with <strong>bold</strong>, <em>italic</em>, <em><strong>bold-italic</strong></em>, <code>inline code</code>, <del>strikethrough</del>, and a <a href="https://example.com">link</a> all interleaved into one flowing sentence so the renderer has to deal with many inline transitions in a row without any breaks between them at all.</p>
 <p>Another paragraph that <strong>combines <code>code inside bold</code></strong> and <em><a href="https://example.com">links inside italics</a></em> and <code>**not bold inside code**</code> to verify escape semantics.</p>
 <p>A line with emphasis edges: <strong>bold at start</strong> of a sentence, and another sentence ending with <strong>bold at end</strong>. Also <em>italic at start</em> and <em>italic at end</em>.</p>
@@ -189,11 +189,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 08-mixed-inline.md c
 <p>Line 1 with trailing spaces to force a soft break<br/>
 Line 2 after the soft break.</p>
 <p>Line A<br/>
-Line B (single newline between — with <code>breaks: true</code>, marked renders this as <code>&lt;br&gt;</code>).</p></div>"
+Line B (single newline between — with <code>breaks: true</code>, marked renders this as <code>&lt;br&gt;</code>).</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 09-link-edge-cases.md consistently 1`] = `
-"<link rel="preload" as="image" href="https://shared.claude.do/public/placeholder.png"/><div class="md-content"><h1 id="link-edge-cases">Link edge cases</h1>
+"<link rel="preload" as="image" href="https://shared.claude.do/public/placeholder.png"/><div class="md-content"><h1 id="link-edge-cases" data-has-section="true">Link edge cases</h1><section class="cpc-section" id="section-link-edge-cases" data-fold-slug="link-edge-cases">
 <p>Inline link with parens in URL: <a href="https://en.wikipedia.org/wiki/Markdown_(software)">wiki article</a>.</p>
 <p>Inline link with query + fragment: <a href="https://example.com/path?query=foo&amp;bar=baz#section-2">search</a>.</p>
 <p>Inline link with title: <a href="https://example.com" title="Example title">hover me</a>.</p>
@@ -206,11 +206,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 09-link-edge-cases.m
 <p>Link with special chars in text: <a href="https://example.com"><code>code</code> in <strong>bold</strong> link text</a>.</p>
 <p>Image: <img src="https://shared.claude.do/public/placeholder.png" alt="alt text" title="image title"/>.</p>
 <p>Link followed immediately by punctuation: see <a href="https://example.com">example</a>, then continue.</p>
-<p>Bare URL (not autolinked without angle brackets): <a href="https://example.com/bare">https://example.com/bare</a></p></div>"
+<p>Bare URL (not autolinked without angle brackets): <a href="https://example.com/bare">https://example.com/bare</a></p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md consistently 1`] = `
-"<div class="md-content"><h1 id="adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule">ADR 0001: Package CPC as the Shareable Hub with Toolbox as a Git Submodule</h1>
+"<div class="md-content"><h1 id="adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule" data-has-section="true">ADR 0001: Package CPC as the Shareable Hub with Toolbox as a Git Submodule</h1><section class="cpc-section" id="section-adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule" data-fold-slug="adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule">
 <p><strong>Status:</strong> Proposed<br/>
 <strong>Date:</strong> 2026-04-06<br/>
 <strong>Deciders:</strong> Liam (Chaintail), Claude<br/>
@@ -337,11 +337,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li><code>~/code/claude-pocket-console/</code> — the CPC repo to be restructured</li>
 <li><code>~/code/toolbox/</code> — the toolbox repo to become a submodule</li>
 <li><a href="https://git-scm.com/book/en/v2/Git-Tools-Submodules">Git submodule docs</a></li>
-</ul></div>"
+</ul></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnight-summary.md consistently 1`] = `
-"<div class="md-content"><h1 id="overnight-final-report--april-6-7-2026">Overnight Final Report — April 6-7, 2026</h1>
+"<div class="md-content"><h1 id="overnight-final-report--april-6-7-2026" data-has-section="true">Overnight Final Report — April 6-7, 2026</h1><section class="cpc-section" id="section-overnight-final-report--april-6-7-2026" data-fold-slug="overnight-final-report--april-6-7-2026">
 <p><strong>Session start:</strong> ~7:30pm ET April 6<br/>
 <strong>Session end:</strong> ~9:30pm ET April 6 (this report)<br/>
 <strong>Format:</strong> Single document for morning review</p>
@@ -598,13 +598,13 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 <hr/>
 <h2 id="sleep-well-liam">Sleep well, Liam.</h2>
 <p>The system is in good shape. Lots of value sitting in the PR queue waiting for your review. The big architectural conversations have concrete recommendations. The synthesis docs are ready to discuss when you&#x27;re ready.</p>
-<p>— Claude</p></div>"
+<p>— Claude</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsible-headings-plan.md consistently 1`] = `
 "<div class="md-content"><p>I have everything I need. Note that mermaid is not rendered interactively — there&#x27;s no existing post-process pattern in MarkdownViewer using <code>createRoot</code>. Now I&#x27;ll deliver the plan.</p>
 <hr/>
-<h1 id="collapsible-heading-sections--implementation-plan">Collapsible Heading Sections — Implementation Plan</h1>
+<h1 id="collapsible-heading-sections--implementation-plan" data-has-section="true">Collapsible Heading Sections — Implementation Plan</h1><section class="cpc-section" id="section-collapsible-heading-sections--implementation-plan" data-fold-slug="collapsible-heading-sections--implementation-plan">
 <p><strong>Date:</strong> 2026-04-07<br/>
 <strong>Feature:</strong> Disclosure triangles next to headings in the CPC markdown viewer that collapse/expand sections, with optional sync to a future TOC drawer.<br/>
 <strong>Note on file output:</strong> This planning task is read-only — I cannot save the plan to <code>tmp/</code>. The full plan is below; copy/paste it wherever you&#x27;d like it to live.</p>
@@ -970,11 +970,11 @@ Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cle
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/FileViewer.tsx</code> — add prop pass-through for fold state and callbacks; otherwise unchanged. (Already manages its own <code>collapsedRanges</code> for code-file folding — that stays separate; markdown fold is a different feature that lives at App level.)</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/ActionBar.tsx</code> — only relevant if TOC drawer ships in the same pass. Reference for the existing <code>BottomSheet</code> component that the future <code>TocSheet</code> should reuse.</li>
 <li><code>/home/claude/claudes-world/tmp/20260407-markdown-toc-and-audio-proposals.md</code> — the related TOC proposal. Note that its claim about marked auto-generating IDs is incorrect; if both features ship, they share the heading-id assignment work described here.</li>
-</ul></div>"
+</ul></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 13-mermaid.md consistently 1`] = `
-"<div class="md-content"><h1 id="mermaid-test">Mermaid Test</h1>
+"<div class="md-content"><h1 id="mermaid-test" data-has-section="true">Mermaid Test</h1><section class="cpc-section" id="section-mermaid-test" data-fold-slug="mermaid-test">
 <p>This is a quick test of Mermaid rendering in CPC&#x27;s MarkdownViewer.</p>
 <h2 id="flowchart">Flowchart</h2>
 <div class="mermaid-mount"><div class="mermaid-loading">Loading diagram…</div></div>
@@ -982,13 +982,13 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 13-mermaid.md consis
 <pre><code class="language-js">const hello = &quot;world&quot;;
 console.log(hello);
 </code></pre>
-<p>Done.</p></div>"
+<p>Done.</p></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 14-empty.md consistently 1`] = `"<div class="md-content"><p>Just a single line of text and nothing else.</p></div>"`;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 15-pathological.md consistently 1`] = `
-"<div class="md-content"><h1 id="pathological-shapes">Pathological shapes</h1>
+"<div class="md-content"><h1 id="pathological-shapes" data-has-section="true">Pathological shapes</h1><section class="cpc-section" id="section-pathological-shapes" data-fold-slug="pathological-shapes">
 <p>Raw HTML mixed in (marked passes through by default):</p>
 &lt;div class=&quot;custom-box&quot; style=&quot;padding: 8px;&quot;&gt;
   &lt;p&gt;Inline HTML paragraph with &lt;strong&gt;bold&lt;/strong&gt; and a &lt;a href=&quot;https://example.com&quot;&gt;raw anchor&lt;/a&gt;.&lt;/p&gt;
@@ -1032,5 +1032,5 @@ Line C</p>
 multiple lines
   indented
 </code></pre>
-<p>A paragraph ending without a trailing newline and no more content after it.</p></div>"
+<p>A paragraph ending without a trailing newline and no more content after it.</p></section></div>"
 `;

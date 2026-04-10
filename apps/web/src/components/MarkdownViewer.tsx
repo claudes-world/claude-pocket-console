@@ -1,9 +1,11 @@
-import React, { Children, isValidElement, type ReactNode } from "react";
+import React, { Children, isValidElement, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeSlug from "rehype-slug";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { rehypeCollapsibleSections } from "./markdown/rehype-collapsible-sections";
+import { makeHeadingComponent } from "./markdown/CollapsibleHeading";
 
 interface MarkdownViewerProps {
   content: string;
@@ -14,7 +16,8 @@ export const markdownRemarkPlugins = [remarkGfm, remarkBreaks];
 
 // rehype-slug is pinned to major 6 in package.json. Heading IDs are a contract
 // for deep links, TOC state, and collapsible headings.
-export const markdownRehypePlugins = [rehypeSlug];
+// rehypeCollapsibleSections must run AFTER rehypeSlug so slug IDs exist.
+export const markdownRehypePlugins = [rehypeSlug, rehypeCollapsibleSections];
 
 function getLanguage(className?: string): string {
   return (
@@ -80,13 +83,146 @@ function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWitho
   return <pre {...props}>{children}</pre>;
 }
 
-export const markdownComponents: Components = {
+const baseComponents: Partial<Components> = {
   code: CodeBlock,
   table: ScrollableTable,
   pre: PreBlock,
 };
 
+/** @deprecated Use baseComponents internally; kept for test compatibility */
+export const markdownComponents: Components = baseComponents as Components;
+
+// Heading tree for effective-hidden computation. Regex-based v1; strips fenced
+// code blocks to avoid false matches. A remark-parse AST walk would be more
+// robust but adds complexity for minimal gain here.
+interface HeadingEntry {
+  slug: string;
+  level: number;
+}
+
+function parseHeadings(content: string): HeadingEntry[] {
+  // Strip fenced code blocks to avoid false heading matches
+  const stripped = content.replace(/```[\s\S]*?```/g, "");
+  const headings: HeadingEntry[] = [];
+  const re = /^(#{1,6})\s+(.+)$/gm;
+  let match;
+  // Track slug collisions the same way rehype-slug does
+  const slugCounts = new Map<string, number>();
+
+  while ((match = re.exec(stripped)) !== null) {
+    const level = match[1].length;
+    const text = match[2]
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+    const count = slugCounts.get(text) ?? 0;
+    const slug = count === 0 ? text : `${text}-${count}`;
+    slugCounts.set(text, count + 1);
+    headings.push({ slug, level });
+  }
+  return headings;
+}
+
+function computeEffectiveHidden(
+  headings: HeadingEntry[],
+  foldedIds: Set<string>,
+): Set<string> {
+  if (foldedIds.size === 0) return foldedIds; // fast path: nothing folded
+
+  const hidden = new Set<string>();
+  // Stack tracks ancestor headings; each entry is { level, folded }
+  const ancestors: { level: number; folded: boolean }[] = [];
+
+  for (const { slug, level } of headings) {
+    // Pop ancestors that are not parents of this level
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1].level >= level) {
+      ancestors.pop();
+    }
+
+    const anyAncestorFolded = ancestors.some((a) => a.folded);
+    const selfFolded = foldedIds.has(slug);
+
+    if (anyAncestorFolded || selfFolded) {
+      hidden.add(slug);
+    }
+
+    ancestors.push({ level, folded: selfFolded });
+  }
+
+  return hidden;
+}
+
 export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
+  const [foldedIds, setFoldedIds] = useState<Set<string>>(new Set());
+  const firstH1Ref = useRef<string | null>(null);
+
+  const toggleFold = useCallback((id: string) => {
+    setFoldedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const headings = useMemo(() => parseHeadings(content), [content]);
+
+  // Determine the first H1 slug to exclude it from collapsibility
+  const firstH1Slug = useMemo(() => {
+    const first = headings.find((h) => h.level === 1);
+    return first?.slug ?? null;
+  }, [headings]);
+  firstH1Ref.current = firstH1Slug;
+
+  const effectiveHidden = useMemo(
+    () => computeEffectiveHidden(headings, foldedIds),
+    [headings, foldedIds],
+  );
+
+  // Build components with fold controls. Recreated when fold state changes,
+  // which is acceptable — react-markdown must re-render on toggle anyway.
+  const components = useMemo<Components>(() => {
+    const controls = { foldedIds, toggleFold, isFirstH1: false };
+
+    const h = (tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") =>
+      makeHeadingComponent(tag, controls);
+
+    return {
+      ...baseComponents,
+      h1: (props: any) => {
+        const slug = typeof props.id === "string" ? props.id : "";
+        const Comp = makeHeadingComponent("h1", {
+          foldedIds, toggleFold, isFirstH1: slug === firstH1Ref.current,
+        });
+        return <Comp {...props} />;
+      },
+      h2: h("h2"),
+      h3: h("h3"),
+      h4: h("h4"),
+      h5: h("h5"),
+      h6: h("h6"),
+      section: ({ node: _node, children, ...props }: any) => {
+        const slug = props["data-fold-slug"] as string | undefined;
+        if (!slug) return <section {...props}>{children}</section>;
+        const hidden = effectiveHidden.has(slug);
+        return (
+          <section
+            {...props}
+            className={
+              [props.className, hidden ? "cpc-folded" : ""]
+                .filter(Boolean)
+                .join(" ")
+            }
+            aria-hidden={hidden || undefined}
+          >
+            {children}
+          </section>
+        );
+      },
+    };
+  }, [foldedIds, toggleFold, effectiveHidden]);
+
   return (
     <div
       className="md-viewer-scroll"
@@ -274,12 +410,39 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         .md-content .mermaid-error pre {
           margin: 0;
         }
+        /* Collapsible headings */
+        .md-content .cpc-collapsible-heading {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          user-select: none;
+        }
+        .md-content .cpc-toggle-chevron {
+          flex: 0 0 auto;
+          width: 20px;
+          height: 20px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #565f89;
+          font-size: 10px;
+          transition: transform 0.2s ease;
+          border-radius: 3px;
+        }
+        .md-content .cpc-collapsible-heading:hover .cpc-toggle-chevron {
+          color: #7aa2f7;
+          background: rgba(122, 162, 247, 0.1);
+        }
+        .md-content .cpc-section.cpc-folded {
+          display: none;
+        }
       `}</style>
       <div className="md-content">
         <ReactMarkdown
           remarkPlugins={markdownRemarkPlugins}
           rehypePlugins={markdownRehypePlugins}
-          components={markdownComponents}
+          components={components}
         >
           {content}
         </ReactMarkdown>
