@@ -98,21 +98,17 @@ describe("/paste endpoint — security properties", () => {
     expect(body.error).toBe("Access denied");
   });
 
-  it("sanitizes null bytes in filename (returns 400)", async () => {
+  it("null bytes in filename are stripped and request succeeds", async () => {
     const { status, body } = await callPaste({
       filename: "evil\x00.txt",
       content: "pwned",
       dir: sandbox,
     });
-    // sanitizeFilename strips control chars; if result is still valid, it writes.
-    // A null byte in the middle gets stripped → "evil.txt" which is valid.
-    // But a filename that is ONLY control chars would become empty → 400.
-    // The important thing: the null byte is NOT in the written filename.
-    expect([200, 400]).toContain(status);
-    if (status === 200) {
-      // The null byte was stripped, filename should NOT contain \0
-      expect((body.name as string)).not.toContain("\x00");
-    }
+    // sanitizeFilename strips control chars (including null bytes),
+    // producing "evil.txt" which is a valid filename → 200.
+    expect(status).toBe(200);
+    expect((body.name as string)).not.toContain("\x00");
+    expect((body.name as string)).toBe("evil.txt");
   });
 
   it("rejects filename with path separators (slashes)", async () => {

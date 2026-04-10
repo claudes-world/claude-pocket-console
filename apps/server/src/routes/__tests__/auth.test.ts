@@ -139,7 +139,7 @@ describe("telegramAuth middleware", () => {
     it("rejects initData with a wrong HMAC (tampered payload)", async () => {
       const initData = makeInitData(TEST_USER);
       // Flip a character in the hash to simulate tampering
-      const tampered = initData.replace(/hash=([0-9a-f])/, "hash=0");
+      const tampered = initData.replace(/hash=([0-9a-f])/, "hash=Z");
       const res = await app.request("/api/test", {
         headers: { Authorization: `tma ${tampered}` },
       });
