@@ -8,7 +8,7 @@ import { validateTelegramInitData, getAllowedUsers, validateSession, validateJwt
 export async function telegramAuth(c: Context, next: Next) {
   if (
     c.req.method === "GET" &&
-    new URL(c.req.url).pathname === "/api/files/download" &&
+    c.req.path === "/api/files/download" &&
     c.req.query("ticket")
   ) {
     await next();

@@ -52,7 +52,7 @@ function pruneExpiredDownloadTickets(now = Date.now()) {
 
 async function getDownloadableFile(filePath: string): Promise<
   | { ok: true; path: string; size: number; name: string }
-  | { ok: false; status: 400 | 403 | 413 | 500; error: string }
+  | { ok: false; status: 400 | 403 | 404 | 413 | 500; error: string }
 > {
   const resolved = resolve(filePath);
   if (!await isPathAllowed(resolved)) {
@@ -66,7 +66,7 @@ async function getDownloadableFile(filePath: string): Promise<
     }
 
     if (st.size > DOWNLOAD_MAX_BYTES) {
-      return { ok: false, status: 413, error: "File too large (max 50MB)" };
+      return { ok: false, status: 413, error: `File too large (max ${DOWNLOAD_MAX_BYTES / (1024 * 1024)}MB)` };
     }
 
     return {
@@ -75,7 +75,10 @@ async function getDownloadableFile(filePath: string): Promise<
       size: st.size,
       name: basename(resolved) || "file",
     };
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      return { ok: false, status: 404, error: "File not found" };
+    }
     console.error("[files/download] stat error:", err);
     return { ok: false, status: 500, error: "Failed to read file" };
   }
@@ -293,8 +296,8 @@ app.post("/download-ticket", async (c) => {
 app.get("/download", async (c) => {
   const ticket = c.req.query("ticket");
   if (ticket) {
-    pruneExpiredDownloadTickets();
-
+    // Pruning happens in the POST handler so the map doesn't grow unbounded;
+    // the per-request expiry check below handles correctness on GET.
     const record = downloadTickets.get(ticket);
     if (!record || record.used || record.expiresAt <= Date.now()) {
       return c.json({ error: "invalid or expired ticket" }, 403);
