@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "test": "turbo test",
+    "test": "turbo test && playwright test",
+    "test:unit": "turbo test",
+    "test:e2e": "playwright test",
     "lint": "turbo lint",
     "clean": "turbo clean"
   },
