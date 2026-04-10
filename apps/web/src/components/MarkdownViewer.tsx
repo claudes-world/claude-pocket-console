@@ -5,7 +5,7 @@ import remarkBreaks from "remark-breaks";
 import rehypeSlug from "rehype-slug";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { rehypeCollapsibleSections } from "./markdown/rehype-collapsible-sections";
-import { makeHeadingComponent } from "./markdown/CollapsibleHeading";
+import { makeHeadingComponent, type HeadingEntry } from "./markdown/CollapsibleHeading";
 
 interface MarkdownViewerProps {
   content: string;
@@ -92,38 +92,6 @@ const baseComponents: Partial<Components> = {
 /** @deprecated Use baseComponents internally; kept for test compatibility */
 export const markdownComponents: Components = baseComponents as Components;
 
-// Heading tree for effective-hidden computation. Regex-based v1; strips fenced
-// code blocks to avoid false matches. A remark-parse AST walk would be more
-// robust but adds complexity for minimal gain here.
-interface HeadingEntry {
-  slug: string;
-  level: number;
-}
-
-function parseHeadings(content: string): HeadingEntry[] {
-  // Strip fenced code blocks to avoid false heading matches
-  const stripped = content.replace(/```[\s\S]*?```/g, "");
-  const headings: HeadingEntry[] = [];
-  const re = /^(#{1,6})\s+(.+)$/gm;
-  let match;
-  // Track slug collisions the same way rehype-slug does
-  const slugCounts = new Map<string, number>();
-
-  while ((match = re.exec(stripped)) !== null) {
-    const level = match[1].length;
-    const text = match[2]
-      .replace(/[^\w\s-]/g, "")
-      .trim()
-      .replace(/\s+/g, "-")
-      .toLowerCase();
-    const count = slugCounts.get(text) ?? 0;
-    const slug = count === 0 ? text : `${text}-${count}`;
-    slugCounts.set(text, count + 1);
-    headings.push({ slug, level });
-  }
-  return headings;
-}
-
 function computeEffectiveHidden(
   headings: HeadingEntry[],
   foldedIds: Set<string>,
@@ -155,7 +123,28 @@ function computeEffectiveHidden(
 
 export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
   const [foldedIds, setFoldedIds] = useState<Set<string>>(new Set());
-  const firstH1Ref = useRef<string | null>(null);
+
+  // Collect heading entries as heading components render (Finding 1 fix).
+  // This replaces the fragile regex parser — slugs now come directly from
+  // rehype-slug's id prop, guaranteeing parity.
+  const headingsRef = useRef<HeadingEntry[]>([]);
+  const firstH1SlugRef = useRef<string | null>(null);
+
+  // Reset collected headings at the start of each render pass.
+  // Reading/writing refs during render is safe here because:
+  //  - we reset at the top of the render (before children mount)
+  //  - heading components append during the same synchronous render pass
+  //  - section components read the ref during the same render pass
+  // This is a well-known "accumulator ref" pattern in React.
+  headingsRef.current = [];
+  firstH1SlugRef.current = null;
+
+  const registerHeading = useCallback((entry: HeadingEntry) => {
+    headingsRef.current.push(entry);
+    if (entry.level === 1 && firstH1SlugRef.current === null) {
+      firstH1SlugRef.current = entry.slug;
+    }
+  }, []);
 
   const toggleFold = useCallback((id: string) => {
     setFoldedIds((prev) => {
@@ -166,46 +155,34 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
     });
   }, []);
 
-  const headings = useMemo(() => parseHeadings(content), [content]);
-
-  // Determine the first H1 slug to exclude it from collapsibility
-  const firstH1Slug = useMemo(() => {
-    const first = headings.find((h) => h.level === 1);
-    return first?.slug ?? null;
-  }, [headings]);
-  firstH1Ref.current = firstH1Slug;
-
-  const effectiveHidden = useMemo(
-    () => computeEffectiveHidden(headings, foldedIds),
-    [headings, foldedIds],
-  );
-
   // Build components with fold controls. Recreated when fold state changes,
   // which is acceptable — react-markdown must re-render on toggle anyway.
+  // Heading components are created via makeHeadingComponent at module-level
+  // factory (Finding 2 fix) — useMemo ensures stable component references
+  // between renders when fold state hasn't changed.
   const components = useMemo<Components>(() => {
-    const controls = { foldedIds, toggleFold, isFirstH1: false };
+    const hTags = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+    const headingComponents: Partial<Components> = {};
 
-    const h = (tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") =>
-      makeHeadingComponent(tag, controls);
+    for (const tag of hTags) {
+      headingComponents[tag] = makeHeadingComponent(tag, {
+        foldedIds,
+        toggleFold,
+        firstH1SlugRef,
+        registerHeading,
+      });
+    }
 
     return {
       ...baseComponents,
-      h1: (props: any) => {
-        const slug = typeof props.id === "string" ? props.id : "";
-        const Comp = makeHeadingComponent("h1", {
-          foldedIds, toggleFold, isFirstH1: slug === firstH1Ref.current,
-        });
-        return <Comp {...props} />;
-      },
-      h2: h("h2"),
-      h3: h("h3"),
-      h4: h("h4"),
-      h5: h("h5"),
-      h6: h("h6"),
+      ...headingComponents,
       section: ({ node: _node, children, ...props }: any) => {
         const slug = props["data-fold-slug"] as string | undefined;
         if (!slug) return <section {...props}>{children}</section>;
-        const hidden = effectiveHidden.has(slug);
+        // Compute effective-hidden inline using collected headings.
+        // By the time a section renders, all preceding heading components
+        // have already called registerHeading (synchronous render order).
+        const hidden = computeEffectiveHidden(headingsRef.current, foldedIds).has(slug);
         return (
           <section
             {...props}
@@ -221,7 +198,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         );
       },
     };
-  }, [foldedIds, toggleFold, effectiveHidden]);
+  }, [foldedIds, toggleFold, registerHeading]);
 
   return (
     <div
@@ -415,22 +392,28 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           display: flex;
           align-items: center;
           gap: 6px;
-          cursor: pointer;
-          user-select: none;
         }
-        .md-content .cpc-toggle-chevron {
+        .md-content .cpc-fold-btn {
+          all: unset;
           flex: 0 0 auto;
-          width: 20px;
-          height: 20px;
+          cursor: pointer;
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 3px;
+        }
+        .md-content .cpc-fold-btn:focus-visible {
+          outline: 2px solid #7aa2f7;
+          outline-offset: 1px;
+        }
+        .md-content .cpc-toggle-chevron {
           color: #565f89;
           font-size: 10px;
           transition: transform 0.2s ease;
-          border-radius: 3px;
         }
-        .md-content .cpc-collapsible-heading:hover .cpc-toggle-chevron {
+        .md-content .cpc-fold-btn:hover .cpc-toggle-chevron {
           color: #7aa2f7;
           background: rgba(122, 162, 247, 0.1);
         }
