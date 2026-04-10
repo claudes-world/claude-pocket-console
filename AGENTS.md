@@ -81,7 +81,7 @@ Read what you need for your current task. Start with the closest AGENTS.md.
 - [Telegram WebView Rules](docs/reference/telegram-webview-rules.md) -- platform constraints
 - [Modal System](docs/reference/modal-system.md) -- ActionBar modals and BottomSheet
 
-### Environment setup (CI / cloud agents)
+### Environment Setup (CI / cloud agents)
 - [Cursor Cloud Agent Instructions](docs/reference/cursor-cloud-agent-instructions.md) -- CI/cloud-agent VM setup, secrets, gotchas
 
 ### Guides (how to do things)
