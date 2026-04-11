@@ -6,6 +6,15 @@ import { validateTelegramInitData, getAllowedUsers, validateSession, validateJwt
  * Expects initData in the Authorization header as: tma <initData>
  */
 export async function telegramAuth(c: Context, next: Next) {
+  if (
+    c.req.method === "GET" &&
+    c.req.path === "/api/files/download" &&
+    c.req.query("ticket")
+  ) {
+    await next();
+    return;
+  }
+
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) {
     return c.json({ error: "Server not configured: missing bot token" }, 500);
