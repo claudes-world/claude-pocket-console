@@ -1,4 +1,5 @@
 import { BottomSheet } from "../BottomSheet";
+import { InProgressAnimation } from "./InProgressAnimation";
 import { btnStyle, type AudioStatus } from "./types";
 
 interface AudioGenModalProps {
@@ -15,7 +16,11 @@ export function AudioGenModal({ viewingFile, audioLoading, audioStatus, onClose,
     <BottomSheet onClose={onClose} title="Audio">
       <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>{viewingFile.name}</div>
       {audioLoading ? (
-        <div style={{ fontSize: 13, color: "#565f89", padding: 16, textAlign: "center" }}>Loading...</div>
+        <InProgressAnimation
+          label="Generating audio…"
+          hint="typically 15-20 seconds"
+          ariaLabel="Generating audio"
+        />
       ) : audioStatus?.exists ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontSize: 12, color: "#9ece6a", marginBottom: 4 }}>Audio file exists</div>
