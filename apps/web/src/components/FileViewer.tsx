@@ -3,6 +3,7 @@ import { FiDownload } from "react-icons/fi";
 import { getAuthHeaders } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BottomSheet } from "./BottomSheet";
+import { getFileIcon } from "./file-icons";
 
 const PASTE_MAX_BYTES = 1024 * 1024;
 
@@ -842,13 +843,14 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             >
               <span
                 style={{
-                  color: entry.type === "dir" ? "#7aa2f7" : "#c0caf5",
-                  fontSize: 14,
                   width: 20,
-                  textAlign: "center",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                 }}
               >
-                {entry.type === "dir" ? "📁" : "📄"}
+                {getFileIcon(entry.name, entry.type === "dir")}
               </span>
               <span
                 style={{
