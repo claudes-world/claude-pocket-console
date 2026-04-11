@@ -54,6 +54,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   searchScopeRef.current = searchCurrentFolderOnly && currentFolder ? currentFolder : null;
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [audioOp, setAudioOp] = useState<"idle" | "checking" | "generating" | "sending">("idle");
   // Synchronous in-flight guard for audio generation/send. Mirrors the
   // TldrModal pattern (PR #121): React hasn't necessarily committed
   // setAudioLoading(true) by the time a fast double-tap fires the second
@@ -199,11 +200,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchCurrentFolderOnly, currentFolder, modal]);
 
-  const handleCheckAudio = async (filePath: string) => { setAudioStatus(null); setAudioLoading(true); try { setAudioStatus(await checkAudio(filePath)); } catch { setAudioStatus(null); } setAudioLoading(false); };
+  const handleCheckAudio = async (filePath: string) => { setAudioStatus(null); setAudioLoading(true); setAudioOp("checking"); try { setAudioStatus(await checkAudio(filePath)); } catch { setAudioStatus(null); } finally { setAudioOp("idle"); setAudioLoading(false); } };
   const handleGenerateAudio = async (filePath: string) => {
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
     setAudioLoading(true);
+    setAudioOp("generating");
     setStatus("Generating audio...");
     try {
       const controller = new AbortController();
@@ -221,6 +223,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       audioInFlightRef.current = false;
+      setAudioOp("idle");
       setAudioLoading(false);
     }
   };
@@ -228,6 +231,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
     setAudioLoading(true);
+    setAudioOp("sending");
     setStatus("Sending to Telegram...");
     try {
       const controller = new AbortController();
@@ -244,6 +248,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       audioInFlightRef.current = false;
+      setAudioOp("idle");
       setAudioLoading(false);
     }
   };
@@ -281,7 +286,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     case "file-options": modalNode = <FileOptionsSheet fileShowHidden={fileShowHidden} fileSortMode={fileSortMode} setFileShowHidden={setFileShowHidden} setFileSortMode={setFileSortMode} onClose={() => setModal(null)} />; break;
     case "file-search": modalNode = <FileSearchSheet searchQuery={searchQuery} searchResults={searchResults} currentFolder={currentFolder ?? null} currentFolderOnly={searchCurrentFolderOnly} onToggleCurrentFolderOnly={setSearchCurrentFolderOnly} onClose={() => setModal(null)} onChange={handleSearchInput} onSelect={(result) => { setModal(null); window.location.hash = `files&file=${encodeURIComponent(result.path)}`; window.location.reload(); }} />; break;
     case "tldr": modalNode = viewingFile ? <TldrModal viewingFile={viewingFile} onClose={() => setModal(null)} /> : null; break;
-    case "audio-gen": modalNode = viewingFile ? <AudioGenModal viewingFile={viewingFile} audioLoading={audioLoading} audioStatus={audioStatus} onClose={() => setModal(null)} onGenerate={() => void handleGenerateAudio(viewingFile.path)} onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path); }} /> : null; break;
+    case "audio-gen": modalNode = viewingFile ? <AudioGenModal viewingFile={viewingFile} audioLoading={audioLoading} audioOp={audioOp} audioStatus={audioStatus} onClose={() => setModal(null)} onGenerate={() => void handleGenerateAudio(viewingFile.path)} onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path); }} /> : null; break;
   }
 
   return (
