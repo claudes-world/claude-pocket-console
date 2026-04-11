@@ -31,6 +31,15 @@ import { resolve, sep } from "node:path";
 // rejection from evicting a newer entry added after a cache clear.
 const realRootCache = new Map<string, Promise<string>>();
 
+export const ALLOWED_FILE_ROOTS = [
+  "/home/claude/claudes-world",
+  "/home/claude/code",
+  "/home/claude/bin",
+  "/home/claude/.claude",
+  "/home/claude/claudes-world/.claude",
+] as const;
+
+
 function getRealRoot(root: string): Promise<string> {
   const key = resolve(root);
   const cached = realRootCache.get(key);

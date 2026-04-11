@@ -11,39 +11,17 @@ import Database from "better-sqlite3";
  *   - Drive the route via Hono's `app.request()` — no listening server, no ports.
  */
 
-// In-memory database for tests
+// In-memory database for tests, injected via the mocked db module.
 const testDb = new Database(":memory:");
 testDb.pragma("journal_mode = WAL");
-
-// Create the transcripts tables that db.ts normally creates, so the
-// module-level db.exec in reading-list.ts doesn't fail on missing tables.
 testDb.exec(`
-  CREATE TABLE IF NOT EXISTS transcripts (
-    id TEXT PRIMARY KEY,
+  CREATE TABLE IF NOT EXISTS reading_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
-    title TEXT NOT NULL DEFAULT 'Untitled',
-    description TEXT,
-    body TEXT NOT NULL DEFAULT '',
-    word_count INTEGER DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    deleted_at INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS transcript_tags (
-    transcript_id TEXT NOT NULL REFERENCES transcripts(id),
-    tag TEXT NOT NULL,
-    PRIMARY KEY (transcript_id, tag)
-  );
-  CREATE TABLE IF NOT EXISTS tldr_cache (
-    content_hash TEXT NOT NULL,
-    prompt_version INTEGER NOT NULL DEFAULT 1,
-    model TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    source_path TEXT,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    created_at INTEGER NOT NULL,
-    PRIMARY KEY (content_hash, prompt_version, model)
+    path TEXT NOT NULL,
+    title TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    UNIQUE(user_id, path)
   );
 `);
 
@@ -59,8 +37,14 @@ vi.mock("../../lib/get-user-id.js", () => ({
 }));
 
 vi.mock("../../lib/path-allowed.js", () => ({
+  ALLOWED_FILE_ROOTS: [
+    "/home/claude/claudes-world",
+    "/home/claude/code",
+    "/home/claude/bin",
+    "/home/claude/.claude",
+    "/home/claude/claudes-world/.claude",
+  ],
   isPathAllowed: async (candidate: string, _roots: string[]) => {
-    // Allow paths under /home/claude/code and /home/claude/claudes-world
     return (
       candidate.startsWith("/home/claude/code/") ||
       candidate.startsWith("/home/claude/claudes-world/") ||
@@ -135,6 +119,83 @@ describe("POST /save", () => {
     expect(row.title).toBe("file.ts");
   });
 
+
+
+  it("normalizes equivalent path variants to one record", async () => {
+    await req("POST", "/save", {
+      path: "/home/claude/code/folder/../file.ts",
+      title: "First",
+    });
+
+    await req("POST", "/save", {
+      path: "/home/claude/code/file.ts",
+      title: "Second",
+    });
+
+    const rows = testDb.prepare(
+      "SELECT * FROM reading_list WHERE user_id = ? AND path = ?"
+    ).all("test-user-123", "/home/claude/code/file.ts");
+
+    expect(rows.length).toBe(1);
+    expect((rows[0] as any).title).toBe("Second");
+  });
+
+  it("bumps created_at on re-save so the item moves to the top of /list", async () => {
+    // Seed two items with controlled timestamps.
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/old.ts", "Old", 1000);
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/newer.ts", "Newer", 2000);
+
+    // Before: "Newer" is first in /list.
+    let res = await req("GET", "/list");
+    let body = await res.json();
+    expect(body.items[0].title).toBe("Newer");
+
+    // Re-save the older item without a title — should bump created_at.
+    await req("POST", "/save", { path: "/home/claude/code/old.ts" });
+
+    res = await req("GET", "/list");
+    body = await res.json();
+    expect(body.items[0].title).toBe("Old");
+    expect(body.items[0].created_at).toBeGreaterThan(2000);
+  });
+
+  it("trims whitespace from path on /save (prevents false 403)", async () => {
+    // Leading/trailing whitespace on copy-pasted paths must not turn a valid
+    // absolute path into a CWD-relative one (which would then fall outside
+    // any allowed root and 403).
+    const res = await req("POST", "/save", {
+      path: "  /home/claude/code/trimmed.ts  ",
+      title: "Trimmed",
+    });
+    expect(res.status).toBe(200);
+    const row = testDb.prepare(
+      "SELECT path, title FROM reading_list WHERE user_id = ?"
+    ).get("test-user-123") as any;
+    // Row was written under the cleanly-resolved path, not a CWD-relative one.
+    expect(row.path).toBe("/home/claude/code/trimmed.ts");
+    expect(row.title).toBe("Trimmed");
+  });
+
+  it("preserves custom title when re-saving without title", async () => {
+    await req("POST", "/save", {
+      path: "/home/claude/code/custom.ts",
+      title: "Custom Title",
+    });
+
+    await req("POST", "/save", {
+      path: "/home/claude/code/custom.ts",
+    });
+
+    const row = testDb.prepare(
+      "SELECT title FROM reading_list WHERE user_id = ? AND path = ?"
+    ).get("test-user-123", "/home/claude/code/custom.ts") as any;
+
+    expect(row.title).toBe("Custom Title");
+  });
   it("rejects unauthenticated requests with 401", async () => {
     mockUserId = null;
     const res = await req("POST", "/save", {
@@ -161,10 +222,10 @@ describe("GET /list", () => {
     // Insert two items with controlled timestamps
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)"
-    ).run("test-user-123", "/home/claude/code/a.ts", "A", "2026-01-01 00:00:00");
+    ).run("test-user-123", "/home/claude/code/a.ts", "A", 1000);
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)"
-    ).run("test-user-123", "/home/claude/code/b.ts", "B", "2026-01-02 00:00:00");
+    ).run("test-user-123", "/home/claude/code/b.ts", "B", 2000);
 
     const res = await req("GET", "/list");
     expect(res.status).toBe(200);
@@ -224,6 +285,46 @@ describe("GET /check", () => {
     expect(body.saved["/home/claude/code/not-saved.ts"]).toBe(false);
   });
 
+
+
+  it("normalizes incoming paths before checking (response keyed by original input)", async () => {
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/saved.ts", "Saved");
+
+    const res = await req(
+      "GET",
+      "/check?paths=/home/claude/code/dir/../saved.ts"
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Response is keyed by the EXACT input string, not the normalized form,
+    // so clients can look up results using the paths they sent.
+    expect(body.saved["/home/claude/code/dir/../saved.ts"]).toBe(true);
+    expect(body.saved["/home/claude/code/saved.ts"]).toBeUndefined();
+  });
+
+  it("trims whitespace from comma-separated paths before normalization", async () => {
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/a.ts", "A");
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/b.ts", "B");
+
+    // Note the leading spaces after the commas — these must be trimmed
+    // before path.resolve() runs, or they'd become CWD-relative paths.
+    const res = await req(
+      "GET",
+      "/check?paths=/home/claude/code/a.ts, /home/claude/code/b.ts",
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.saved["/home/claude/code/a.ts"]).toBe(true);
+    // Response key is the trimmed form (trim is universal cleanup, not a
+    // path-semantic normalization), so clients see the clean string.
+    expect(body.saved["/home/claude/code/b.ts"]).toBe(true);
+  });
   it("returns empty map when no paths param", async () => {
     const res = await req("GET", "/check");
     expect(res.status).toBe(200);
@@ -276,6 +377,37 @@ describe("POST /delete", () => {
     expect(body.ok).toBe(true);
   });
 
+
+
+  it("normalizes path before deleting", async () => {
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/norm.ts", "Norm");
+
+    const res = await req("POST", "/delete", { path: "/home/claude/code/dir/../norm.ts" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("trims whitespace from path on /delete (prevents false 404)", async () => {
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/trim-del.ts", "TrimDel");
+
+    const res = await req("POST", "/delete", {
+      path: "  /home/claude/code/trim-del.ts  ",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    // Row is gone, not a stale match under a CWD-relative path.
+    const check = testDb.prepare(
+      "SELECT id FROM reading_list WHERE user_id = ? AND path = ?"
+    ).get("test-user-123", "/home/claude/code/trim-del.ts");
+    expect(check).toBeUndefined();
+  });
   it("returns 404 when deleting someone else's item (by id)", async () => {
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"

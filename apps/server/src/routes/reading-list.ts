@@ -1,37 +1,21 @@
 import { Hono } from "hono";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import { db } from "../db.js";
 import { getUserId } from "../lib/get-user-id.js";
-import { isPathAllowed } from "../lib/path-allowed.js";
+import { ALLOWED_FILE_ROOTS, isPathAllowed } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
-// Allowed root directories — same set as files.ts
-const ALLOWED_ROOTS = [
-  "/home/claude/claudes-world",
-  "/home/claude/code",
-  "/home/claude/bin",
-  "/home/claude/.claude",
-  "/home/claude/claudes-world/.claude",
-];
+const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
 
-// Create reading_list table at module load (same pattern as db.ts for transcripts)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS reading_list (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    path TEXT NOT NULL,
-    title TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, path)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_reading_list_user
-    ON reading_list(user_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_reading_list_user_path
-    ON reading_list(user_id, path);
-`);
+function normalizePath(path: string): string {
+  // Trim before resolve() — otherwise leading/trailing whitespace (e.g. from
+  // copy/paste) would make resolve() treat the input as a CWD-relative path
+  // segment, causing false 403s on /save and false 404s on /delete. /check
+  // also trims each segment upstream; doing it here is idempotent and keeps
+  // all endpoints consistent.
+  return resolve(path.trim());
+}
 
 // POST /save — save a file to reading list (upsert)
 app.post("/save", async (c) => {
@@ -52,20 +36,36 @@ app.post("/save", async (c) => {
     return c.json({ error: "path is required" }, 400);
   }
 
-  if (!(await isPathAllowed(path, ALLOWED_ROOTS))) {
+  const normalizedPath = normalizePath(path);
+
+  if (!(await isPathAllowed(normalizedPath, ALLOWED_ROOTS))) {
     return c.json({ error: "Access denied" }, 403);
   }
 
-  // Upsert: insert or update title on conflict, returning the id in one query
+  // Upsert: insert or update title on conflict, returning the id in one query.
+  // `created_at` is always bumped to "now" on conflict so that re-saving an
+  // existing item moves it to the top of the list (which is ordered by
+  // created_at DESC).
   const stmt = db.prepare(`
     INSERT INTO reading_list (user_id, path, title)
-    VALUES (?, ?, ?)
+    VALUES (?, ?, COALESCE(?, ?))
     ON CONFLICT(user_id, path) DO UPDATE SET
-      title = COALESCE(excluded.title, reading_list.title)
+      title = CASE
+        WHEN ? IS NULL THEN reading_list.title
+        ELSE excluded.title
+      END,
+      created_at = (unixepoch() * 1000)
     RETURNING id
   `);
 
-  const row = stmt.get(userId, path, title ?? basename(path)) as { id: number };
+  const titleOrNull = title ?? null;
+  const row = stmt.get(
+    userId,
+    normalizedPath,
+    titleOrNull,
+    basename(normalizedPath),
+    titleOrNull,
+  ) as { id: number };
 
   return c.json({ ok: true, id: row.id });
 });
@@ -82,7 +82,7 @@ app.get("/list", (c) => {
     FROM reading_list
     WHERE user_id = ?
     ORDER BY created_at DESC
-  `).all(userId) as Array<{ id: number; path: string; title: string | null; created_at: string }>;
+  `).all(userId) as Array<{ id: number; path: string; title: string | null; created_at: number }>;
 
   return c.json({ items: rows });
 });
@@ -99,33 +99,49 @@ app.get("/check", (c) => {
     return c.json({ saved: {} });
   }
 
-  const paths = [...new Set(pathsParam.split(",").filter(Boolean))];
-  if (paths.length === 0) {
+  // Trim each segment first so `?paths=a, b` doesn't produce a path relative
+  // to CWD after normalization. The response is keyed by the *trimmed* input
+  // (universal cleanup, not a path-semantic normalization), so clients can
+  // look up results using essentially the paths they sent — just without the
+  // accidental whitespace.
+  const originalInputs = [
+    ...new Set(
+      pathsParam.split(",").map((p) => p.trim()).filter(Boolean),
+    ),
+  ];
+  if (originalInputs.length === 0) {
     return c.json({ saved: {} });
   }
 
   // Cap at 256 paths per request
-  if (paths.length > 256) {
+  if (originalInputs.length > 256) {
     return c.json({ error: "Too many paths (max 256)" }, 413);
   }
 
+  const normalizedByOriginal = new Map<string, string>();
+  for (const original of originalInputs) {
+    normalizedByOriginal.set(original, normalizePath(original));
+  }
+  const uniqueNormalized = [...new Set(normalizedByOriginal.values())];
+
   // Query all matching paths for this user in one go
-  const placeholders = paths.map(() => "?").join(",");
+  const placeholders = uniqueNormalized.map(() => "?").join(",");
   const rows = db.prepare(`
     SELECT path FROM reading_list
     WHERE user_id = ? AND path IN (${placeholders})
-  `).all(userId, ...paths) as Array<{ path: string }>;
+  `).all(userId, ...uniqueNormalized) as Array<{ path: string }>;
 
   const savedSet = new Set(rows.map((r) => r.path));
   const saved: Record<string, boolean> = {};
-  for (const p of paths) {
-    saved[p] = savedSet.has(p);
+  for (const original of originalInputs) {
+    const normalized = normalizedByOriginal.get(original)!;
+    saved[original] = savedSet.has(normalized);
   }
 
   return c.json({ saved });
 });
 
-// DELETE /delete — hard delete a reading list item
+// POST /delete — hard delete a reading list item
 app.post("/delete", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
@@ -156,9 +172,10 @@ app.post("/delete", async (c) => {
 
   if (path && typeof path === "string") {
     // Delete by path — ownership enforced in WHERE clause
+    const normalizedPath = normalizePath(path);
     const result = db.prepare(
       "DELETE FROM reading_list WHERE path = ? AND user_id = ?"
-    ).run(path, userId);
+    ).run(normalizedPath, userId);
 
     if (result.changes === 0) {
       return c.json({ error: "Not found" }, 404);

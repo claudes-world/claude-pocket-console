@@ -44,7 +44,78 @@ db.exec(`
     PRIMARY KEY (content_hash, prompt_version, model)
   );
   CREATE INDEX IF NOT EXISTS idx_tldr_created ON tldr_cache(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS reading_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    title TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    UNIQUE(user_id, path)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reading_list_user
+    ON reading_list(user_id, created_at DESC);
+  -- Note: no explicit (user_id, path) index — the UNIQUE(user_id, path)
+  -- constraint already creates an identical implicit index.
 `);
+
+// Migration: early builds of reading_list shipped `created_at TEXT DEFAULT
+// (datetime('now'))`. The route layer (and tests) now assume epoch-ms
+// INTEGER. `CREATE TABLE IF NOT EXISTS` never rewrites an existing schema,
+// so any deployment that ran #134 before this fix still has TEXT values.
+// Detect it and rebuild the table in place (copy → drop → rename), converting
+// ISO timestamps to epoch-ms.
+{
+  const cols = db
+    .prepare("PRAGMA table_info(reading_list)")
+    .all() as Array<{ name: string; type: string }>;
+  const createdAtCol = cols.find((c) => c.name === "created_at");
+  if (createdAtCol && createdAtCol.type.toUpperCase() !== "INTEGER") {
+    // Retry-safe: drop any leftover `reading_list_new` from a previous failed
+    // migration attempt before creating it fresh, and wrap the rebuild in a
+    // try/catch with explicit ROLLBACK + cleanup so the next startup isn't
+    // poisoned by a stale `reading_list_new` table.
+    db.exec("DROP TABLE IF EXISTS reading_list_new");
+
+    try {
+      db.exec(`
+        BEGIN;
+        CREATE TABLE reading_list_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          title TEXT,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+          UNIQUE(user_id, path)
+        );
+        INSERT INTO reading_list_new (id, user_id, path, title, created_at)
+        SELECT
+          id,
+          user_id,
+          path,
+          title,
+          CAST(strftime('%s', created_at) AS INTEGER) * 1000
+        FROM reading_list;
+        DROP INDEX IF EXISTS idx_reading_list_user;
+        DROP INDEX IF EXISTS idx_reading_list_user_path;
+        DROP TABLE reading_list;
+        ALTER TABLE reading_list_new RENAME TO reading_list;
+        CREATE INDEX IF NOT EXISTS idx_reading_list_user
+          ON reading_list(user_id, created_at DESC);
+        COMMIT;
+      `);
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // Ignore rollback errors if no transaction is active.
+      }
+      db.exec("DROP TABLE IF EXISTS reading_list_new");
+      throw error;
+    }
+  }
+}
 
 export { db };
 export type { DatabaseType };
