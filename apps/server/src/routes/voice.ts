@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 import { nanoid } from "nanoid";
 import { db } from "../db.js";
-import { getUserId as getUserIdShared } from "../lib/get-user-id.js";
+import type { TelegramUser } from "../auth.js";
 
 // Load OpenAI key from secrets file if not already in env
 function loadOpenAIEnv() {
@@ -30,10 +30,10 @@ loadOpenAIEnv();
 
 const app = new Hono();
 
-// Delegates to the shared helper in lib/get-user-id.ts.
-// Returns null for anonymous callers; routes return 401 when null.
 function getUserId(c: any): string | null {
-  return getUserIdShared(c);
+  const telegramUser = c.get("telegramUser") as TelegramUser | undefined;
+  if (!telegramUser?.id) return null;
+  return String(telegramUser.id);
 }
 
 function countWords(text: string): number {
