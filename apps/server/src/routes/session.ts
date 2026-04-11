@@ -31,6 +31,12 @@ app.post("/rename", async (c) => {
 });
 
 app.get("/names", async (c) => {
+  // A missing file is NOT an error — /rename has simply never been called.
+  // Any other failure (parse error, EACCES, partial-write corruption) IS
+  // an error and must surface so clients can distinguish "empty history"
+  // from "history file is broken." Previous implementation silently
+  // swallowed all errors and returned [], which hid partial-write bugs in
+  // /rename and DELETE /names for weeks before this review spotted it.
   try {
     if (!existsSync(SESSION_NAMES_FILE)) {
       return c.json({ ok: true, names: [] });
@@ -38,7 +44,11 @@ app.get("/names", async (c) => {
     const names = JSON.parse(readFileSync(SESSION_NAMES_FILE, "utf-8"));
     return c.json({ ok: true, names });
   } catch (err: any) {
-    return c.json({ ok: true, names: [] });
+    console.error("[session /names] failed to read session names file", err);
+    return c.json(
+      { ok: false, error: "session_names_read_failed", message: err?.message ?? String(err) },
+      500,
+    );
   }
 });
 
