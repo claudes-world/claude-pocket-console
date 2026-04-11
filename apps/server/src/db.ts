@@ -72,32 +72,48 @@ db.exec(`
     .all() as Array<{ name: string; type: string }>;
   const createdAtCol = cols.find((c) => c.name === "created_at");
   if (createdAtCol && createdAtCol.type.toUpperCase() !== "INTEGER") {
-    db.exec(`
-      BEGIN;
-      CREATE TABLE reading_list_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        path TEXT NOT NULL,
-        title TEXT,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-        UNIQUE(user_id, path)
-      );
-      INSERT INTO reading_list_new (id, user_id, path, title, created_at)
-      SELECT
-        id,
-        user_id,
-        path,
-        title,
-        CAST(strftime('%s', created_at) AS INTEGER) * 1000
-      FROM reading_list;
-      DROP INDEX IF EXISTS idx_reading_list_user;
-      DROP INDEX IF EXISTS idx_reading_list_user_path;
-      DROP TABLE reading_list;
-      ALTER TABLE reading_list_new RENAME TO reading_list;
-      CREATE INDEX IF NOT EXISTS idx_reading_list_user
-        ON reading_list(user_id, created_at DESC);
-      COMMIT;
-    `);
+    // Retry-safe: drop any leftover `reading_list_new` from a previous failed
+    // migration attempt before creating it fresh, and wrap the rebuild in a
+    // try/catch with explicit ROLLBACK + cleanup so the next startup isn't
+    // poisoned by a stale `reading_list_new` table.
+    db.exec("DROP TABLE IF EXISTS reading_list_new");
+
+    try {
+      db.exec(`
+        BEGIN;
+        CREATE TABLE reading_list_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          title TEXT,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+          UNIQUE(user_id, path)
+        );
+        INSERT INTO reading_list_new (id, user_id, path, title, created_at)
+        SELECT
+          id,
+          user_id,
+          path,
+          title,
+          CAST(strftime('%s', created_at) AS INTEGER) * 1000
+        FROM reading_list;
+        DROP INDEX IF EXISTS idx_reading_list_user;
+        DROP INDEX IF EXISTS idx_reading_list_user_path;
+        DROP TABLE reading_list;
+        ALTER TABLE reading_list_new RENAME TO reading_list;
+        CREATE INDEX IF NOT EXISTS idx_reading_list_user
+          ON reading_list(user_id, created_at DESC);
+        COMMIT;
+      `);
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // Ignore rollback errors if no transaction is active.
+      }
+      db.exec("DROP TABLE IF EXISTS reading_list_new");
+      throw error;
+    }
   }
 }
 

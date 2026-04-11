@@ -163,6 +163,23 @@ describe("POST /save", () => {
     expect(body.items[0].created_at).toBeGreaterThan(2000);
   });
 
+  it("trims whitespace from path on /save (prevents false 403)", async () => {
+    // Leading/trailing whitespace on copy-pasted paths must not turn a valid
+    // absolute path into a CWD-relative one (which would then fall outside
+    // any allowed root and 403).
+    const res = await req("POST", "/save", {
+      path: "  /home/claude/code/trimmed.ts  ",
+      title: "Trimmed",
+    });
+    expect(res.status).toBe(200);
+    const row = testDb.prepare(
+      "SELECT path, title FROM reading_list WHERE user_id = ?"
+    ).get("test-user-123") as any;
+    // Row was written under the cleanly-resolved path, not a CWD-relative one.
+    expect(row.path).toBe("/home/claude/code/trimmed.ts");
+    expect(row.title).toBe("Trimmed");
+  });
+
   it("preserves custom title when re-saving without title", async () => {
     await req("POST", "/save", {
       path: "/home/claude/code/custom.ts",
@@ -371,6 +388,25 @@ describe("POST /delete", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
+  });
+
+  it("trims whitespace from path on /delete (prevents false 404)", async () => {
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/trim-del.ts", "TrimDel");
+
+    const res = await req("POST", "/delete", {
+      path: "  /home/claude/code/trim-del.ts  ",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    // Row is gone, not a stale match under a CWD-relative path.
+    const check = testDb.prepare(
+      "SELECT id FROM reading_list WHERE user_id = ? AND path = ?"
+    ).get("test-user-123", "/home/claude/code/trim-del.ts");
+    expect(check).toBeUndefined();
   });
   it("returns 404 when deleting someone else's item (by id)", async () => {
     testDb.prepare(

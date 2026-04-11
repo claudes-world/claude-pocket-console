@@ -9,7 +9,12 @@ const app = new Hono();
 const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
 
 function normalizePath(path: string): string {
-  return resolve(path);
+  // Trim before resolve() — otherwise leading/trailing whitespace (e.g. from
+  // copy/paste) would make resolve() treat the input as a CWD-relative path
+  // segment, causing false 403s on /save and false 404s on /delete. /check
+  // also trims each segment upstream; doing it here is idempotent and keeps
+  // all endpoints consistent.
+  return resolve(path.trim());
 }
 
 // POST /save — save a file to reading list (upsert)
@@ -94,10 +99,11 @@ app.get("/check", (c) => {
     return c.json({ saved: {} });
   }
 
-  // Preserve the original input strings as response keys so clients can look
-  // up results using the exact paths they sent, while still normalizing for
-  // the DB lookup. Trim each segment first so `?paths=a, b` doesn't produce
-  // a path relative to CWD after normalization.
+  // Trim each segment first so `?paths=a, b` doesn't produce a path relative
+  // to CWD after normalization. The response is keyed by the *trimmed* input
+  // (universal cleanup, not a path-semantic normalization), so clients can
+  // look up results using essentially the paths they sent — just without the
+  // accidental whitespace.
   const originalInputs = [
     ...new Set(
       pathsParam.split(",").map((p) => p.trim()).filter(Boolean),
