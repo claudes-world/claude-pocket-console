@@ -54,6 +54,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   searchScopeRef.current = searchCurrentFolderOnly && currentFolder ? currentFolder : null;
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  // Synchronous in-flight guard for audio generation/send. Mirrors the
+  // TldrModal pattern (PR #121): React hasn't necessarily committed
+  // setAudioLoading(true) by the time a fast double-tap fires the second
+  // click handler, so a ref-based lock is the only way to prevent two
+  // concurrent backend audio jobs racing each other.
+  const audioInFlightRef = useRef(false);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -195,6 +201,8 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
 
   const handleCheckAudio = async (filePath: string) => { setAudioStatus(null); setAudioLoading(true); try { setAudioStatus(await checkAudio(filePath)); } catch { setAudioStatus(null); } setAudioLoading(false); };
   const handleGenerateAudio = async (filePath: string) => {
+    if (audioInFlightRef.current) return;
+    audioInFlightRef.current = true;
     setAudioLoading(true);
     setStatus("Generating audio...");
     try {
@@ -212,10 +220,13 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     } catch (err) {
       setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      audioInFlightRef.current = false;
       setAudioLoading(false);
     }
   };
   const handleSendAudio = async (audioPath: string) => {
+    if (audioInFlightRef.current) return;
+    audioInFlightRef.current = true;
     setAudioLoading(true);
     setStatus("Sending to Telegram...");
     try {
@@ -232,6 +243,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     } catch (err) {
       setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      audioInFlightRef.current = false;
       setAudioLoading(false);
     }
   };
