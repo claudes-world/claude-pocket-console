@@ -623,7 +623,11 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           `4px 8px` so the 44px button heights don't grow the header
           visibly — with box-sizing: border-box the 44px floor already
           absorbs the padding, and the buttons themselves still read as
-          inline icons. */}
+          inline icons. The header also stops touch propagation because
+          the FileViewer lives inside the app-wide swipeable tab viewport;
+          otherwise small tap drift on these buttons can be interpreted as
+          a tab swipe and make the controls feel hard to press even when
+          their DOM boxes are 44x44. */}
       <div
         style={{
           padding: "4px 8px",
@@ -636,6 +640,9 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           maxWidth: "100%",
           overflow: "hidden",
         }}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
       >
         {/* Back/Up button. When viewing a file it goes back to the
             directory listing; when in a directory with a parent it goes
