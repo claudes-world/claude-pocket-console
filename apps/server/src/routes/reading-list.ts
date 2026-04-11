@@ -37,7 +37,10 @@ app.post("/save", async (c) => {
     return c.json({ error: "Access denied" }, 403);
   }
 
-  // Upsert: insert or update title on conflict, returning the id in one query
+  // Upsert: insert or update title on conflict, returning the id in one query.
+  // `created_at` is always bumped to "now" on conflict so that re-saving an
+  // existing item moves it to the top of the list (which is ordered by
+  // created_at DESC).
   const stmt = db.prepare(`
     INSERT INTO reading_list (user_id, path, title)
     VALUES (?, ?, COALESCE(?, ?))
@@ -45,7 +48,8 @@ app.post("/save", async (c) => {
       title = CASE
         WHEN ? IS NULL THEN reading_list.title
         ELSE excluded.title
-      END
+      END,
+      created_at = (unixepoch() * 1000)
     RETURNING id
   `);
 
@@ -90,27 +94,42 @@ app.get("/check", (c) => {
     return c.json({ saved: {} });
   }
 
-  const paths = [...new Set(pathsParam.split(",").filter(Boolean).map((p) => normalizePath(p)))];
-  if (paths.length === 0) {
+  // Preserve the original input strings as response keys so clients can look
+  // up results using the exact paths they sent, while still normalizing for
+  // the DB lookup. Trim each segment first so `?paths=a, b` doesn't produce
+  // a path relative to CWD after normalization.
+  const originalInputs = [
+    ...new Set(
+      pathsParam.split(",").map((p) => p.trim()).filter(Boolean),
+    ),
+  ];
+  if (originalInputs.length === 0) {
     return c.json({ saved: {} });
   }
 
   // Cap at 256 paths per request
-  if (paths.length > 256) {
+  if (originalInputs.length > 256) {
     return c.json({ error: "Too many paths (max 256)" }, 413);
   }
 
+  const normalizedByOriginal = new Map<string, string>();
+  for (const original of originalInputs) {
+    normalizedByOriginal.set(original, normalizePath(original));
+  }
+  const uniqueNormalized = [...new Set(normalizedByOriginal.values())];
+
   // Query all matching paths for this user in one go
-  const placeholders = paths.map(() => "?").join(",");
+  const placeholders = uniqueNormalized.map(() => "?").join(",");
   const rows = db.prepare(`
     SELECT path FROM reading_list
     WHERE user_id = ? AND path IN (${placeholders})
-  `).all(userId, ...paths) as Array<{ path: string }>;
+  `).all(userId, ...uniqueNormalized) as Array<{ path: string }>;
 
   const savedSet = new Set(rows.map((r) => r.path));
   const saved: Record<string, boolean> = {};
-  for (const p of paths) {
-    saved[p] = savedSet.has(p);
+  for (const original of originalInputs) {
+    const normalized = normalizedByOriginal.get(original)!;
+    saved[original] = savedSet.has(normalized);
   }
 
   return c.json({ saved });

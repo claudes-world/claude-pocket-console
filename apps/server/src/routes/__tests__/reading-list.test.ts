@@ -140,6 +140,29 @@ describe("POST /save", () => {
     expect((rows[0] as any).title).toBe("Second");
   });
 
+  it("bumps created_at on re-save so the item moves to the top of /list", async () => {
+    // Seed two items with controlled timestamps.
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/old.ts", "Old", 1000);
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/newer.ts", "Newer", 2000);
+
+    // Before: "Newer" is first in /list.
+    let res = await req("GET", "/list");
+    let body = await res.json();
+    expect(body.items[0].title).toBe("Newer");
+
+    // Re-save the older item without a title — should bump created_at.
+    await req("POST", "/save", { path: "/home/claude/code/old.ts" });
+
+    res = await req("GET", "/list");
+    body = await res.json();
+    expect(body.items[0].title).toBe("Old");
+    expect(body.items[0].created_at).toBeGreaterThan(2000);
+  });
+
   it("preserves custom title when re-saving without title", async () => {
     await req("POST", "/save", {
       path: "/home/claude/code/custom.ts",
@@ -247,7 +270,7 @@ describe("GET /check", () => {
 
 
 
-  it("normalizes incoming paths before checking", async () => {
+  it("normalizes incoming paths before checking (response keyed by original input)", async () => {
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
     ).run("test-user-123", "/home/claude/code/saved.ts", "Saved");
@@ -258,7 +281,32 @@ describe("GET /check", () => {
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.saved["/home/claude/code/saved.ts"]).toBe(true);
+    // Response is keyed by the EXACT input string, not the normalized form,
+    // so clients can look up results using the paths they sent.
+    expect(body.saved["/home/claude/code/dir/../saved.ts"]).toBe(true);
+    expect(body.saved["/home/claude/code/saved.ts"]).toBeUndefined();
+  });
+
+  it("trims whitespace from comma-separated paths before normalization", async () => {
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/a.ts", "A");
+    testDb.prepare(
+      "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
+    ).run("test-user-123", "/home/claude/code/b.ts", "B");
+
+    // Note the leading spaces after the commas — these must be trimmed
+    // before path.resolve() runs, or they'd become CWD-relative paths.
+    const res = await req(
+      "GET",
+      "/check?paths=/home/claude/code/a.ts, /home/claude/code/b.ts",
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.saved["/home/claude/code/a.ts"]).toBe(true);
+    // Response key is the trimmed form (trim is universal cleanup, not a
+    // path-semantic normalization), so clients see the clean string.
+    expect(body.saved["/home/claude/code/b.ts"]).toBe(true);
   });
   it("returns empty map when no paths param", async () => {
     const res = await req("GET", "/check");
