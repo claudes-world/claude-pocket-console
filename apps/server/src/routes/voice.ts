@@ -30,9 +30,10 @@ loadOpenAIEnv();
 
 const app = new Hono();
 
-function getUserId(c: any): string {
-  const user = c.get("telegramUser") as TelegramUser | undefined;
-  return user ? String(user.id) : "default";
+function getUserId(c: any): string | null {
+  const telegramUser = c.get("telegramUser") as TelegramUser | undefined;
+  if (!telegramUser?.id) return null;
+  return String(telegramUser.id);
 }
 
 function countWords(text: string): number {
@@ -41,6 +42,11 @@ function countWords(text: string): number {
 
 // POST /transcribe — accept audio file, shell out to ~/bin/transcribe
 app.post("/transcribe", async (c) => {
+  const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+
   const body = await c.req.parseBody();
   const audioFile = body["audio"];
 
@@ -74,6 +80,9 @@ app.post("/transcribe", async (c) => {
 // POST /transcripts — create a new transcript
 app.post("/transcripts", async (c) => {
   const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
   const { title = "Untitled", body: bodyText = "" } = await c.req.json<{
     title?: string;
     body?: string;
@@ -95,6 +104,9 @@ app.post("/transcripts", async (c) => {
 // GET /transcripts — list non-deleted transcripts for user
 app.get("/transcripts", (c) => {
   const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
   const sort = c.req.query("sort") || "date";
   const tag = c.req.query("tag");
 
@@ -128,6 +140,9 @@ app.get("/transcripts", (c) => {
 // GET /transcripts/:id — single transcript with full body and tags
 app.get("/transcripts/:id", (c) => {
   const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
   const { id } = c.req.param();
 
   const row = db.prepare(`
@@ -146,6 +161,9 @@ app.get("/transcripts/:id", (c) => {
 // PATCH /transcripts/:id — update title/description/body or append to body
 app.patch("/transcripts/:id", async (c) => {
   const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
   const { id } = c.req.param();
 
   const existing = db.prepare(`
@@ -187,6 +205,9 @@ app.patch("/transcripts/:id", async (c) => {
 // DELETE /transcripts/:id — soft delete
 app.delete("/transcripts/:id", (c) => {
   const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
   const { id } = c.req.param();
 
   const existing = db.prepare(`
