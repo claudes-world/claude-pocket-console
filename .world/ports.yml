@@ -1,30 +1,34 @@
-# Port declarations for port-for allocation (ADR 0003).
+# Port declarations for port-for allocation (ADR 0003 + 2026-04-11 amendment).
 #
-# Migration note (2026-04-10):
-#   CPC currently runs on 3883x / 5883x, which fall into the `test-*`
-#   sub-bands (38600-38899, 58600-58899) rather than the `prod-*` /
-#   `dev-*` sub-bands that ADR 0003 defines for durable services.
-#   To avoid silently rehoming live services (cpc.service on :38830,
-#   cpc-dev.service on :38831, vite dev on :58830, all of which Caddy
-#   reverse-proxies in /etc/caddy/Caddyfile), we keep the current
-#   canonical ports and just declare the logical bands they belong to.
-#   port-for does not validate canonical-in-band; band is only used when
-#   the canonical is already taken (worktree allocation fallback). A
-#   future migration can renumber these into 3810x/3830x/5810x/5830x.
+# Schema: Option D (project-sharded slots).
+#   CPC owns the 388xx backend slot and 588xx frontend slot.
+#   Sub-bands within each slot (per ADR 0003 amendment):
+#     00-09 core   10-39 prod   40-69 dev   70-89 test   90-99 scratch
 #
-# Also note: the production service is a monolith — apps/server serves
-# both the REST API and the built web bundle on the same port (38830).
-# There is no separate cpc-prod-web port. Caddy routes /dev/* to the
-# Vite dev server on 58830; everything else on cpc.claude.do lands on
-# 38830 (prod backend).
-repo: claude-pocket-console
+# Live port anomaly (2026-04-11 migration):
+#   All three current services live at 38830 / 38831 / 58830, which fall into
+#   the PROD sub-band (10-39) of slots 388/588. The two dev services (cpc-dev
+#   systemd unit + vite) are therefore declared with `env: prod` to keep their
+#   canonical ports in-band. A future cleanup can renumber cpc-dev → 38840 /
+#   58840 (the actual dev sub-band) and flip these to `env: dev`, but that
+#   requires coordinated edits to cpc-dev.service, vite.config.ts, and the
+#   Caddy reverse-proxy routes. Keeping canonicals stable for now.
+#
+# Monolith note: the production service (cpc.service on 38830) serves BOTH
+# the REST API and the built web bundle on the same port. There is no
+# separate cpc-frontend-prod purpose. Caddy routes /dev/* on cpc.claude.do to
+# the Vite dev server on 58830; everything else lands on 38830.
+repo: cpc
 purposes:
-  - name: cpc-prod-server
-    band: prod-backend      # 38100-38299 (canonical 38830 is out-of-band; see migration note)
-    canonical: 38830
-  - name: cpc-dev-server
-    band: dev-backend       # 38300-38599 (canonical 38831 is out-of-band; see migration note)
-    canonical: 38831
-  - name: cpc-dev-web
-    band: dev-frontend      # 58300-58599 (canonical 58830 is out-of-band; see migration note)
-    canonical: 58830
+  - name: cpc-backend-prod
+    type: backend
+    env: prod
+    canonical: 38830    # cpc.service (monolith: API + built web bundle)
+  - name: cpc-backend-dev
+    type: backend
+    env: prod           # see "Live port anomaly" above; 38831 is in the prod sub-band
+    canonical: 38831    # cpc-dev.service (tsx watch)
+  - name: cpc-frontend-dev
+    type: frontend
+    env: prod           # see "Live port anomaly" above; 58830 is in the prod sub-band
+    canonical: 58830    # vite dev server (proxied from cpc.claude.do/dev/*)
