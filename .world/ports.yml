@@ -1,0 +1,30 @@
+# Port declarations for port-for allocation (ADR 0003).
+#
+# Migration note (2026-04-10):
+#   CPC currently runs on 3883x / 5883x, which fall into the `test-*`
+#   sub-bands (38600-38899, 58600-58899) rather than the `prod-*` /
+#   `dev-*` sub-bands that ADR 0003 defines for durable services.
+#   To avoid silently rehoming live services (cpc.service on :38830,
+#   cpc-dev.service on :38831, vite dev on :58830, all of which Caddy
+#   reverse-proxies in /etc/caddy/Caddyfile), we keep the current
+#   canonical ports and just declare the logical bands they belong to.
+#   port-for does not validate canonical-in-band; band is only used when
+#   the canonical is already taken (worktree allocation fallback). A
+#   future migration can renumber these into 3810x/3830x/5810x/5830x.
+#
+# Also note: the production service is a monolith — apps/server serves
+# both the REST API and the built web bundle on the same port (38830).
+# There is no separate cpc-prod-web port. Caddy routes /dev/* to the
+# Vite dev server on 58830; everything else on cpc.claude.do lands on
+# 38830 (prod backend).
+repo: claude-pocket-console
+purposes:
+  - name: cpc-prod-server
+    band: prod-backend      # 38100-38299 (canonical 38830 is out-of-band; see migration note)
+    canonical: 38830
+  - name: cpc-dev-server
+    band: dev-backend       # 38300-38599 (canonical 38831 is out-of-band; see migration note)
+    canonical: 38831
+  - name: cpc-dev-web
+    band: dev-frontend      # 58300-58599 (canonical 58830 is out-of-band; see migration note)
+    canonical: 58830
