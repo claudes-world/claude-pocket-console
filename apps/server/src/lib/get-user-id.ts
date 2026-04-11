@@ -6,9 +6,8 @@ import type { TelegramUser } from "../auth.js";
  * Returns null if no user is authenticated.
  *
  * Shared helper used by voice.ts and reading-list.ts.
- * The caller decides the fallback behavior:
- *   - voice.ts falls back to "default" for backward compat
- *   - reading-list.ts returns 401 on null
+ * Callers decide auth behavior when this returns null
+ * (both voice.ts and reading-list.ts return 401).
  */
 export function getUserId(c: Context): string | null {
   const user = c.get("telegramUser") as TelegramUser | undefined;

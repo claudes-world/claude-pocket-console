@@ -44,6 +44,21 @@ db.exec(`
     PRIMARY KEY (content_hash, prompt_version, model)
   );
   CREATE INDEX IF NOT EXISTS idx_tldr_created ON tldr_cache(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS reading_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    title TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    UNIQUE(user_id, path)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_reading_list_user
+    ON reading_list(user_id, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_reading_list_user_path
+    ON reading_list(user_id, path);
 `);
 
 export { db };

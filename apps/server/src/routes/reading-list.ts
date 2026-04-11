@@ -1,37 +1,16 @@
 import { Hono } from "hono";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import { db } from "../db.js";
 import { getUserId } from "../lib/get-user-id.js";
-import { isPathAllowed } from "../lib/path-allowed.js";
+import { ALLOWED_FILE_ROOTS, isPathAllowed } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
-// Allowed root directories — same set as files.ts
-const ALLOWED_ROOTS = [
-  "/home/claude/claudes-world",
-  "/home/claude/code",
-  "/home/claude/bin",
-  "/home/claude/.claude",
-  "/home/claude/claudes-world/.claude",
-];
+const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
 
-// Create reading_list table at module load (same pattern as db.ts for transcripts)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS reading_list (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    path TEXT NOT NULL,
-    title TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, path)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_reading_list_user
-    ON reading_list(user_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_reading_list_user_path
-    ON reading_list(user_id, path);
-`);
+function normalizePath(path: string): string {
+  return resolve(path);
+}
 
 // POST /save — save a file to reading list (upsert)
 app.post("/save", async (c) => {
@@ -52,20 +31,32 @@ app.post("/save", async (c) => {
     return c.json({ error: "path is required" }, 400);
   }
 
-  if (!(await isPathAllowed(path, ALLOWED_ROOTS))) {
+  const normalizedPath = normalizePath(path);
+
+  if (!(await isPathAllowed(normalizedPath, ALLOWED_ROOTS))) {
     return c.json({ error: "Access denied" }, 403);
   }
 
   // Upsert: insert or update title on conflict, returning the id in one query
   const stmt = db.prepare(`
     INSERT INTO reading_list (user_id, path, title)
-    VALUES (?, ?, ?)
+    VALUES (?, ?, COALESCE(?, ?))
     ON CONFLICT(user_id, path) DO UPDATE SET
-      title = COALESCE(excluded.title, reading_list.title)
+      title = CASE
+        WHEN ? IS NULL THEN reading_list.title
+        ELSE excluded.title
+      END
     RETURNING id
   `);
 
-  const row = stmt.get(userId, path, title ?? basename(path)) as { id: number };
+  const titleOrNull = title ?? null;
+  const row = stmt.get(
+    userId,
+    normalizedPath,
+    titleOrNull,
+    basename(normalizedPath),
+    titleOrNull,
+  ) as { id: number };
 
   return c.json({ ok: true, id: row.id });
 });
@@ -82,7 +73,7 @@ app.get("/list", (c) => {
     FROM reading_list
     WHERE user_id = ?
     ORDER BY created_at DESC
-  `).all(userId) as Array<{ id: number; path: string; title: string | null; created_at: string }>;
+  `).all(userId) as Array<{ id: number; path: string; title: string | null; created_at: number }>;
 
   return c.json({ items: rows });
 });
@@ -99,7 +90,7 @@ app.get("/check", (c) => {
     return c.json({ saved: {} });
   }
 
-  const paths = [...new Set(pathsParam.split(",").filter(Boolean))];
+  const paths = [...new Set(pathsParam.split(",").filter(Boolean).map((p) => normalizePath(p)))];
   if (paths.length === 0) {
     return c.json({ saved: {} });
   }
@@ -125,7 +116,7 @@ app.get("/check", (c) => {
   return c.json({ saved });
 });
 
-// DELETE /delete — hard delete a reading list item
+// POST /delete — hard delete a reading list item
 app.post("/delete", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
@@ -156,9 +147,10 @@ app.post("/delete", async (c) => {
 
   if (path && typeof path === "string") {
     // Delete by path — ownership enforced in WHERE clause
+    const normalizedPath = normalizePath(path);
     const result = db.prepare(
       "DELETE FROM reading_list WHERE path = ? AND user_id = ?"
-    ).run(path, userId);
+    ).run(normalizedPath, userId);
 
     if (result.changes === 0) {
       return c.json({ error: "Not found" }, 404);
