@@ -42,6 +42,11 @@ function countWords(text: string): number {
 
 // POST /transcribe — accept audio file, shell out to ~/bin/transcribe
 app.post("/transcribe", async (c) => {
+  const userId = getUserId(c);
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+
   const body = await c.req.parseBody();
   const audioFile = body["audio"];
 
@@ -72,7 +77,6 @@ app.post("/transcribe", async (c) => {
   }
 });
 
-// TODO: Extract repeated auth check into Hono middleware (Gemini review finding)
 // POST /transcripts — create a new transcript
 app.post("/transcripts", async (c) => {
   const userId = getUserId(c);
