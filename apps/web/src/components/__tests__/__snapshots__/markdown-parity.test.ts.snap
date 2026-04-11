@@ -1,0 +1,315 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Markdown parity baseline (react-markdown) > renders basic through react-markdown 1`] = `
+"<div class="md-content"><h1 id="cpc-markdown-basics">CPC Markdown Basics</h1>
+<p>The file viewer opens markdown from docs, notes, and generated plans. This<br/>
+fixture keeps the everyday inline formatting stable before the renderer changes.</p>
+<p>Operators often scan for <strong>urgent actions</strong>, <em>quiet context</em>, and links to<br/>
+<a href="../../../../docs/guides/deploying.md">the deployment guide</a> while standing in a<br/>
+Telegram WebView. Inline code like <code>pnpm --filter @cpc/web build</code> should keep its<br/>
+compact chip styling and should not disturb wrapping in a narrow viewport.</p>
+<p>Use bold and italic together when a note is both <strong><em>important and tentative</em></strong>.<br/>
+Use literal punctuation such as <code>apps/web/src/components/MarkdownViewer.tsx</code>,<br/>
+<code>ALLOWED_TELEGRAM_USERS</code>, and <code>cpc.claude.do</code> without surprising escapes.</p>
+<p>An external reference can point to <a href="https://core.telegram.org/bots/webapps">Telegram Mini Apps</a>,<br/>
+and a local note can point to <a href="../../../../docs/conventions/touch-handling.md">touch handling</a>.<br/>
+Both are common in CPC runbooks.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders breaks through react-markdown 1`] = `
+"<div class="md-content"><h1 id="soft-and-hard-breaks">Soft And Hard Breaks</h1>
+<p>This paragraph has a soft break after this line<br/>
+and marked currently turns it into a <code>&lt;br&gt;</code>.<br/>
+The third source line should also stay inside the same paragraph with breaks.</p>
+<p>This paragraph uses two spaces before the newline.<br/>
+That is a markdown hard break regardless of the <code>breaks</code> setting.</p>
+<p>This paragraph ends here.</p>
+<p>This is a new paragraph after a blank line.</p>
+<ul>
+<li>List item with a soft break<br/>
+inside the same item</li>
+<li>Second list item with two trailing spaces<br/>
+before this continuation line</li>
+</ul>
+<blockquote>
+<p>Blockquote line one<br/>
+blockquote line two</p>
+<p>New quoted paragraph after a blank quoted line.</p>
+</blockquote></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders code-blocks through react-markdown 1`] = `
+"<div class="md-content"><h1 id="code-blocks-and-commands">Code Blocks And Commands</h1>
+<p>Inline code such as <code>getAuthHeaders()</code> and <code>Telegram.WebApp.disableVerticalSwipes()</code><br/>
+appears beside fenced examples in CPC docs.</p>
+<pre><code class="language-ts">type SessionStatus = &quot;connected&quot; | &quot;paused&quot; | &quot;failed&quot;;
+
+export function labelForStatus(status: SessionStatus): string {
+  switch (status) {
+    case &quot;connected&quot;:
+      return &quot;Connected&quot;;
+    case &quot;paused&quot;:
+      return &quot;Paused&quot;;
+    case &quot;failed&quot;:
+      return &quot;Needs attention&quot;;
+  }
+}
+</code></pre>
+<pre><code class="language-bash">cd /home/claude/code/cpc-impl-react-markdown
+pnpm install --silent
+pnpm --filter @cpc/web exec tsc -b
+pnpm --filter @cpc/web test
+</code></pre>
+<pre><code class="language-json">{
+  &quot;server&quot;: {
+    &quot;port&quot;: 38830,
+    &quot;prodTunnel&quot;: &quot;https://cpc.claude.do&quot;,
+    &quot;devTunnel&quot;: &quot;https://cpc-dev.claude.do&quot;
+  },
+  &quot;features&quot;: [&quot;files&quot;, &quot;terminal&quot;, &quot;voice&quot;]
+}
+</code></pre>
+<p>An unlabelled block still matters:</p>
+<pre><code>Actions -&gt; Develop -&gt; Voice
+</code></pre>
+<p>The paragraph after code must resume normal wrapping and link handling.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders edge-cases through react-markdown 1`] = `
+"<div class="md-content"><h1 id="edge-cases">Edge Cases</h1>
+<h2 id="consecutive-heading-a">Consecutive Heading A</h2>
+<h2 id="consecutive-heading-b">Consecutive Heading B</h2>
+<h3 id="consecutive-heading-c">Consecutive Heading C</h3>
+<p>The blank lines above and the consecutive headings below should not create<br/>
+unexpected empty paragraphs.</p>
+<ul>
+<li>Top level item
+<ul>
+<li>Nested item with <code>inline code</code>
+<ul>
+<li>Third level item
+<ol>
+<li>Ordered detail</li>
+<li>Ordered detail with a <a href="../../../../AGENTS.md">relative link</a></li>
+</ol>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Second top level item</li>
+</ul>
+<ol>
+<li>Ordered root
+<ul>
+<li>Unordered child
+<blockquote>
+<p>Quote inside a list item.</p>
+<pre><code class="language-bash">pnpm --filter @cpc/web test
+</code></pre>
+</blockquote>
+</li>
+</ul>
+</li>
+</ol>
+<blockquote>
+<p>A blockquote with a paragraph.</p>
+<ul>
+<li>A quoted list item</li>
+<li>Another quoted list item with <code>code</code></li>
+</ul>
+<pre><code class="language-ts">const source = &quot;quoted code&quot;;
+</code></pre>
+</blockquote>
+<hr/>
+<p>Text after a thematic break should remain visible and separated.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders gfm-table through react-markdown 1`] = `
+"<div class="md-content"><h1 id="session-triage-matrix">Session Triage Matrix</h1>
+<p>The action sheet often summarizes multiple sessions. Tables need GFM alignment,<br/>
+inline formatting, and escaped pipes to render consistently.</p>
+<div class="md-table-scroll"><table><thead><tr><th style="text-align:left">Session</th><th style="text-align:center">State</th><th>Last line</th><th style="text-align:right">Priority</th></tr></thead><tbody><tr><td style="text-align:left"><code>alpha</code></td><td style="text-align:center">connected</td><td><strong>ready</strong> for <code>pnpm test</code></td><td style="text-align:right">1</td></tr><tr><td style="text-align:left"><code>deploy-web</code></td><td style="text-align:center">paused</td><td>waiting on <code>cpc.service</code> restart</td><td style="text-align:right">2</td></tr><tr><td style="text-align:left"><code>docs-sync</code></td><td style="text-align:center">active</td><td>copied <code>foo | bar</code> from a plan table</td><td style="text-align:right">3</td></tr><tr><td style="text-align:left"><code>voice-notes</code></td><td style="text-align:center">failed</td><td>transcript contains <code>&lt;kbd&gt;Ctrl&lt;/kbd&gt;</code> text</td><td style="text-align:right">4</td></tr></tbody></table></div>
+<div class="md-table-scroll"><table><thead><tr><th>Path</th><th>Owner</th><th>Notes</th></tr></thead><tbody><tr><td><code>apps/web/</code></td><td>frontend</td><td>Telegram WebView constraints apply</td></tr><tr><td><code>apps/server/</code></td><td>backend</td><td>Hono routes, auth, and static serving</td></tr><tr><td><code>docs/</code></td><td>shared</td><td>Progressive discovery, not a dumping ground</td></tr></tbody></table></div>
+<p>Trailing prose verifies paragraph flow after a block table. The next renderer<br/>
+should preserve table cells with code, emphasis, escaped pipes, and raw-looking<br/>
+text without collapsing the surrounding content.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders headings through react-markdown 1`] = `
+"<div class="md-content"><h1 id="cpc-plan-markdown-renderer">CPC Plan: Markdown Renderer</h1>
+<h2 id="phase-0-baseline">Phase 0: Baseline</h2>
+<h3 id="fixture-corpus">Fixture Corpus</h3>
+<h4 id="headings-with-special-characters-filespathtabdocs">Headings With Special Characters: <code>/files/:path?tab=docs</code></h4>
+<h5 id="duplicate-heading">Duplicate Heading</h5>
+<h6 id="tiny-detail">Tiny Detail</h6>
+<p>The smallest heading appears in some generated plans when a tool dumps nested<br/>
+subsections.</p>
+<h2 id="phase-0-baseline-1">Phase 0: Baseline</h2>
+<p>The duplicate <code>h2</code> is intentional. Future heading IDs should make the duplicate<br/>
+stable and reviewable rather than surprising.</p>
+<h3 id="fixture-corpus-1">Fixture Corpus</h3>
+<p>Repeated <code>h3</code> content tests duplicate slug behavior once <code>rehype-slug</code> becomes<br/>
+part of the renderer.</p>
+<h2 id="phase-1-renderer-swap">Phase 1: Renderer Swap</h2>
+<h3 id="keep-breaks-true">Keep <code>breaks: true</code></h3>
+<p>The current marked configuration treats single newlines as breaks. The migration<br/>
+must preserve that until a separate behavior-change PR says otherwise.</p>
+<h3 id="raw-html-decision">Raw HTML Decision</h3>
+<h4 id="details-blocks"><code>&lt;details&gt;</code> Blocks</h4>
+<p>Raw HTML occurs in docs copied from GitHub. This fixture keeps that input visible<br/>
+in the baseline snapshots.</p>
+<h2 id="phase-2-bundle-mitigation">Phase 2: Bundle Mitigation</h2>
+<h3 id="lazy-loading">Lazy Loading</h3>
+<p>Bundle work belongs after correctness, so this fixture should not imply any<br/>
+chunking change.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders links-images through react-markdown 1`] = `
+"<link rel="preload" as="image" href="../../../../public/icon.svg"/><div class="md-content"><h1 id="links-and-images">Links And Images</h1>
+<p>The file viewer handles project-relative docs, external references, and images<br/>
+embedded in markdown notes.</p>
+<ul>
+<li>Relative guide: <a href="../../../../docs/guides/adding-a-modal.md">adding a modal</a></li>
+<li>Absolute URL: <a href="https://cpc.claude.do">CPC production tunnel</a></li>
+<li>Mail link: <a href="mailto:ops@example.invalid">ops inbox</a></li>
+<li>Anchor-only link: <a href="#raw-html-decision">jump to raw HTML</a></li>
+<li>Path with spaces: <a href="../fixtures/Voice%20Notes.md">voice notes</a></li>
+</ul>
+<p><img src="../../../../public/icon.svg" alt="CPC app tile" title="App icon"/></p>
+<p>Reference-style links keep long paragraphs readable. See the <a href="../../../../docs/reference/telegram-webview-rules.md">Telegram WebView<br/>
+rules</a> before changing touch handling, and check the <a href="../../../../docs/conventions/host-tools.md">host tools<br/>
+notes</a> when a workflow depends on <code>~/bin</code>.</p>
+<p>Bare URLs are common in copied notes: <a href="https://cpc-dev.claude.do/status">https://cpc-dev.claude.do/status</a></p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders long-document through react-markdown 1`] = `
+"<div class="md-content"><h1 id="overnight-cpc-implementation-notes">Overnight CPC Implementation Notes</h1>
+<h2 id="1-summary">1. Summary</h2>
+<p>The mobile console stayed usable while the web process restarted twice. The<br/>
+highest value fix was keeping the file viewer readable in a narrow WebView.</p>
+<h2 id="2-current-topology">2. Current Topology</h2>
+<ul>
+<li><code>apps/web</code> owns the React SPA.</li>
+<li><code>apps/server</code> owns Hono routes and WebSocket transport.</li>
+<li><code>~/bin/launcher-hook</code> owns Telegram keyboard buttons.</li>
+<li><code>~/bin/session-history</code> owns forensic session lookup.</li>
+</ul>
+<h2 id="3-important-constraints">3. Important Constraints</h2>
+<p>Do not call <code>preventDefault()</code> on <code>touchstart</code>.<br/>
+Use <code>stopPropagation()</code> only on targeted interaction zones.<br/>
+Disable Telegram vertical swipes while a modal or sheet is open.<br/>
+Re-enable Telegram vertical swipes on cleanup.<br/>
+Do not edit the external Telegram plugin.</p>
+<h2 id="4-file-viewer-flow">4. File Viewer Flow</h2>
+<ol>
+<li>User taps the Files tab.</li>
+<li>The server returns a directory listing.</li>
+<li>The UI shows file icons and path breadcrumbs.</li>
+<li>A markdown file opens in the MarkdownViewer.</li>
+<li>Wide code blocks must scroll horizontally.</li>
+<li>Tables must not push the viewport wider than the app.</li>
+</ol>
+<h2 id="5-manual-check-table">5. Manual Check Table</h2>
+<div class="md-table-scroll"><table><thead><tr><th>Check</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td>TypeScript</td><td><code>pnpm --filter @cpc/web exec tsc -b</code></td><td>clean</td></tr><tr><td>Unit tests</td><td><code>pnpm --filter @cpc/web test</code></td><td>snapshots pass</td></tr><tr><td>Build</td><td><code>pnpm --filter @cpc/web build</code></td><td>Vite emits <code>dist/</code></td></tr><tr><td>Health</td><td><code>curl -fsS localhost:38830/health</code></td><td>ok</td></tr></tbody></table></div>
+<h2 id="6-example-route-notes">6. Example Route Notes</h2>
+<p>The web app uses a base path from Vite. Static assets should keep working at<br/>
+both <code>https://cpc.claude.do</code> and <code>https://cpc-dev.claude.do</code>.</p>
+<pre><code class="language-ts">export function buildAssetPath(baseUrl: string, name: string): string {
+  const base = baseUrl.endsWith(&quot;/&quot;) ? baseUrl : \`\${baseUrl}/\`;
+  return new URL(name, base).toString();
+}
+</code></pre>
+<h2 id="7-shell-recipe">7. Shell Recipe</h2>
+<pre><code class="language-bash">set -euo pipefail
+pnpm install --silent
+pnpm --filter @cpc/web exec tsc -b
+pnpm --filter @cpc/web test
+pnpm --filter @cpc/web build
+</code></pre>
+<h2 id="8-failure-modes">8. Failure Modes</h2>
+<blockquote>
+<p>A sheet that forgets to re-enable vertical swipes makes Telegram feel broken.</p>
+</blockquote>
+<blockquote>
+<p>A wide code block without horizontal scrolling makes the terminal transcript<br/>
+unreadable on mobile.</p>
+</blockquote>
+<blockquote>
+<p>A raw HTML block silently stripped by a markdown renderer can hide operational<br/>
+instructions from the person holding the phone.</p>
+</blockquote>
+<h2 id="9-task-list">9. Task List</h2>
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Confirm branch before edits.</li>
+<li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Keep <code>marked</code> installed during the baseline setup.</li>
+<li class="task-list-item"><input type="checkbox" disabled=""/> Swap the renderer in Wave 2.</li>
+<li class="task-list-item"><input type="checkbox" disabled=""/> Document snapshot deltas in the migration PR.</li>
+</ul>
+<h2 id="10-deep-link-candidates">10. Deep Link Candidates</h2>
+<h3 id="session-selection">Session Selection</h3>
+<p>The future heading IDs may support direct links into long docs. Duplicate<br/>
+headings need stable suffixes.</p>
+<h3 id="session-selection-1">Session Selection</h3>
+<p>This duplicate heading is intentional.</p>
+<h3 id="voice-recorder">Voice Recorder</h3>
+<p>The voice recorder uses file capture rather than <code>getUserMedia</code> because Telegram<br/>
+WebView does not expose the browser media prompt consistently.</p>
+<h3 id="terminal">Terminal</h3>
+<p>Terminal output can include long paths such as<br/>
+<code>/home/claude/code/cpc-impl-react-markdown/apps/web/src/components/MarkdownViewer.tsx</code>.</p>
+<h2 id="11-json-payload">11. JSON Payload</h2>
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;SessionStart&quot;,
+  &quot;buttons&quot;: [&quot;Actions&quot;, &quot;Develop&quot;, &quot;Voice&quot;],
+  &quot;viewer&quot;: {
+    &quot;markdown&quot;: true,
+    &quot;mermaid&quot;: true,
+    &quot;rawHtml&quot;: &quot;baseline-only&quot;
+  }
+}
+</code></pre>
+<h2 id="12-closing-notes">12. Closing Notes</h2>
+<p>Soft breaks appear here<br/>
+as single newlines<br/>
+inside one paragraph.</p>
+<p>A blank line starts a new paragraph. The snapshot should make that distinction<br/>
+obvious.</p>
+<h2 id="13-appendix">13. Appendix</h2>
+<p>The appendix exists mostly to make the fixture long enough to exercise file<br/>
+loading, snapshot readability, and parser behavior on realistic content.</p>
+<p>Keep the prose plain.<br/>
+Keep commands copyable.<br/>
+Keep the renderer honest.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders mermaid through react-markdown 1`] = `
+"<div class="md-content"><h1 id="mermaid-preview-fixture">Mermaid Preview Fixture</h1>
+<p>Current production output parses mermaid as a fenced code block first; the<br/>
+viewer then replaces <code>code.language-mermaid</code> with a React-rendered diagram. This<br/>
+fixture pins the parser-level baseline that Wave 2 must account for.</p>
+<div class="mermaid-mount"><div class="mermaid-loading">Loading diagram…</div></div>
+<p>Text after the diagram should remain a separate paragraph.</p></div>"
+`;
+
+exports[`Markdown parity baseline (react-markdown) > renders raw-html through react-markdown 1`] = `
+"<div class="md-content"><h1 id="raw-html-from-copied-docs">Raw HTML From Copied Docs</h1>
+<p>Some project documents include GitHub-flavored raw HTML. Marked currently keeps<br/>
+these nodes in the emitted HTML, so the baseline should capture the exact shape.</p>
+&lt;details&gt;
+&lt;summary&gt;Deployment checklist&lt;/summary&gt;
+<ul>
+<li>Build <code>apps/web</code></li>
+<li>Restart the CPC server</li>
+<li>Check <code>/health</code></li>
+</ul>
+&lt;/details&gt;
+<p>Keyboard hints appear inline: press &lt;kbd&gt;Esc&lt;/kbd&gt; to dismiss a sheet, or<br/>
+&lt;kbd&gt;Ctrl&lt;/kbd&gt; + &lt;kbd&gt;C&lt;/kbd&gt; to stop a local dev server.</p>
+<p>Line one&lt;br&gt;<br/>
+Line two after a manual break.</p>
+&lt;div data-cpc-note=&quot;copied-from-github&quot;&gt;
+  &lt;strong&gt;Note:&lt;/strong&gt; this block is raw HTML and should be called out in any
+  renderer parity review.
+&lt;/div&gt;</div>"
+`;
