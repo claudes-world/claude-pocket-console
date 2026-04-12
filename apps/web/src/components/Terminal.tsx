@@ -159,9 +159,8 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
           position: "absolute",
           inset: 0,
           zIndex: 10,
+          pointerEvents: "none",
         }}
-        onTouchStart={(e) => e.preventDefault()}
-        onClick={(e) => e.preventDefault()}
       />
       <style>{`
         .xterm textarea { pointer-events: none !important; }
