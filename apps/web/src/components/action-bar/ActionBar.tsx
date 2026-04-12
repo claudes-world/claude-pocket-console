@@ -292,18 +292,18 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   return (
     <>
       {modalNode}
-      <div style={{ padding: "10px 12px 8px", borderTop: "1px solid #2a2b3d", flexShrink: 0 }}>
+      <div style={{ padding: "10px 12px 8px", borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: "8px", overflowX: "auto" }}>
-          <button onClick={() => { setModal("todo"); void loadTodo(); }} style={{ ...btnStyle, background: "#3a3520", color: "#e0af68", border: "1px solid #5a4a30" }}>TODO</button>
+          <button onClick={() => { setModal("todo"); void loadTodo(); }} style={{ ...btnStyle, background: "#3a3520", color: "var(--color-accent-yellow)", border: "1px solid #5a4a30" }}>TODO</button>
           {activeTab === "terminal" && <>
-            {onReconnect && <div style={{ display: "flex", flexShrink: 0 }}><button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>Reconnect</button><button onClick={() => setModal("reconnect-menu")} aria-label="Open reconnect menu" title="Open reconnect menu" style={{ ...btnStyle, background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>}
+            {onReconnect && <div style={{ display: "flex", flexShrink: 0 }}><button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>Reconnect</button><button onClick={() => setModal("reconnect-menu")} aria-label="Open reconnect menu" title="Open reconnect menu" style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>}
             <div style={{ display: "flex", flexShrink: 0 }}><button onClick={() => { setModal("git-status"); void loadGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>Git</button><button onClick={() => setModal("git-menu")} aria-label="Open git menu" title="Open git menu" style={{ ...btnStyle, borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>
-            <button onClick={() => setModal("commands")} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>/commands</button>
+            <button onClick={() => setModal("commands")} style={{ ...btnStyle, background: "#2d2a3a", color: "var(--color-accent-purple)", border: "1px solid #4a3d6a" }}>/commands</button>
           </>}
-          {activeTab === "files" && !viewingFile && <><button onClick={() => { resetFileSearch(); setModal("file-search"); }} style={{ ...btnStyle, background: "#2d3a5a", color: "#7aa2f7", border: "1px solid #3d4a6a" }}>Search</button><button onClick={() => setModal("file-options")} style={btnStyle}>Options</button></>}
-          {activeTab === "files" && viewingFile && <button onClick={() => void handleSendToChat()} style={{ ...btnStyle, background: "#1a2a3a", color: "#7dcfff", border: "1px solid #2d4a5a" }}>Send to Chat</button>}
-          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => setModal("tldr")} style={{ ...btnStyle, background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>TL;DR</button>}
-          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => { void handleCheckAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "#bb9af7", border: "1px solid #4a3d6a" }}>Audio</button>}
+          {activeTab === "files" && !viewingFile && <><button onClick={() => { resetFileSearch(); setModal("file-search"); }} style={{ ...btnStyle, background: "#2d3a5a", color: "var(--color-accent-blue)", border: "1px solid #3d4a6a" }}>Search</button><button onClick={() => setModal("file-options")} style={btnStyle}>Options</button></>}
+          {activeTab === "files" && viewingFile && <button onClick={() => void handleSendToChat()} style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}>Send to Chat</button>}
+          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => setModal("tldr")} style={{ ...btnStyle, background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}>TL;DR</button>}
+          {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => { void handleCheckAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "var(--color-accent-purple)", border: "1px solid #4a3d6a" }}>Audio</button>}
         </div>
         <StatusLine connected={connected} status={status} gitBranch={gitBranch} />
       </div>

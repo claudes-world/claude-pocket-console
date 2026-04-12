@@ -538,7 +538,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             gap: 6,
             flexShrink: 0,
             overflowX: "auto",
-            borderBottom: "1px solid #1e1f2e",
+            borderBottom: "1px solid var(--color-separator)",
           }}
         >
           {[
@@ -554,9 +554,9 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
               style={{
                 padding: "4px 10px",
                 fontSize: 11,
-                background: currentPath.startsWith(root.path) ? "#2a2b3d" : "transparent",
-                color: currentPath.startsWith(root.path) ? "#7aa2f7" : "#565f89",
-                border: "1px solid #2a2b3d",
+                background: currentPath.startsWith(root.path) ? "var(--color-border)" : "transparent",
+                color: currentPath.startsWith(root.path) ? "var(--color-accent-blue)" : "var(--color-muted)",
+                border: "1px solid var(--color-border)",
                 borderRadius: 4,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
@@ -577,11 +577,11 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             gap: 6,
             flexShrink: 0,
             overflowX: "auto",
-            borderBottom: "1px solid #1e1f2e",
+            borderBottom: "1px solid var(--color-separator)",
             alignItems: "center",
           }}
         >
-          <span style={{ fontSize: 11, color: "#565f89", marginRight: 4 }}>sort</span>
+          <span style={{ fontSize: 11, color: "var(--color-muted)", marginRight: 4 }}>sort</span>
           {SORT_OPTIONS.map((opt) => {
             const active = sortMode === opt.value;
             return (
@@ -592,9 +592,9 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 style={{
                   padding: "4px 10px",
                   fontSize: 11,
-                  background: active ? "#2a2b3d" : "transparent",
-                  color: active ? "#7aa2f7" : "#565f89",
-                  border: "1px solid #2a2b3d",
+                  background: active ? "var(--color-border)" : "transparent",
+                  color: active ? "var(--color-accent-blue)" : "var(--color-muted)",
+                  border: "1px solid var(--color-border)",
                   borderRadius: 4,
                   cursor: "pointer",
                   whiteSpace: "nowrap",
@@ -631,7 +631,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       <div
         style={{
           padding: "4px 8px",
-          borderBottom: "1px solid #2a2b3d",
+          borderBottom: "1px solid var(--color-border)",
           display: "flex",
           alignItems: "center",
           gap: 12,
@@ -665,7 +665,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           style={{
             background: "none",
             border: "none",
-            color: "#7aa2f7",
+            color: "var(--color-accent-blue)",
             cursor:
               fileContent === null && parentPath === null ? "default" : "pointer",
             fontSize: 16,
@@ -686,7 +686,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         <span
           style={{
             fontSize: 12,
-            color: "#c0caf5",
+            color: "var(--color-fg)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -705,7 +705,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             style={{
               background: "none",
               border: "none",
-              color: downloading ? "#565f89" : "#7aa2f7",
+              color: downloading ? "var(--color-muted)" : "var(--color-accent-blue)",
               cursor: downloading ? "wait" : "pointer",
               fontSize: 18,
               padding: "10px 12px",
@@ -727,7 +727,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           style={{
             background: "none",
             border: "none",
-            color: "#565f89",
+            color: "var(--color-muted)",
             cursor: "pointer",
             fontSize: 16,
             padding: "10px 12px",
@@ -746,14 +746,14 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
       {/* Error */}
       {error && (
-        <div style={{ padding: 12, color: "#f7768e", fontSize: 13 }}>
+        <div style={{ padding: 12, color: "var(--color-accent-red)", fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {/* Loading */}
       {loading && (
-        <div style={{ padding: 12, color: "#565f89", fontSize: 13 }}>
+        <div style={{ padding: 12, color: "var(--color-muted)", fontSize: 13 }}>
           Loading...
         </div>
       )}
@@ -787,7 +787,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 key={i}
                 style={{
                   display: "flex",
-                  borderBottom: "1px solid #1e1f2e",
+                  borderBottom: "1px solid var(--color-separator)",
                   minHeight: 20,
                 }}
               >
@@ -812,7 +812,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                     padding: "0 8px",
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-all",
-                    color: "#c0caf5",
+                    color: "var(--color-fg)",
                     flex: 1,
                   }}
                 >
@@ -835,7 +835,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 display: "flex",
                 alignItems: "center",
                 padding: "8px 12px",
-                borderBottom: "1px solid #1e1f2e",
+                borderBottom: "1px solid var(--color-separator)",
                 cursor: "pointer",
                 gap: 8,
               }}
@@ -855,14 +855,14 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 style={{
                   flex: 1,
                   fontSize: 13,
-                  color: entry.type === "dir" ? "#7aa2f7" : "#c0caf5",
+                  color: entry.type === "dir" ? "var(--color-accent-blue)" : "var(--color-fg)",
                   fontWeight: entry.type === "dir" ? 500 : 400,
                 }}
               >
                 {entry.name}
               </span>
               {entry.type === "file" && (
-                <span style={{ fontSize: 11, color: "#565f89" }}>
+                <span style={{ fontSize: 11, color: "var(--color-muted)" }}>
                   {formatSize(entry.size)}
                 </span>
               )}
@@ -874,9 +874,9 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
               style={{
                 padding: "6px 12px",
                 fontSize: 11,
-                color: "#7aa2f7",
+                color: "var(--color-accent-blue)",
                 textAlign: "left",
-                borderTop: "1px solid #1e1f2e",
+                borderTop: "1px solid var(--color-separator)",
               }}
             >
               ⎇ {dirBranch}{dirTreeInfo ? ` (${dirTreeInfo})` : ""}
@@ -891,7 +891,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 flex: 1,
                 padding: "14px 12px",
                 background: "transparent",
-                color: pasteSaving ? "#565f89" : "#4a6a4a",
+                color: pasteSaving ? "var(--color-muted)" : "#4a6a4a",
                 border: "none",
                 cursor: pasteSaving ? "not-allowed" : "pointer",
                 fontSize: 12,
@@ -911,7 +911,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
                 flex: 1,
                 padding: "14px 12px",
                 background: "transparent",
-                color: uploading ? "#565f89" : "#4a6a4a",
+                color: uploading ? "var(--color-muted)" : "#4a6a4a",
                 border: "none",
                 cursor: uploading ? "not-allowed" : "pointer",
                 fontSize: 12,
@@ -1006,8 +1006,8 @@ function PasteSheetBody({
     width: "100%",
     padding: "10px 12px",
     background: "#16171f",
-    color: "#c0caf5",
-    border: "1px solid #2a2b3d",
+    color: "var(--color-fg)",
+    border: "1px solid var(--color-border)",
     borderRadius: 6,
     fontSize: 13,
     fontFamily: "inherit",
@@ -1017,7 +1017,7 @@ function PasteSheetBody({
 
   const labelStyle: React.CSSProperties = {
     fontSize: 11,
-    color: "#565f89",
+    color: "var(--color-muted)",
     marginBottom: 4,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -1027,7 +1027,7 @@ function PasteSheetBody({
     padding: "10px 16px",
     fontSize: 13,
     borderRadius: 6,
-    border: "1px solid #2a2b3d",
+    border: "1px solid var(--color-border)",
     cursor: "pointer",
     minHeight: 40,
   };
@@ -1051,7 +1051,7 @@ function PasteSheetBody({
             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
             fontSize: 12,
             lineHeight: 1.5,
-            borderColor: overLimit ? "#f7768e" : "#2a2b3d",
+            borderColor: overLimit ? "var(--color-accent-red)" : "var(--color-border)",
           }}
         />
         <div
@@ -1059,7 +1059,7 @@ function PasteSheetBody({
             display: "flex",
             justifyContent: "space-between",
             fontSize: 10,
-            color: overLimit ? "#f7768e" : "#565f89",
+            color: overLimit ? "var(--color-accent-red)" : "var(--color-muted)",
             marginTop: 4,
           }}
         >
@@ -1083,7 +1083,7 @@ function PasteSheetBody({
           autoCorrect="off"
           style={{
             ...inputStyle,
-            borderColor: nameOk ? "#2a2b3d" : "#f7768e",
+            borderColor: nameOk ? "var(--color-border)" : "var(--color-accent-red)",
           }}
         />
       </div>
@@ -1094,7 +1094,7 @@ function PasteSheetBody({
           style={{
             ...inputStyle,
             background: "#0f1019",
-            color: "#7aa2f7",
+            color: "var(--color-accent-blue)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -1106,7 +1106,7 @@ function PasteSheetBody({
       </div>
 
       {error && (
-        <div style={{ fontSize: 12, color: "#f7768e", padding: "4px 0" }}>
+        <div style={{ fontSize: 12, color: "var(--color-accent-red)", padding: "4px 0" }}>
           {error}
         </div>
       )}
@@ -1118,7 +1118,7 @@ function PasteSheetBody({
           style={{
             ...btnBase,
             background: "transparent",
-            color: "#a9b1d6",
+            color: "var(--color-fg-muted)",
           }}
         >
           Cancel
@@ -1128,11 +1128,11 @@ function PasteSheetBody({
           disabled={saveDisabled}
           style={{
             ...btnBase,
-            background: saveDisabled ? "#1a1b26" : "#7aa2f7",
-            color: saveDisabled ? "#565f89" : "#1a1b26",
+            background: saveDisabled ? "var(--color-bg)" : "var(--color-accent-blue)",
+            color: saveDisabled ? "var(--color-muted)" : "var(--color-bg)",
             fontWeight: 600,
             cursor: saveDisabled ? "not-allowed" : "pointer",
-            borderColor: saveDisabled ? "#2a2b3d" : "#7aa2f7",
+            borderColor: saveDisabled ? "var(--color-border)" : "var(--color-accent-blue)",
           }}
         >
           {saving ? "Saving..." : "Save"}

@@ -15,14 +15,14 @@ import { getFileIcon } from "../components/file-icons";
  * silently changes the colors, which keeps the visual contract stable.
  */
 
-const COLOR_TS = "#7aa2f7"; // BadgeIcon color for TS/TSX
-const COLOR_JS = "#e0af68"; // BadgeIcon color for JS/JSX (and HTML stroke)
-const COLOR_MD = "#7dcfff"; // MdIcon stroke (also CSS stroke)
-const COLOR_SH = "#9ece6a"; // ShIcon stroke
-const COLOR_PY = "#7aa2f7"; // PyIcon stroke (same hex as TS badge but on a stroke svg, not a rect fill)
-const COLOR_IMG = "#bb9af7"; // ImageIcon stroke
-const COLOR_TXT = "#c0caf5"; // TxtIcon stroke + DocIcon default color
-const COLOR_FOLDER = "#7aa2f7"; // FolderIcon stroke
+const COLOR_TS = "var(--color-accent-blue)"; // BadgeIcon color for TS/TSX
+const COLOR_JS = "var(--color-accent-yellow)"; // BadgeIcon color for JS/JSX (and HTML stroke)
+const COLOR_MD = "var(--color-accent-cyan)"; // MdIcon stroke (also CSS stroke)
+const COLOR_SH = "var(--color-accent-green)"; // ShIcon stroke
+const COLOR_PY = "var(--color-accent-blue)"; // PyIcon stroke (same hex as TS badge but on a stroke svg, not a rect fill)
+const COLOR_IMG = "var(--color-accent-purple)"; // ImageIcon stroke
+const COLOR_TXT = "var(--color-fg)"; // TxtIcon stroke + DocIcon default color
+const COLOR_FOLDER = "var(--color-accent-blue)"; // FolderIcon stroke
 
 function render(node: ReturnType<typeof getFileIcon>): string {
   // getFileIcon returns ReactNode, never null/undefined for any code path,
@@ -55,7 +55,7 @@ describe("getFileIcon", () => {
   describe("JSON", () => {
     it("returns the JSON-specific icon for foo.json", () => {
       const html = render(getFileIcon("foo.json", false));
-      expect(html).toContain(`stroke="#e0af68"`); // JsonIcon stroke
+      expect(html).toContain(`stroke="var(--color-accent-yellow)"`); // JsonIcon stroke
       // The two curly-brace paths from JsonIcon are unique to that icon.
       expect(html).toContain("M6 2.5c-2 0-2 1.5-2 3");
       expect(html).toContain("M10 2.5c2 0 2 1.5 2 3");
@@ -139,7 +139,7 @@ describe("getFileIcon", () => {
   describe("dotfiles and unknown extensions", () => {
     it("returns the default doc icon for .env (dotfile = no extension)", () => {
       const html = render(getFileIcon(".env", false));
-      // DocIcon uses the txt color #c0caf5 as its default, with the doc outline path.
+      // DocIcon uses the txt color var(--color-fg) as its default, with the doc outline path.
       expect(html).toContain(`stroke="${COLOR_TXT}"`);
       expect(html).toContain("M3.5 1.5h6l3 3v10h-9z");
       // No badge text — DocIcon has no <text> element.

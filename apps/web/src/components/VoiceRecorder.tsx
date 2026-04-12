@@ -222,25 +222,25 @@ export function VoiceRecorder() {
           <button
             onClick={() => setView("recorder")}
             style={{
-              background: "none", border: "none", color: "#7aa2f7", fontSize: 13, cursor: "pointer",
+              background: "none", border: "none", color: "var(--color-accent-blue)", fontSize: 13, cursor: "pointer",
               padding: "4px 8px", fontWeight: 600,
             }}
           >
             &larr; Record
           </button>
-          <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 600, color: "#c0caf5" }}>
+          <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 600, color: "var(--color-fg)" }}>
             Transcripts
           </span>
           <button
             onClick={loadLibrary}
-            style={{ background: "none", border: "none", color: "#565f89", fontSize: 12, cursor: "pointer", padding: "4px 8px" }}
+            style={{ background: "none", border: "none", color: "var(--color-muted)", fontSize: 12, cursor: "pointer", padding: "4px 8px" }}
           >
             {loadingLibrary ? <Spinner /> : "Refresh"}
           </button>
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
           {library.length === 0 ? (
-            <p style={{ textAlign: "center", color: "#3b3d57", fontStyle: "italic", paddingTop: 20, fontSize: 13 }}>
+            <p style={{ textAlign: "center", color: "var(--color-subtle)", fontStyle: "italic", paddingTop: 20, fontSize: 13 }}>
               {loadingLibrary ? "Loading..." : "No transcripts yet"}
             </p>
           ) : (
@@ -248,18 +248,18 @@ export function VoiceRecorder() {
               <div
                 key={t.id}
                 style={{
-                  background: "#24283b",
-                  border: "1px solid #2a2b3d",
+                  background: "var(--color-surface)",
+                  border: "1px solid var(--color-border)",
                   borderRadius: 8,
                   padding: "10px 12px",
                   marginBottom: 8,
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#c0caf5", marginBottom: 4 }}>{t.title}</div>
-                <div style={{ fontSize: 12, color: "#565f89", lineHeight: 1.4, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg)", marginBottom: 4 }}>{t.title}</div>
+                <div style={{ fontSize: 12, color: "var(--color-muted)", lineHeight: 1.4, marginBottom: 4 }}>
                   {t.preview || "(empty)"}
                 </div>
-                <div style={{ fontSize: 10, color: "#3b3d57" }}>
+                <div style={{ fontSize: 10, color: "var(--color-subtle)" }}>
                   {formatDate(t.created_at)} &middot; {t.word_count} words
                 </div>
               </div>
@@ -290,7 +290,7 @@ export function VoiceRecorder() {
           <button
             onClick={() => { setView("library"); loadLibrary(); }}
             style={{
-              background: "none", border: "1px solid #2a2b3d", color: "#7aa2f7", fontSize: 11, cursor: "pointer",
+              background: "none", border: "1px solid var(--color-border)", color: "var(--color-accent-blue)", fontSize: 11, cursor: "pointer",
               padding: "3px 10px", borderRadius: 6, fontWeight: 500,
             }}
           >
@@ -305,19 +305,19 @@ export function VoiceRecorder() {
             flex: 1,
             minHeight: 60,
             overflowY: "auto",
-            background: "#24283b",
+            background: "var(--color-surface)",
             borderRadius: 8,
-            border: "1px solid #2a2b3d",
+            border: "1px solid var(--color-border)",
             padding: "12px 14px",
             marginBottom: 8,
           }}
         >
           {transcript ? (
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: "#c0caf5", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: "var(--color-fg)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {transcript}
             </p>
           ) : (
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "#3b3d57", fontStyle: "italic", textAlign: "center", paddingTop: 12 }}>
+            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "var(--color-subtle)", fontStyle: "italic", textAlign: "center", paddingTop: 12 }}>
               Start recording to begin transcribing...
             </p>
           )}
@@ -327,7 +327,7 @@ export function VoiceRecorder() {
         {error && (
           <div style={{
             background: "rgba(247, 118, 142, 0.1)", border: "1px solid rgba(247, 118, 142, 0.3)",
-            borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#f7768e",
+            borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--color-accent-red)",
             lineHeight: 1.4, marginBottom: 8, maxHeight: 60, overflowY: "auto",
           }}>
             {error}
@@ -344,7 +344,7 @@ export function VoiceRecorder() {
               placeholder="Title (optional)"
               onKeyDown={(e) => { if (e.key === "Enter") saveTranscript(); }}
               style={{
-                flex: 1, background: "#24283b", color: "#c0caf5", border: "1px solid #3b3d57",
+                flex: 1, background: "var(--color-surface)", color: "var(--color-fg)", border: "1px solid var(--color-subtle)",
                 borderRadius: 7, padding: "7px 10px", fontSize: 12, outline: "none", minWidth: 0,
               }}
             />
@@ -353,14 +353,14 @@ export function VoiceRecorder() {
               disabled={isSaving}
               style={{
                 padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#1a3a2a",
-                color: isSaving ? "#4a7a5a" : "#9ece6a", border: "1px solid #2d5a3d",
+                color: isSaving ? "#4a7a5a" : "var(--color-accent-green)", border: "1px solid #2d5a3d",
                 borderRadius: 7, cursor: isSaving ? "not-allowed" : "pointer", flexShrink: 0,
               }}
             >
               {isSaving ? <><Spinner /> Saving...</> : "Save"}
             </button>
             {saveStatus && (
-              <span style={{ fontSize: 11, alignSelf: "center", color: saveStatus === "Saved" ? "#9ece6a" : "#f7768e" }}>
+              <span style={{ fontSize: 11, alignSelf: "center", color: saveStatus === "Saved" ? "var(--color-accent-green)" : "var(--color-accent-red)" }}>
                 {saveStatus}
               </span>
             )}
@@ -377,9 +377,9 @@ export function VoiceRecorder() {
             fontSize: 13,
             fontWeight: 600,
             background: (hasChunks || isRecording) && !isTranscribing ? "linear-gradient(135deg, #2d3a5a, #253356)" : "#1e2030",
-            color: (hasChunks || isRecording) && !isTranscribing ? "#7aa2f7" : "#3b3d57",
+            color: (hasChunks || isRecording) && !isTranscribing ? "var(--color-accent-blue)" : "var(--color-subtle)",
             border: "1px solid",
-            borderColor: (hasChunks || isRecording) && !isTranscribing ? "#3d4a6a" : "#2a2b3d",
+            borderColor: (hasChunks || isRecording) && !isTranscribing ? "#3d4a6a" : "var(--color-border)",
             borderRadius: 8,
             cursor: (hasChunks || isRecording) && !isTranscribing ? "pointer" : "not-allowed",
             display: "flex",
@@ -433,11 +433,11 @@ export function VoiceRecorder() {
               border: "none",
               cursor: "pointer",
               background: isRecording
-                ? "radial-gradient(circle at 38% 38%, #ff8fa3, #f7768e)"
+                ? "radial-gradient(circle at 38% 38%, #ff8fa3, var(--color-accent-red))"
                 : "radial-gradient(circle at 38% 38%, #3d2535, #2a1a23)",
               boxShadow: isRecording
                 ? "0 0 0 3px rgba(247,118,142,0.3), inset 0 2px 6px rgba(255,255,255,0.15)"
-                : "0 0 0 2px #3b3d57, inset 0 2px 4px rgba(0,0,0,0.4)",
+                : "0 0 0 2px var(--color-subtle), inset 0 2px 4px rgba(0,0,0,0.4)",
               animation: isRecording ? "vr-pulse 1.5s ease-out infinite" : "none",
               display: "flex",
               alignItems: "center",
@@ -448,10 +448,10 @@ export function VoiceRecorder() {
               <span style={{ width: 20, height: 20, borderRadius: 4, background: "#fff", display: "block", opacity: 0.95 }} />
             ) : (
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                <rect x="9" y="2" width="6" height="12" rx="3" fill="#f7768e" />
-                <path d="M5 11a7 7 0 0 0 14 0" stroke="#f7768e" strokeWidth="2" strokeLinecap="round" />
-                <line x1="12" y1="18" x2="12" y2="22" stroke="#f7768e" strokeWidth="2" strokeLinecap="round" />
-                <line x1="9" y1="22" x2="15" y2="22" stroke="#f7768e" strokeWidth="2" strokeLinecap="round" />
+                <rect x="9" y="2" width="6" height="12" rx="3" fill="var(--color-accent-red)" />
+                <path d="M5 11a7 7 0 0 0 14 0" stroke="var(--color-accent-red)" strokeWidth="2" strokeLinecap="round" />
+                <line x1="12" y1="18" x2="12" y2="22" stroke="var(--color-accent-red)" strokeWidth="2" strokeLinecap="round" />
+                <line x1="9" y1="22" x2="15" y2="22" stroke="var(--color-accent-red)" strokeWidth="2" strokeLinecap="round" />
               </svg>
             )}
           </button>
@@ -459,16 +459,16 @@ export function VoiceRecorder() {
           {/* Duration below button */}
           <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
             {isRecording && (
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#f7768e", animation: "vr-dot-blink 1.2s ease-in-out infinite" }} />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--color-accent-red)", animation: "vr-dot-blink 1.2s ease-in-out infinite" }} />
             )}
             <span style={{
               fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              fontSize: 15, fontWeight: 600, color: isRecording ? "#c0caf5" : "#565f89",
+              fontSize: 15, fontWeight: 600, color: isRecording ? "var(--color-fg)" : "var(--color-muted)",
             }}>
               {formatDuration(duration)}
             </span>
             {isRecording && (
-              <span style={{ fontSize: 10, color: "#f7768e", fontWeight: 500 }}>REC</span>
+              <span style={{ fontSize: 10, color: "var(--color-accent-red)", fontWeight: 500 }}>REC</span>
             )}
           </div>
         </div>

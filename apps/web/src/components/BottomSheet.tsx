@@ -96,8 +96,8 @@ export function BottomSheet({ onClose, title, children }: BottomSheetProps) {
         ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#1a1b26",
-          borderTop: "1px solid #2a2b3d",
+          background: "var(--color-bg)",
+          borderTop: "1px solid var(--color-border)",
           borderRadius: "16px 16px 0 0",
           maxHeight: "70vh",
           display: "flex",
@@ -114,9 +114,9 @@ export function BottomSheet({ onClose, title, children }: BottomSheetProps) {
           style={{ padding: "12px 16px 0", cursor: "grab", flexShrink: 0 }}
         >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-            <div style={{ width: 36, height: 4, borderRadius: 2, background: "#3b3d57" }} />
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--color-subtle)" }} />
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#c0caf5", marginBottom: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-fg)", marginBottom: 12 }}>
             {title}
           </div>
         </div>
