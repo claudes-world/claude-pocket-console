@@ -461,7 +461,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     }
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (fileContent !== null) {
       setFileContent(null);
       setFileName("");
@@ -471,7 +471,27 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     } else if (parentPath) {
       loadDirectory(parentPath);
     }
-  };
+  }, [fileContent, parentPath, loadDirectory, onViewChange]);
+
+  // Wire Telegram's native BackButton when viewing a file. Show it on
+  // file open, hide it when returning to the directory listing, and clean
+  // up the handler on unmount so we don't leak listeners.
+  useEffect(() => {
+    const bb = window.Telegram?.WebApp?.BackButton;
+    if (!bb) return;
+
+    if (fileContent !== null) {
+      bb.onClick(handleBack);
+      bb.show();
+    } else {
+      bb.hide();
+    }
+
+    return () => {
+      bb.offClick(handleBack);
+      bb.hide();
+    };
+  }, [fileContent, handleBack]);
 
   // Simple line folding for code
   const toggleFold = (lineNum: number) => {
