@@ -225,4 +225,19 @@ describe("/check path allowlist (M-5 adjacent)", () => {
     expect(res.status).toBe(200);
     expect(body.exists).toBe(true);
   });
+
+  it("returns exists=false (not 403) for an allowlisted .md whose .mp3 does not exist (#170)", async () => {
+    // This is the exact bug scenario: the source .md is allowlisted and exists,
+    // but the .mp3 hasn't been generated yet. Before the fix, isPathAllowed
+    // was called on the non-existent .mp3, and realpath() would fail, causing
+    // a false 403. The fix validates the source .md path instead.
+    const noAudioMd = join(sandbox, "no-audio-yet.md");
+    writeFileSync(noAudioMd, "# Pending\n\nAudio not generated yet.\n");
+    const params = new URLSearchParams({ path: noAudioMd });
+    const res = await audioRoute.request(`/check?${params.toString()}`);
+    const body = (await res.json()) as { ok: boolean; exists?: boolean; path?: string | null };
+    expect(res.status).toBe(200);
+    expect(body.exists).toBe(false);
+    expect(body.path).toBeNull();
+  });
 });

@@ -33,14 +33,16 @@ app.get("/check", async (c) => {
     const filePath = c.req.query("path");
     if (!filePath) return c.json({ ok: false, error: "path required" }, 400);
 
-    // Audio file is the same path but with .mp3 extension
-    const audioPath = filePath.replace(/\.md$/, ".mp3");
-    // Allowlist-guard the resolved path so the endpoint cannot be used to
-    // stat arbitrary filesystem locations. Reject with 403 on mismatch;
-    // `existsSync` is cheap but still an information leak without the guard.
-    if (!(await isPathAllowed(resolve(audioPath)))) {
+    // Allowlist-guard the SOURCE markdown path, not the derived .mp3 path.
+    // The .mp3 may not exist yet (client is asking "does audio exist?"), and
+    // isPathAllowed uses realpath() which fails on non-existent files,
+    // returning a false 403. The source .md file is what the client has, so
+    // validate that instead. (Fixes #170)
+    if (!(await isPathAllowed(resolve(filePath)))) {
       return c.json({ ok: false, error: "path not allowed" }, 403);
     }
+    // Audio file is the same path but with .mp3 extension
+    const audioPath = filePath.replace(/\.md$/, ".mp3");
     const exists = existsSync(audioPath);
     return c.json({ ok: true, exists, path: exists ? audioPath : null });
   } catch (err: any) {
