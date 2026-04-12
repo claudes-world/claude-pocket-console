@@ -8,7 +8,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
-import { validateTelegramLoginWidget, createSession, getAllowedUsers } from "./auth.js";
+import { validateTelegramLoginWidget, createSession } from "./auth.js";
+import { isAllowedUser } from "./lib/allowed-users.js";
 import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
@@ -64,8 +65,7 @@ app.post("/api/auth/telegram-widget", async (c) => {
   if (!valid || !user) return c.json({ error: "Invalid login" }, 401);
 
   // Check allowlist
-  const allowed = getAllowedUsers();
-  if (allowed.size > 0 && !allowed.has(String(user.id))) {
+  if (!isAllowedUser(user.id)) {
     return c.json({ error: "User not authorized" }, 403);
   }
 
