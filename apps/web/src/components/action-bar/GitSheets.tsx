@@ -3,8 +3,8 @@ import { btnStyle } from "./types";
 
 const preStyle = {
   fontSize: 11,
-  color: "#a9b1d6",
-  background: "#24283b",
+  color: "var(--color-fg-muted)",
+  background: "var(--color-surface)",
   padding: 12,
   borderRadius: 6,
   overflow: "auto",
@@ -36,7 +36,7 @@ export function GitMenuSheet({ onClose, onViewStatus, onAction }: GitMenuSheetPr
         <button onClick={onViewStatus} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" }}>View Status</button>
         <button onClick={() => onAction({ label: "Check Branch", command: "branch" })} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" }}>Check Branch</button>
         <button onClick={() => onAction({ label: "View Log", command: "log" })} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left" }}>View Log</button>
-        <button onClick={() => onAction({ label: "Pull", command: "pull" })} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left", background: "#1a3a2a", color: "#9ece6a", border: "1px solid #2d5a3d" }}>Pull</button>
+        <button onClick={() => onAction({ label: "Pull", command: "pull" })} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left", background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d" }}>Pull</button>
       </div>
     </BottomSheet>
   );

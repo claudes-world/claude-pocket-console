@@ -106,7 +106,7 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
 
   return (
     <BottomSheet onClose={handleClose} title="TL;DR">
-      <div style={{ fontSize: 12, color: "#a9b1d6", marginBottom: 12 }}>{viewingFile.name}</div>
+      <div style={{ fontSize: 12, color: "var(--color-fg-muted)", marginBottom: 12 }}>{viewingFile.name}</div>
       {loading && (
         <InProgressAnimation
           label="Generating summary…"
@@ -116,14 +116,14 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
       )}
       {!loading && error && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 12, color: "#f7768e", padding: "8px 10px", background: "#2a1a22", border: "1px solid #4a2d3a", borderRadius: 6 }}>{error}</div>
-          <button onClick={() => void generateTldr(viewingFile.path)} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>Retry</button>
+          <div style={{ fontSize: 12, color: "var(--color-accent-red)", padding: "8px 10px", background: "#2a1a22", border: "1px solid #4a2d3a", borderRadius: 6 }}>{error}</div>
+          <button onClick={() => void generateTldr(viewingFile.path)} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}>Retry</button>
         </div>
       )}
       {!loading && !error && summary && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 10, color: "#565f89" }}>{cached ? "cached" : `fresh (${ms}ms)`}</div>
-          <div style={{ background: "#16171f", border: "1px solid #2a2b3d", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#c0caf5", maxHeight: "45vh", overflowY: "auto" }}>
+          <div style={{ fontSize: 10, color: "var(--color-muted)" }}>{cached ? "cached" : `fresh (${ms}ms)`}</div>
+          <div style={{ background: "#16171f", border: "1px solid var(--color-border)", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "var(--color-fg)", maxHeight: "45vh", overflowY: "auto" }}>
             {/*
               XSS defense: the TL;DR summary comes from an LLM whose input is
               the (potentially malicious) markdown file. A prompt-injected
@@ -140,10 +140,10 @@ export function TldrModal({ viewingFile, onClose }: TldrModalProps) {
             <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "inherit", fontSize: "inherit", lineHeight: 1.5 }}>{summary}</pre>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={copyTldr} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "#7dcfff", border: "1px solid #2d5a5a" }}>{copied ? "Copied" : "Copy"}</button>
+            <button onClick={copyTldr} style={{ ...btnStyle, padding: "10px 14px", background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}>{copied ? "Copied" : "Copy"}</button>
             <button onClick={() => void generateTldr(viewingFile.path, true)} style={{ ...btnStyle, padding: "10px 14px" }}>Regenerate</button>
           </div>
-          {copyError && <div style={{ fontSize: 11, color: "#f7768e", marginTop: 4 }}>{copyError}</div>}
+          {copyError && <div style={{ fontSize: 11, color: "var(--color-accent-red)", marginTop: 4 }}>{copyError}</div>}
         </div>
       )}
     </BottomSheet>

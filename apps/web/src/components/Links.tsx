@@ -65,7 +65,7 @@ export function Links({ onClose }: LinksProps) {
       <div
         style={{
           padding: "8px 12px",
-          borderBottom: "1px solid #2a2b3d",
+          borderBottom: "1px solid var(--color-border)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -78,7 +78,7 @@ export function Links({ onClose }: LinksProps) {
           style={{
             background: "none",
             border: "none",
-            color: "#565f89",
+            color: "var(--color-muted)",
             cursor: "pointer",
             fontSize: 14,
             padding: "2px 6px",
@@ -99,18 +99,18 @@ export function Links({ onClose }: LinksProps) {
               display: "flex",
               alignItems: "center",
               padding: "12px 16px",
-              borderBottom: "1px solid #1e1f2e",
+              borderBottom: "1px solid var(--color-separator)",
               textDecoration: "none",
               gap: 12,
             }}
           >
             <span style={{ fontSize: 20 }}>{link.icon || "🔗"}</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, color: "#7aa2f7", fontWeight: 500 }}>
+              <div style={{ fontSize: 14, color: "var(--color-accent-blue)", fontWeight: 500 }}>
                 {link.title}
               </div>
               {link.description && (
-                <div style={{ fontSize: 12, color: "#565f89", marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
                   {link.description}
                 </div>
               )}
@@ -122,7 +122,7 @@ export function Links({ onClose }: LinksProps) {
         {/* --- Apps section --- */}
         <div
           style={{
-            borderTop: "1px solid #1e1f2e",
+            borderTop: "1px solid var(--color-separator)",
             marginTop: 8,
             padding: "20px 16px 24px",
           }}
@@ -131,7 +131,7 @@ export function Links({ onClose }: LinksProps) {
             style={{
               fontSize: 11,
               fontWeight: 600,
-              color: "#565f89",
+              color: "var(--color-muted)",
               letterSpacing: "0.1em",
               textTransform: "uppercase",
               marginBottom: 12,
@@ -183,7 +183,7 @@ function AppTile({ app }: { app: AppItem }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#1e1f2e",
+          background: "var(--color-separator)",
           overflow: "hidden",
           flexShrink: 0,
         }}
@@ -214,7 +214,7 @@ function AppTile({ app }: { app: AppItem }) {
         style={{
           fontSize: 11,
           fontWeight: 500,
-          color: "#c0caf5",
+          color: "var(--color-fg)",
           maxWidth: 80,
           textAlign: "center",
           overflow: "hidden",

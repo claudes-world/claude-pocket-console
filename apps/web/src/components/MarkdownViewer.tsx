@@ -217,7 +217,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           font-family: system-ui, -apple-system, sans-serif;
           font-size: 14px;
           line-height: 1.7;
-          color: #c0caf5;
+          color: var(--color-fg);
           overflow-wrap: break-word;
           word-break: break-word;
           max-width: 100%;
@@ -231,28 +231,28 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           font-weight: 700;
           margin: 0 0 12px;
           padding-bottom: 8px;
-          border-bottom: 1px solid #2a2b3d;
-          color: #c0caf5;
+          border-bottom: 1px solid var(--color-border);
+          color: var(--color-fg);
         }
         .md-content h2 {
           font-size: 18px;
           font-weight: 600;
           margin: 20px 0 8px;
           padding-bottom: 6px;
-          border-bottom: 1px solid #1e1f2e;
-          color: #7aa2f7;
+          border-bottom: 1px solid var(--color-separator);
+          color: var(--color-accent-blue);
         }
         .md-content h3 {
           font-size: 15px;
           font-weight: 600;
           margin: 16px 0 6px;
-          color: #bb9af7;
+          color: var(--color-accent-purple);
         }
         .md-content p {
           margin: 8px 0;
         }
         .md-content a {
-          color: #7dcfff;
+          color: var(--color-accent-cyan);
           text-decoration: none;
         }
         .md-content a:hover {
@@ -261,14 +261,14 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         .md-content code {
           font-family: 'JetBrains Mono', 'Fira Code', monospace;
           font-size: 12px;
-          background: #24283b;
+          background: var(--color-surface);
           padding: 2px 6px;
           border-radius: 4px;
-          color: #9ece6a;
+          color: var(--color-accent-green);
         }
         .md-content pre {
-          background: #1a1b26;
-          border: 1px solid #2a2b3d;
+          background: var(--color-bg);
+          border: 1px solid var(--color-border);
           border-radius: 6px;
           padding: 12px 16px;
           overflow-x: auto;
@@ -278,7 +278,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         .md-content pre code {
           background: none;
           padding: 0;
-          color: #c0caf5;
+          color: var(--color-fg);
           display: block;
           width: max-content;
           min-width: 100%;
@@ -304,13 +304,13 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         .md-content th {
           text-align: left;
           padding: 8px 12px;
-          border-bottom: 2px solid #2a2b3d;
-          color: #7aa2f7;
+          border-bottom: 2px solid var(--color-border);
+          color: var(--color-accent-blue);
           font-weight: 600;
         }
         .md-content td {
           padding: 6px 12px;
-          border-bottom: 1px solid #1e1f2e;
+          border-bottom: 1px solid var(--color-separator);
         }
         .md-content ul, .md-content ol {
           padding-left: 20px;
@@ -320,20 +320,20 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           margin: 4px 0;
         }
         .md-content blockquote {
-          border-left: 3px solid #7aa2f7;
+          border-left: 3px solid var(--color-accent-blue);
           margin: 12px 0;
           padding: 4px 16px;
-          color: #a9b1d6;
-          background: #1a1b26;
+          color: var(--color-fg-muted);
+          background: var(--color-bg);
           border-radius: 0 4px 4px 0;
         }
         .md-content hr {
           border: none;
-          border-top: 1px solid #2a2b3d;
+          border-top: 1px solid var(--color-border);
           margin: 16px 0;
         }
         .md-content strong {
-          color: #e0af68;
+          color: var(--color-accent-yellow);
           font-weight: 600;
         }
         .md-content img {
@@ -344,8 +344,8 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           margin: 12px 0;
         }
         .md-content .mermaid-container {
-          background: #1a1b26;
-          border: 1px solid #2a2b3d;
+          background: var(--color-bg);
+          border: 1px solid var(--color-border);
           border-radius: 6px;
           padding: 16px;
           overflow-x: auto;
@@ -359,25 +359,25 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           height: auto;
         }
         .md-content .mermaid-loading {
-          background: #1a1b26;
-          border: 1px dashed #2a2b3d;
+          background: var(--color-bg);
+          border: 1px dashed var(--color-border);
           border-radius: 6px;
           padding: 24px 16px;
           text-align: center;
-          color: #565f89;
+          color: var(--color-muted);
           font-size: 13px;
           font-style: italic;
           margin: 12px 0;
         }
         .md-content .mermaid-error {
-          background: #1a1b26;
-          border: 1px solid #f7768e;
+          background: var(--color-bg);
+          border: 1px solid var(--color-accent-red);
           border-radius: 6px;
           padding: 12px 16px;
           margin: 12px 0;
         }
         .md-content .mermaid-error-label {
-          color: #f7768e;
+          color: var(--color-accent-red);
           font-size: 12px;
           font-weight: 600;
           margin-bottom: 8px;
@@ -405,16 +405,16 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           border-radius: 3px;
         }
         .md-content .cpc-fold-btn:focus-visible {
-          outline: 2px solid #7aa2f7;
+          outline: 2px solid var(--color-accent-blue);
           outline-offset: 1px;
         }
         .md-content .cpc-toggle-chevron {
-          color: #565f89;
+          color: var(--color-muted);
           font-size: 10px;
           transition: transform 0.2s ease;
         }
         .md-content .cpc-fold-btn:hover .cpc-toggle-chevron {
-          color: #7aa2f7;
+          color: var(--color-accent-blue);
           background: rgba(122, 162, 247, 0.1);
         }
         .md-content .cpc-section.cpc-folded {

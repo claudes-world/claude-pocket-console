@@ -20,7 +20,7 @@ export function WaveformVisualizer({ analyserNode, isRecording }: WaveformVisual
       const { width, height } = canvas;
       ctx.clearRect(0, 0, width, height);
       ctx.clearRect(0, 0, width, height);
-      ctx.strokeStyle = "#3b3d57";
+      ctx.strokeStyle = "#3b3d57"; // --color-subtle (canvas API doesn't support var())
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, height / 2);

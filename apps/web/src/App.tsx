@@ -80,7 +80,7 @@ function TabUnderline({
         left: 0,
         width: interpWidth,
         height: 2,
-        background: "#7aa2f7",
+        background: "var(--color-accent-blue)",
         transform: `translateX(${interpLeft}px)`,
         transition: isAnimating ? "transform 300ms ease-out, width 300ms ease-out" : "none",
         pointerEvents: "none",
@@ -250,10 +250,10 @@ export function App() {
     return (
       <div style={{
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        height: "100%", background: "#1a1b26", color: "#c0caf5", padding: 20,
+        height: "100%", background: "var(--color-bg)", color: "var(--color-fg)", padding: 20,
       }}>
         <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Claude Pocket Console</div>
-        <div style={{ fontSize: 13, color: "#565f89", marginBottom: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: "var(--color-muted)", marginBottom: 24, textAlign: "center" }}>
           Telegram auth unavailable. Sign in to continue.
         </div>
         <div id="telegram-login-container" ref={(el) => {
@@ -292,7 +292,7 @@ export function App() {
       <header
         style={{
           padding: "0 12px",
-          borderBottom: "1px solid #2a2b3d",
+          borderBottom: "1px solid var(--color-border)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -312,7 +312,7 @@ export function App() {
                 fontSize: 13,
                 fontWeight: activeTab === tab ? 600 : 400,
                 background: "none",
-                color: activeTab === tab ? "#c0caf5" : "#565f89",
+                color: activeTab === tab ? "var(--color-fg)" : "var(--color-muted)",
                 border: "none",
                 // borderBottom removed — moving indicator below replaces it
                 cursor: "pointer",
@@ -332,7 +332,7 @@ export function App() {
         <span
           style={{
             fontSize: 11,
-            color: connected ? "#9ece6a" : "#f7768e",
+            color: connected ? "var(--color-accent-green)" : "var(--color-accent-red)",
             display: "flex",
             alignItems: "center",
             gap: 4,
@@ -343,7 +343,7 @@ export function App() {
               width: 6,
               height: 6,
               borderRadius: "50%",
-              background: connected ? "#9ece6a" : "#f7768e",
+              background: connected ? "var(--color-accent-green)" : "var(--color-accent-red)",
               display: "inline-block",
             }}
           />
@@ -356,16 +356,16 @@ export function App() {
         <div
           style={{
             fontSize: 11,
-            color: "#565f89",
+            color: "var(--color-muted)",
             padding: "3px 14px",
-            borderBottom: "1px solid #2a2b3d",
+            borderBottom: "1px solid var(--color-border)",
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
           }}
         >
           <span>Claude Pocket Console: {cpcBranch}</span>
-          <span style={{ marginLeft: "auto", color: "#3b3d57" }}>{__APP_VERSION__}</span>
+          <span style={{ marginLeft: "auto", color: "var(--color-subtle)" }}>{__APP_VERSION__}</span>
         </div>
       )}
 

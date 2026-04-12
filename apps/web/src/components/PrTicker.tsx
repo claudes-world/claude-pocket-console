@@ -25,23 +25,23 @@ type FilterMode = "current" | "all";
 // --- Color palette (reuses existing CPC theme) ---
 
 const COLORS = {
-  green: "#9ece6a",
-  yellow: "#e0af68",
-  red: "#f7768e",
-  blue: "#7aa2f7",
-  muted: "#565f89",
-  bg: "#1a1b26",
-  surface: "#24283b",
-  border: "#2a2b3d",
-  text: "#c0caf5",
-  textMuted: "#565f89",
+  green: "var(--color-accent-green)",
+  yellow: "var(--color-accent-yellow)",
+  red: "var(--color-accent-red)",
+  blue: "var(--color-accent-blue)",
+  muted: "var(--color-muted)",
+  bg: "var(--color-bg)",
+  surface: "var(--color-surface)",
+  border: "var(--color-border)",
+  text: "var(--color-fg)",
+  textMuted: "var(--color-muted)",
 };
 
 // --- Status dot color logic ---
 
 function getStatusColor(pr: PrRow): string {
   if (pr.isDraft) return COLORS.muted;
-  if (pr.state === "MERGED") return "#bb9af7"; // purple
+  if (pr.state === "MERGED") return "var(--color-accent-purple)"; // purple
   if (pr.state === "CLOSED") return COLORS.muted;
 
   // Open PR color: combine review + CI status
@@ -349,7 +349,7 @@ function FilterChip({
         fontSize: 12,
         fontWeight: active ? 600 : 400,
         background: active ? COLORS.blue : "transparent",
-        color: active ? "#1a1b26" : COLORS.textMuted,
+        color: active ? "var(--color-bg)" : COLORS.textMuted,
         border: active ? "none" : `1px solid ${COLORS.border}`,
         cursor: "pointer",
       }}

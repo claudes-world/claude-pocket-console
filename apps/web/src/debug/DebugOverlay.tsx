@@ -21,13 +21,13 @@ import {
 } from "./capture";
 
 // --- Palette (Tokyo Night) ---
-const BG = "#1a1b26";
-const BG_SURFACE = "#16161e";
-const TEXT = "#c0caf5";
-const TEXT_MUTED = "#565f89";
-const ACCENT = "#7aa2f7";
-const ERROR_COLOR = "#f7768e";
-const BORDER = "#2a2b3d";
+const BG = "var(--color-bg)";
+const BG_SURFACE = "var(--color-bg-alt)";
+const TEXT = "var(--color-fg)";
+const TEXT_MUTED = "var(--color-muted)";
+const ACCENT = "var(--color-accent-blue)";
+const ERROR_COLOR = "var(--color-accent-red)";
+const BORDER = "var(--color-border)";
 
 function formatTime(timestamp: number): string {
   // timestamp is from performance.now() — convert to wall clock
@@ -43,7 +43,7 @@ function formatTime(timestamp: number): string {
 
 function EntryRow({ entry }: { entry: DebugEntry }) {
   const [expanded, setExpanded] = useState(false);
-  const typeColor = entry.type === "error" ? ERROR_COLOR : "#e0af68";
+  const typeColor = entry.type === "error" ? ERROR_COLOR : "var(--color-accent-yellow)";
 
   return (
     <div
