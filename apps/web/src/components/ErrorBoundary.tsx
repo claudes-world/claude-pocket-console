@@ -19,8 +19,8 @@ interface ErrorBoundaryState {
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null, resetKey: 0 };
 
-  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
-    return { error };
+  static getDerivedStateFromError(error: unknown): Partial<ErrorBoundaryState> {
+    return { error: error instanceof Error ? error : new Error(String(error)) };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -66,6 +66,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       return (
         <ErrorFallback
           error={this.state.error}
+          level={this.props.level ?? "root"}
           onRetry={this.reset}
           onReload={() => window.location.reload()}
         />
@@ -78,18 +79,19 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
 interface ErrorFallbackProps {
   error: Error;
+  level: ErrorBoundaryLevel;
   onRetry: () => void;
   onReload: () => void;
 }
 
-function ErrorFallback({ error, onRetry, onReload }: ErrorFallbackProps) {
+function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) {
   // Tokyo Night palette to match the rest of CPC.
   // bg #1a1b26, fg #c0caf5, error accent #f7768e, muted #565f89, action blue #7aa2f7
   return (
     <div
       role="alert"
       style={{
-        minHeight: "100dvh",
+        minHeight: level === "tab" ? "100%" : "100dvh",
         width: "100%",
         background: "#1a1b26",
         color: "#c0caf5",
