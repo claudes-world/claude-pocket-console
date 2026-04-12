@@ -153,13 +153,16 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   // changes don't clobber their edits once they've taken control.
   const pasteFilenameEditedRef = useRef(false);
   const pasteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const downloadInFlightRef = useRef(false);
 
   const handleDownload = async () => {
-    if (!filePath || !fileName || downloading) return;
+    if (!filePath || !fileName || downloadInFlightRef.current) return;
+    downloadInFlightRef.current = true;
     setError(null);
 
     const downloadWindow = window.open("about:blank", "_blank");
     if (!downloadWindow) {
+      downloadInFlightRef.current = false;
       setError("Download blocked by browser. Allow popups for this site.");
       return;
     }
@@ -201,6 +204,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       downloadWindow.close();
       setError(err instanceof Error ? err.message : "Download failed");
     } finally {
+      downloadInFlightRef.current = false;
       setDownloading(false);
     }
   };
