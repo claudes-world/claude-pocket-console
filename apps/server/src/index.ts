@@ -45,7 +45,14 @@ loadEnv(`${process.env.HOME}/.secrets/cpc.env`);
 const app = new Hono<{ Bindings: HttpBindings }>();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
-app.use("*", cors());
+app.use("*", cors({
+  origin: [
+    "https://web.telegram.org",
+    "https://cpc.claude.do",
+    "http://localhost:5173",
+    "http://localhost:58830",
+  ],
+}));
 
 // Public routes (no auth)
 app.get("/api/public/health", (c) => c.json({ status: "ok" }));
