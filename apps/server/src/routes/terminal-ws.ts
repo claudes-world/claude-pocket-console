@@ -7,6 +7,7 @@ import { checkAuth, validateSession, validateJwtToken, getAllowedUsers } from ".
 // execSync call below vulnerable to env-var shell injection. Flagged
 // security-high by cloud Gemini Code Assist on round-2 review of PR #85.
 import { TMUX_SESSION } from "./utils.js";
+import { ALLOWED_ORIGINS } from "../lib/allowed-origins.js";
 
 function getPaneDimensions(): { cols: number; rows: number } {
   try {
@@ -27,6 +28,20 @@ function getPaneDimensions(): { cols: number; rows: number } {
 // The mini app adapts to whatever tmux size exists via -J (join wrapped lines).
 
 export function terminalWsRoute(c: any) {
+  // Origin check: WebSocket upgrades bypass Hono's cors() middleware, so we
+  // validate the Origin header explicitly here. Close with 4003 (policy
+  // violation) if the origin is not in the allowlist.
+  // NOTE: c.req.header() may return undefined for missing headers.
+  const origin = c.req.header("origin") ?? "";
+  if (!ALLOWED_ORIGINS.includes(origin)) {
+    console.log(`[ws] rejected: disallowed origin "${origin}"`);
+    return {
+      onOpen(_event: Event, ws: WSContext) {
+        ws.close(4003, "Forbidden origin");
+      },
+    };
+  }
+
   // Auth check: initData or session token passed as query param
   const initData = c.req.query("auth") || "";
   let authResult = checkAuth(initData);
@@ -37,7 +52,12 @@ export function terminalWsRoute(c: any) {
     if (token) {
       const { valid, user } = validateSession(token);
       if (valid && user) {
-        authResult = { ok: true, user };
+        const allowed = getAllowedUsers();
+        if (allowed.size === 0 || allowed.has(String(user.id))) {
+          authResult = { ok: true, user };
+        } else {
+          authResult = { ok: false, error: "User not in allowlist" };
+        }
       }
 
       // Fallback: JWT token validation (keyboard button auth)

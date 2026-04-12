@@ -122,6 +122,10 @@ export function DebugOverlay() {
   if (!isDevHost()) return null;
   if (!isCaptureInstalled()) return null;
 
+  return <DebugOverlayInner />;
+}
+
+function DebugOverlayInner() {
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState("");
 
