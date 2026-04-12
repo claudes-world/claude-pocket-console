@@ -1,12 +1,14 @@
 /**
- * rehype plugin that wraps each top-level heading's body content in a
+ * rehype plugin that wraps each heading's body content in a collapsible
  * <section class="cpc-section" id="section-{slug}" data-fold-slug="{slug}">
  *
  * Must run AFTER rehype-slug so heading IDs are already assigned.
  *
- * Only processes top-level children of the root node. Headings inside
- * blockquotes, list items, or other containers are not wrapped — this is
- * a documented v1 limitation.
+ * The plugin recursively processes heading bodies so that nested headings
+ * (e.g. H2 inside an H1 section, H3 inside an H2 section) each get their
+ * own collapsible <section> wrapper. This fixes the v1 bug where only the
+ * first heading level was processed — all lower-level headings ended up
+ * buried inside the top-level section and were never individually wrapped.
  */
 // Inline hast-compatible types to avoid needing @types/hast as a direct dep.
 // These match the subset used by rehype plugins.
@@ -45,56 +47,81 @@ function headingLevel(node: HastElement): number {
   return Number(node.tagName[1]);
 }
 
-export function rehypeCollapsibleSections() {
-  return (tree: HastRoot) => {
-    const children = tree.children;
-    const out: HastNode[] = [];
-    let i = 0;
+/**
+ * Returns true if the body slice has meaningful content — at least one
+ * element node or a non-whitespace text node. Whitespace-only text nodes
+ * (e.g. newlines between consecutive headings) are not considered content.
+ */
+function hasContent(nodes: HastNode[]): boolean {
+  return nodes.some((n) => {
+    if (n.type === "element") return true;
+    if (n.type === "text" && (n as HastText).value.trim() !== "") return true;
+    return false;
+  });
+}
 
-    while (i < children.length) {
-      const node = children[i];
+/**
+ * Recursively process a list of sibling nodes, wrapping each heading's
+ * body content in a <section>. Nested headings within a section body
+ * are processed by recursive calls.
+ */
+function wrapSections(children: HastNode[]): HastNode[] {
+  const out: HastNode[] = [];
+  let i = 0;
 
-      if (isHeading(node)) {
-        const level = headingLevel(node);
-        const slug = (node.properties?.id as string) ?? "";
+  while (i < children.length) {
+    const node = children[i];
 
-        // Find end of this section: next sibling heading with level <= this one
-        let j = i + 1;
-        while (j < children.length) {
-          const next = children[j];
-          if (isHeading(next) && headingLevel(next) <= level) break;
-          j++;
-        }
+    if (isHeading(node)) {
+      const level = headingLevel(node);
+      const slug = (node.properties?.id as string) ?? "";
 
-        const body = children.slice(i + 1, j);
+      // Find end of this section: next sibling heading with level <= this one
+      let j = i + 1;
+      while (j < children.length) {
+        const next = children[j];
+        if (isHeading(next) && headingLevel(next) <= level) break;
+        j++;
+      }
 
+      const body = children.slice(i + 1, j);
+
+      if (slug && body.length > 0 && hasContent(body)) {
         // Mark the heading as having a foldable section
-        if (slug && body.length > 0) {
-          node.properties = {
-            ...node.properties,
-            "data-has-section": "true",
-          };
-          out.push(node);
-          out.push({
-            type: "element",
-            tagName: "section",
-            properties: {
-              className: ["cpc-section"],
-              id: `section-${slug}`,
-              "data-fold-slug": slug,
-            },
-            children: body,
-          } as HastElement);
-        } else {
-          out.push(node);
-        }
-        i = j;
+        node.properties = {
+          ...node.properties,
+          "data-has-section": "true",
+        };
+        out.push(node);
+
+        // Recursively process body for nested headings
+        const processedBody = wrapSections(body);
+
+        out.push({
+          type: "element",
+          tagName: "section",
+          properties: {
+            className: ["cpc-section"],
+            id: `section-${slug}`,
+            "data-fold-slug": slug,
+          },
+          children: processedBody,
+        } as HastElement);
       } else {
         out.push(node);
-        i++;
       }
+      i = j;
+    } else {
+      out.push(node);
+      i++;
     }
+  }
 
-    tree.children = out;
+  return out;
+}
+
+export function rehypeCollapsibleSections() {
+  return (tree: HastRoot) => {
+    tree.children = wrapSections(tree.children);
   };
 }

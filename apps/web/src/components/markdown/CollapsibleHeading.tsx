@@ -92,6 +92,9 @@ export function makeHeadingComponent(
 
     // Finding 4 fix: use a nested <button> instead of role="button" on the
     // heading, so the heading retains its semantic meaning for screen readers.
+    // The entire heading text is wrapped inside the button so that tapping
+    // anywhere on the heading (not just the small chevron) toggles the fold.
+    // This is critical for mobile UX where the chevron alone is too small.
     return (
       <Tag
         id={slug || undefined}
@@ -112,8 +115,8 @@ export function makeHeadingComponent(
           >
             {folded ? "\u25B6" : "\u25BC"}
           </span>
+          <span className="cpc-fold-label">{children}</span>
         </button>
-        {children}
       </Tag>
     );
   }
