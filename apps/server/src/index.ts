@@ -9,6 +9,7 @@ import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
 import { validateTelegramLoginWidget, createSession, getAllowedUsers } from "./auth.js";
+import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
 import { todoRoute } from "./routes/todo.js";
@@ -45,7 +46,9 @@ loadEnv(`${process.env.HOME}/.secrets/cpc.env`);
 const app = new Hono<{ Bindings: HttpBindings }>();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
-app.use("*", cors());
+app.use("*", cors({
+  origin: [...ALLOWED_ORIGINS],
+}));
 
 // Public routes (no auth)
 app.get("/api/public/health", (c) => c.json({ status: "ok" }));
