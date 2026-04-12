@@ -173,11 +173,11 @@ describe("GET /list", () => {
     const files = body.items.filter((i) => i.type === "file");
 
     // All dirs should come before all files
-    if (dirs.length > 0 && files.length > 0) {
-      const lastDirIndex = body.items.lastIndexOf(dirs[dirs.length - 1]);
-      const firstFileIndex = body.items.indexOf(files[0]);
-      expect(lastDirIndex).toBeLessThan(firstFileIndex);
-    }
+    expect(dirs.length).toBeGreaterThan(0);
+    expect(files.length).toBeGreaterThan(0);
+    const lastDirIndex = body.items.lastIndexOf(dirs[dirs.length - 1]);
+    const firstFileIndex = body.items.indexOf(files[0]);
+    expect(lastDirIndex).toBeLessThan(firstFileIndex);
 
     // Within each group, names should be sorted
     const dirNames = dirs.map((d) => d.name);
@@ -354,6 +354,10 @@ describe("POST /download-ticket", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ticket: string };
     expect(body.ticket).toMatch(/^[0-9a-f]{32}$/);
+
+    // Redeem the ticket so it doesn't leak into subsequent tests
+    const redeemRes = await filesRoute.request(`/download?ticket=${body.ticket}`);
+    await redeemRes.arrayBuffer();
   });
 
   it("returns 400 for invalid JSON body", async () => {
@@ -455,6 +459,7 @@ describe("GET /download", () => {
     // First use — should succeed
     const first = await filesRoute.request(`/download?ticket=${ticket}`);
     expect(first.status).toBe(200);
+    await first.arrayBuffer(); // consume body to avoid file-descriptor leak
 
     // Second use — should fail
     const second = await filesRoute.request(`/download?ticket=${ticket}`);
@@ -634,5 +639,6 @@ describe("POST /paste", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.name).toBeDefined();
     expect(body.path).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(sandbox);
   });
 });
