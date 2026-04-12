@@ -4,26 +4,18 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { loadOpenAIEnv, getTelegramCreds } from "./utils.js";
-import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
+import {
+  ALLOWED_FILE_ROOTS,
+  isPathAllowed as isPathAllowedShared,
+} from "../lib/path-allowed.js";
 
 const execFileAsync = promisify(execFile);
 
 // Load OpenAI env on module init
 loadOpenAIEnv();
 
-// Allowed root directories for any user-supplied path reaching this route.
-// Kept in sync with files.ts / markdown.ts / terminal/git.ts until S-1 lands a
-// shared `lib/allowed-roots.ts`. See `plans/review/20260411-cpc-presrelease-swarm-review.md`.
-const ALLOWED_ROOTS = [
-  "/home/claude/claudes-world",
-  "/home/claude/code",
-  "/home/claude/bin",
-  "/home/claude/.claude",
-  "/home/claude/claudes-world/.claude",
-];
-
 function isPathAllowed(absPath: string): Promise<boolean> {
-  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+  return isPathAllowedShared(absPath, ALLOWED_FILE_ROOTS);
 }
 
 const app = new Hono();
