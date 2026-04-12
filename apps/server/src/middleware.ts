@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
-import { validateTelegramInitData, getAllowedUsers, validateSession, validateJwtToken } from "./auth.js";
+import { validateTelegramInitData, validateSession, validateJwtToken } from "./auth.js";
+import { isAllowedUser } from "./lib/allowed-users.js";
 
 /**
  * Middleware that validates Telegram Mini App auth.
@@ -31,14 +32,8 @@ export async function telegramAuth(c: Context, next: Next) {
       return c.json({ error: "Invalid Telegram auth" }, 401);
     }
 
-    const allowed = getAllowedUsers();
-    if (allowed.size > 0) {
-      if (!user) {
-        return c.json({ error: "User identification is required" }, 403);
-      }
-      if (!allowed.has(String(user.id))) {
-        return c.json({ error: "User not authorized" }, 403);
-      }
+    if (user && !isAllowedUser(user.id)) {
+      return c.json({ error: "User not authorized" }, 403);
     }
 
     if (user) {
@@ -56,14 +51,8 @@ export async function telegramAuth(c: Context, next: Next) {
     // Try session token first
     const sessionResult = validateSession(token);
     if (sessionResult.valid) {
-      const allowed = getAllowedUsers();
-      if (allowed.size > 0) {
-        if (!sessionResult.user) {
-          return c.json({ error: "User identification is required" }, 403);
-        }
-        if (!allowed.has(String(sessionResult.user.id))) {
-          return c.json({ error: "User not authorized" }, 403);
-        }
+      if (sessionResult.user && !isAllowedUser(sessionResult.user.id)) {
+        return c.json({ error: "User not authorized" }, 403);
       }
 
       if (sessionResult.user) {
@@ -77,11 +66,8 @@ export async function telegramAuth(c: Context, next: Next) {
     // Try JWT token validation (keyboard button auth)
     const jwtResult = validateJwtToken(token, botToken);
     if (jwtResult.valid) {
-      const allowed = getAllowedUsers();
-      if (allowed.size > 0) {
-        if (!jwtResult.user || !allowed.has(String(jwtResult.user.id))) {
-          return c.json({ error: "User not authorized" }, 403);
-        }
+      if (jwtResult.user && !isAllowedUser(jwtResult.user.id)) {
+        return c.json({ error: "User not authorized" }, 403);
       }
 
       if (jwtResult.user) {
@@ -100,11 +86,8 @@ export async function telegramAuth(c: Context, next: Next) {
   if (urlToken) {
     const { valid, user } = validateJwtToken(urlToken, botToken);
     if (valid) {
-      const allowed = getAllowedUsers();
-      if (allowed.size > 0) {
-        if (!user || !allowed.has(String(user.id))) {
-          return c.json({ error: "User not authorized" }, 403);
-        }
+      if (user && !isAllowedUser(user.id)) {
+        return c.json({ error: "User not authorized" }, 403);
       }
 
       if (user) {
