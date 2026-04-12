@@ -9,6 +9,7 @@ import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
 import { validateTelegramLoginWidget, createSession, getAllowedUsers } from "./auth.js";
+import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
 import { todoRoute } from "./routes/todo.js";
@@ -46,12 +47,7 @@ const app = new Hono<{ Bindings: HttpBindings }>();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 app.use("*", cors({
-  origin: [
-    "https://web.telegram.org",
-    "https://cpc.claude.do",
-    "http://localhost:5173",
-    "http://localhost:58830",
-  ],
+  origin: [...ALLOWED_ORIGINS],
 }));
 
 // Public routes (no auth)
