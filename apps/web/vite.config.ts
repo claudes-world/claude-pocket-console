@@ -24,6 +24,7 @@ export default defineConfig(({ command }) => ({
     __APP_VERSION__: JSON.stringify(gitVersion),
   },
   build: {
+    manifest: true,
     // Kill the eager `<link rel="modulepreload">` hint Vite emits for the
     // mermaid chunk. Mermaid is dynamically imported inside MermaidDiagram.tsx
     // and only needed when a markdown file actually contains a diagram, but
