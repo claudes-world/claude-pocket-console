@@ -8,9 +8,13 @@ import { ActionBar } from "./components/action-bar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
 import { DebugOverlay } from "./debug/DebugOverlay";
+import { PrTicker } from "./components/PrTicker";
 
-type Tab = "terminal" | "files" | "links" | "voice";
-const TABS: Tab[] = ["terminal", "files", "links", "voice"];
+type Tab = "terminal" | "files" | "links" | "voice" | "prs";
+const BASE_TABS: Tab[] = ["terminal", "files", "links", "voice"];
+const TABS: Tab[] = import.meta.env.VITE_FEATURE_PR_TICKER
+  ? [...BASE_TABS, "prs"]
+  : BASE_TABS;
 const SWIPE_THRESHOLD = 120;
 
 // Moving blue underline indicator that tracks the active tab and follows
@@ -396,6 +400,11 @@ export function App() {
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <VoiceRecorder />
           </div>
+          {TABS.includes("prs") && (
+            <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
+              <PrTicker />
+            </div>
+          )}
         </div>
       </div>
 
