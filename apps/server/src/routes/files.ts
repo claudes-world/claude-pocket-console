@@ -300,12 +300,19 @@ app.get("/download", async (c) => {
       return c.json({ error: "invalid or expired ticket" }, 403);
     }
 
+    // Claim the ticket synchronously (before any await) so two concurrent
+    // GETs can't both pass the `record.used` check and both receive the file.
+    // If the subsequent file validation fails we undo the claim so the user
+    // can retry with the same ticket.
+    record.used = true;
+
     const file = await getDownloadableFile(record.path);
     if (!file.ok) {
+      // Undo claim on file-not-available so the caller can retry.
+      record.used = false;
       return c.json({ error: file.error }, file.status);
     }
 
-    record.used = true;
     return createDownloadResponse(file);
   }
 
