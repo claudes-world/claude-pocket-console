@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { diffSnapshots, PrPoller, type PrRow } from "../prs.js";
+import { diffSnapshots, PrPoller, parseGitRemote, type PrRow } from "../prs.js";
 
 // --- Helpers ---
 
@@ -7,7 +7,7 @@ function makePr(overrides: Partial<PrRow> = {}): PrRow {
   const num = overrides.number ?? 1;
   return {
     key: overrides.key ?? `claudes-world/claude-pocket-console#${num}`,
-    repo: "claudes-world/claude-pocket-console",
+    repo: overrides.repo ?? "claudes-world/claude-pocket-console",
     number: num,
     title: `PR #${num}`,
     state: "OPEN",
@@ -23,6 +23,43 @@ function makePr(overrides: Partial<PrRow> = {}): PrRow {
     ...overrides,
   };
 }
+
+// --- parseGitRemote tests ---
+
+describe("parseGitRemote", () => {
+  it("parses SSH URL with .git suffix", () => {
+    const result = parseGitRemote("git@github.com:claudes-world/inbox.git");
+    expect(result).toEqual({ owner: "claudes-world", repoName: "inbox" });
+  });
+
+  it("parses SSH URL without .git suffix", () => {
+    const result = parseGitRemote("git@github.com:claudes-world/inbox");
+    expect(result).toEqual({ owner: "claudes-world", repoName: "inbox" });
+  });
+
+  it("parses HTTPS URL with .git suffix", () => {
+    const result = parseGitRemote("https://github.com/claudes-world/claude-pocket-console.git");
+    expect(result).toEqual({ owner: "claudes-world", repoName: "claude-pocket-console" });
+  });
+
+  it("parses HTTPS URL without .git suffix", () => {
+    const result = parseGitRemote("https://github.com/claudes-world/claude-pocket-console");
+    expect(result).toEqual({ owner: "claudes-world", repoName: "claude-pocket-console" });
+  });
+
+  it("returns null for non-GitHub URL", () => {
+    expect(parseGitRemote("/local/path/to/repo")).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(parseGitRemote("")).toBeNull();
+  });
+
+  it("handles different GitHub hosts in SSH format", () => {
+    const result = parseGitRemote("git@github.com:mcorrig4/personal-site.git");
+    expect(result).toEqual({ owner: "mcorrig4", repoName: "personal-site" });
+  });
+});
 
 // --- diffSnapshots tests ---
 
@@ -141,7 +178,7 @@ describe("PrPoller backoff", () => {
   });
 
   it("respects backoff after simulated 403", async () => {
-    const poller = new PrPoller([], 60_000); // no repos to poll
+    const poller = new PrPoller([], 60_000); // empty static repos = no network calls
 
     // Simulate internal backoff state
     (poller as any).backoff = {
@@ -189,5 +226,52 @@ describe("PrPoller backoff", () => {
     expect(result[0].number).toBe(2);
     expect(result[1].number).toBe(3);
     expect(result[2].number).toBe(1);
+  });
+
+  it("discoveredRepos is empty in static mode", async () => {
+    const poller = new PrPoller([], 60_000);
+    await poller.pollOnce();
+    expect(poller.discoveredRepos).toEqual([]);
+  });
+});
+
+// --- PrPoller multi-repo ---
+
+describe("PrPoller multi-repo static mode", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("accepts multiple static repos", () => {
+    const poller = new PrPoller([
+      { owner: "claudes-world", name: "claude-pocket-console" },
+      { owner: "claudes-world", name: "inbox" },
+    ], 60_000);
+
+    // Should not throw
+    expect(poller).toBeDefined();
+    expect(poller.getSnapshot()).toEqual([]);
+  });
+
+  it("handles PRs from multiple repos in snapshot", () => {
+    const poller = new PrPoller([], 60_000);
+    const pr1 = makePr({
+      number: 1,
+      key: "claudes-world/claude-pocket-console#1",
+      repo: "claudes-world/claude-pocket-console",
+    });
+    const pr2 = makePr({
+      number: 5,
+      key: "claudes-world/inbox#5",
+      repo: "claudes-world/inbox",
+    });
+    poller.snapshot.set(pr1.key, pr1);
+    poller.snapshot.set(pr2.key, pr2);
+
+    const result = poller.getSnapshot();
+    expect(result).toHaveLength(2);
+    const repos = new Set(result.map((pr) => pr.repo));
+    expect(repos.has("claudes-world/claude-pocket-console")).toBe(true);
+    expect(repos.has("claudes-world/inbox")).toBe(true);
   });
 });

@@ -1,14 +1,16 @@
 import { Hono } from "hono";
-import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const app = new Hono();
 
 const HOME = process.env.HOME || "/home/claude";
 const GH_TIMEOUT_MS = 10_000;
+const GIT_TIMEOUT_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const SCOPE_CACHE_TTL_MS = 60_000;
+const REPO_DISCOVERY_TTL_MS = 5 * 60_000; // re-scan ~/code every 5 min
 
 // --- Types ---
 
@@ -33,6 +35,97 @@ export interface PrDiff {
   added: PrRow[];
   removed: PrRow[];
   changed: { pr: PrRow; fields: string[] }[];
+}
+
+// --- Repo discovery ---
+
+export interface RepoInfo {
+  path: string;
+  name: string;       // directory name (e.g. "tryinbox-sh")
+  owner: string;      // GitHub org/user from remote (e.g. "claudes-world")
+  repoName: string;   // GitHub repo name from remote (e.g. "inbox")
+  fullName: string;   // "owner/repoName"
+  branch: string;     // current HEAD branch
+}
+
+/** Parse owner/repo from a git remote URL (HTTPS or SSH). Returns null if unparseable. */
+export function parseGitRemote(url: string): { owner: string; repoName: string } | null {
+  // SSH: git@github.com:owner/repo.git
+  const sshMatch = url.match(/git@[^:]+:([^/]+)\/([^/]+?)(?:\.git)?$/);
+  if (sshMatch) return { owner: sshMatch[1], repoName: sshMatch[2] };
+
+  // HTTPS: https://github.com/owner/repo.git
+  const httpsMatch = url.match(/https?:\/\/[^/]+\/([^/]+)\/([^/]+?)(?:\.git)?$/);
+  if (httpsMatch) return { owner: httpsMatch[1], repoName: httpsMatch[2] };
+
+  return null;
+}
+
+let repoCache: { repos: RepoInfo[]; cachedAt: number } | null = null;
+
+export function discoverRepos(): RepoInfo[] {
+  const now = Date.now();
+  if (repoCache && now - repoCache.cachedAt < REPO_DISCOVERY_TTL_MS) {
+    return repoCache.repos;
+  }
+
+  const codeDir = join(HOME, "code");
+  const repos: RepoInfo[] = [];
+
+  if (!existsSync(codeDir)) {
+    repoCache = { repos, cachedAt: now };
+    return repos;
+  }
+
+  let dirNames: string[];
+  try {
+    dirNames = readdirSync(codeDir);
+  } catch {
+    repoCache = { repos, cachedAt: now };
+    return repos;
+  }
+
+  for (const dirName of dirNames) {
+    const repoPath = join(codeDir, dirName);
+    if (!existsSync(join(repoPath, ".git"))) continue;
+
+    try {
+      // Get remote URL
+      const remoteUrl = execFileSync("git", ["-C", repoPath, "remote", "get-url", "origin"], {
+        timeout: GIT_TIMEOUT_MS,
+        encoding: "utf-8",
+      }).trim();
+
+      const parsed = parseGitRemote(remoteUrl);
+      if (!parsed) continue; // skip repos without a parseable GitHub remote
+
+      // Get current branch
+      const branch = execFileSync("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD"], {
+        timeout: GIT_TIMEOUT_MS,
+        encoding: "utf-8",
+      }).trim();
+
+      repos.push({
+        path: repoPath,
+        name: dirName,
+        owner: parsed.owner,
+        repoName: parsed.repoName,
+        fullName: `${parsed.owner}/${parsed.repoName}`,
+        branch: branch || "HEAD",
+      });
+    } catch {
+      // Skip repos where git commands fail (no remote, detached HEAD, etc.)
+      continue;
+    }
+  }
+
+  repoCache = { repos, cachedAt: now };
+  return repos;
+}
+
+/** Allow tests to reset the repo discovery cache */
+export function __resetRepoCacheForTests() {
+  repoCache = null;
 }
 
 // --- gh CLI wrapper ---
@@ -154,18 +247,18 @@ export class PrPoller {
   snapshot: Map<string, PrRow> = new Map();
   lastPollOk: number = 0;
   lastPollErr: string | null = null;
+  discoveredRepos: RepoInfo[] = [];
   private interval: ReturnType<typeof setInterval> | null = null;
   private backoff: BackoffState = { failures: 0, nextAllowedAt: 0 };
-  private repos: { owner: string; name: string }[];
+  private staticRepos: { owner: string; name: string }[] | null;
   private pollIntervalMs: number;
 
   constructor(
-    repos: { owner: string; name: string }[] = [
-      { owner: "claudes-world", name: "claude-pocket-console" },
-    ],
+    repos?: { owner: string; name: string }[],
     pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
   ) {
-    this.repos = repos;
+    // If repos provided, use static mode (for tests); otherwise use dynamic discovery
+    this.staticRepos = repos ?? null;
     this.pollIntervalMs = pollIntervalMs;
   }
 
@@ -190,10 +283,29 @@ export class PrPoller {
       return { added: [], removed: [], changed: [] };
     }
 
+    // Resolve repos: static (test mode) or dynamic discovery
+    let repoList: { fullName: string }[];
+    if (this.staticRepos) {
+      repoList = this.staticRepos.map((r) => ({ fullName: `${r.owner}/${r.name}` }));
+      this.discoveredRepos = [];
+    } else {
+      const discovered = discoverRepos();
+      this.discoveredRepos = discovered;
+      // Deduplicate by fullName (multiple worktrees for same repo)
+      const seen = new Set<string>();
+      repoList = [];
+      for (const r of discovered) {
+        if (!seen.has(r.fullName)) {
+          seen.add(r.fullName);
+          repoList.push({ fullName: r.fullName });
+        }
+      }
+    }
+
     const nextSnapshot = new Map<string, PrRow>();
 
-    for (const repo of this.repos) {
-      const fullName = `${repo.owner}/${repo.name}`;
+    for (const repo of repoList) {
+      const fullName = repo.fullName;
       try {
         const stdout = await execGh([
           "pr", "list",
@@ -263,46 +375,45 @@ export async function currentBranchScope(): Promise<string[]> {
   }
 
   const branches: string[] = [];
-  // Phase 1: just CPC
-  const repoPath = join(HOME, "code/claude-pocket-console");
 
-  if (!existsSync(repoPath)) {
-    scopeCache = { branches, cachedAt: now };
-    return branches;
-  }
+  // Scan all discovered repos for branches (main worktree + linked worktrees)
+  const repos = discoverRepos();
 
-  try {
-    // Main worktree HEAD
-    const head = await new Promise<string>((resolve, reject) => {
-      execFile("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD"], {
-        timeout: 5000,
-      }, (err, stdout) => {
-        if (err) reject(err);
-        else resolve(stdout.trim());
-      });
-    });
-    if (head && head !== "HEAD") branches.push(head);
+  // Deduplicate by repo path (worktrees share the same .git)
+  const seenRepoPaths = new Set<string>();
 
-    // Linked worktrees
-    const worktreeOutput = await new Promise<string>((resolve, reject) => {
-      execFile("git", ["-C", repoPath, "worktree", "list", "--porcelain"], {
-        timeout: 5000,
-      }, (err, stdout) => {
-        if (err) reject(err);
-        else resolve(stdout);
-      });
-    });
+  for (const repo of repos) {
+    // Avoid scanning the same underlying repo multiple times
+    // (worktrees for the same repo share the same git dir)
+    if (seenRepoPaths.has(repo.path)) continue;
+    seenRepoPaths.add(repo.path);
 
-    // Parse porcelain output — look for "branch refs/heads/<name>" lines
-    for (const line of worktreeOutput.split("\n")) {
-      const match = line.match(/^branch refs\/heads\/(.+)$/);
-      if (match && match[1]) {
-        const branch = match[1];
-        if (!branches.includes(branch)) branches.push(branch);
+    try {
+      // Main worktree HEAD
+      if (repo.branch && repo.branch !== "HEAD" && !branches.includes(repo.branch)) {
+        branches.push(repo.branch);
       }
+
+      // Linked worktrees
+      const worktreeOutput = await new Promise<string>((resolve, reject) => {
+        execFile("git", ["-C", repo.path, "worktree", "list", "--porcelain"], {
+          timeout: GIT_TIMEOUT_MS,
+        }, (err, stdout) => {
+          if (err) reject(err);
+          else resolve(stdout);
+        });
+      });
+
+      for (const line of worktreeOutput.split("\n")) {
+        const match = line.match(/^branch refs\/heads\/(.+)$/);
+        if (match && match[1]) {
+          const branch = match[1];
+          if (!branches.includes(branch)) branches.push(branch);
+        }
+      }
+    } catch {
+      // git commands failed for this repo — skip
     }
-  } catch {
-    // git commands failed — return empty scope
   }
 
   scopeCache = { branches, cachedAt: now };
@@ -320,7 +431,7 @@ let pollerInstance: PrPoller | null = null;
 
 function getPoller(): PrPoller {
   if (!pollerInstance) {
-    pollerInstance = new PrPoller();
+    pollerInstance = new PrPoller(); // no args = dynamic discovery mode
     pollerInstance.start();
   }
   return pollerInstance;
@@ -336,9 +447,27 @@ export function __setPollerForTests(p: PrPoller | null) {
 
 app.get("/", (c) => {
   const poller = getPoller();
+  const prs = poller.getSnapshot();
+
+  // Build repos summary from discovered repos
+  const prCountByRepo = new Map<string, number>();
+  for (const pr of prs) {
+    prCountByRepo.set(pr.repo, (prCountByRepo.get(pr.repo) || 0) + 1);
+  }
+
+  const repos = poller.discoveredRepos.map((r) => ({
+    name: r.repoName,
+    dirName: r.name,
+    org: r.owner,
+    fullName: r.fullName,
+    branch: r.branch,
+    prCount: prCountByRepo.get(r.fullName) || 0,
+  }));
+
   return c.json({
     ok: true,
-    prs: poller.getSnapshot(),
+    prs,
+    repos,
     lastPollOk: poller.lastPollOk,
     lastPollErr: poller.lastPollErr,
   });
@@ -347,9 +476,26 @@ app.get("/", (c) => {
 app.post("/refresh", async (c) => {
   const poller = getPoller();
   const diff = await poller.pollOnce();
+  const prs = poller.getSnapshot();
+
+  const prCountByRepo = new Map<string, number>();
+  for (const pr of prs) {
+    prCountByRepo.set(pr.repo, (prCountByRepo.get(pr.repo) || 0) + 1);
+  }
+
+  const repos = poller.discoveredRepos.map((r) => ({
+    name: r.repoName,
+    dirName: r.name,
+    org: r.owner,
+    fullName: r.fullName,
+    branch: r.branch,
+    prCount: prCountByRepo.get(r.fullName) || 0,
+  }));
+
   return c.json({
     ok: true,
-    prs: poller.getSnapshot(),
+    prs,
+    repos,
     lastPollOk: poller.lastPollOk,
     lastPollErr: poller.lastPollErr,
     diff: {
