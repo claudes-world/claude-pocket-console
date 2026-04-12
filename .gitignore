@@ -345,3 +345,6 @@ test-results/
 # Worktree-local port allocations from port-for (ADR 0003)
 .world/ports.lock
 
+# Release notes extracted by scripts/extract-release-section.sh
+/tmp/release-notes-*.md
+
