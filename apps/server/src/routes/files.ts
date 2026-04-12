@@ -7,7 +7,6 @@ import {
   readFile,
   stat,
   unlink,
-  writeFile,
 } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
@@ -22,6 +21,7 @@ const app = new Hono();
 
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
 const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const UPLOAD_BODY_LIMIT = 50 * 1024 * 1024;
 const DOWNLOAD_TICKET_TTL_MS = 60 * 1000;
 
 type DownloadTicket = {
@@ -398,7 +398,17 @@ app.get("/search", async (c) => {
 });
 
 // Upload file to current directory
-app.post("/upload", async (c) => {
+app.post(
+  "/upload",
+  bodyLimit({
+    maxSize: UPLOAD_BODY_LIMIT,
+    onError: (c) =>
+      c.json(
+        { error: "Request body too large (max 50MB)" },
+        413,
+      ),
+  }),
+  async (c) => {
   const body = await c.req.parseBody();
   const file = body["file"];
   const dir = (body["dir"] as string) || BASE_DIR;
@@ -424,35 +434,80 @@ app.post("/upload", async (c) => {
     if (fileName === "" || fileName === "." || fileName === "..") {
       fileName = "uploaded-file";
     }
-    const destPath = join(resolved, fileName);
-
-    // Don't overwrite existing files — add suffix
-    let finalPath = destPath;
-    let counter = 1;
-    try {
-      while (await stat(finalPath)) {
-        const ext = fileName.includes(".") ? "." + fileName.split(".").pop() : "";
-        const base = fileName.includes(".") ? fileName.slice(0, fileName.lastIndexOf(".")) : fileName;
-        finalPath = join(resolved, `${base}-${counter}${ext}`);
-        counter++;
-      }
-    } catch {
-      // File doesn't exist — good, use this path
-    }
-
     const arrayBuffer = await (file as File).arrayBuffer();
-    await writeFile(finalPath, Buffer.from(arrayBuffer));
+    const data = Buffer.from(arrayBuffer);
+
+    // Atomic exclusive create with O_NOFOLLOW to defeat both:
+    // (a) TOCTOU race (stat-then-write where two concurrent uploads pick the
+    //     same suffix), and
+    // (b) symlink-redirected writes (a symlink inside an allowed dir pointing
+    //     outside the allowed root would trick the write into landing outside
+    //     ALLOWED_ROOTS).
+    //
+    // Try the chosen filename, then incrementing suffixes until O_EXCL
+    // succeeds or we give up.
+    const dotIdx = fileName.lastIndexOf(".");
+    const hasExt = dotIdx > 0;
+    const base = hasExt ? fileName.slice(0, dotIdx) : fileName;
+    const ext = hasExt ? fileName.slice(dotIdx) : "";
+
+    let finalPath = "";
+    for (let counter = 0; counter <= 9999; counter++) {
+      const candidate =
+        counter === 0
+          ? join(resolved, fileName)
+          : join(resolved, `${base}-${counter}${ext}`);
+      let opened = false;
+      try {
+        const handle = await open(
+          candidate,
+          fsConstants.O_WRONLY |
+            fsConstants.O_CREAT |
+            fsConstants.O_EXCL |
+            fsConstants.O_NOFOLLOW,
+          0o644,
+        );
+        opened = true;
+        try {
+          await handle.writeFile(data);
+        } finally {
+          await handle.close();
+        }
+        finalPath = candidate;
+        break;
+      } catch (err: any) {
+        if (err && err.code === "EEXIST") continue;
+        if (err && (err.code === "ELOOP" || err.code === "EMLINK")) {
+          return c.json(
+            { error: "Refusing to write through symlink" },
+            403,
+          );
+        }
+        if (opened) {
+          try {
+            await unlink(candidate);
+          } catch {
+            // ignore — already gone or unlink not allowed
+          }
+        }
+        throw err;
+      }
+    }
+    if (!finalPath) {
+      throw new Error("Could not find available filename");
+    }
 
     return c.json({
       ok: true,
-      path: finalPath,
-      name: finalPath.split("/").pop(),
+      name: basename(finalPath),
       size: arrayBuffer.byteLength,
     });
   } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+    console.error("[files/upload] write error:", err);
+    return c.json({ error: "Failed to write file" }, 500);
   }
-});
+  },
+);
 
 // Paste text content into the current directory as a new file.
 // JSON body: { filename: string, content: string, dir: string }
