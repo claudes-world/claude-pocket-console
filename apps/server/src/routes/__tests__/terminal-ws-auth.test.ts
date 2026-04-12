@@ -65,10 +65,11 @@ vi.mock("../utils.js", async () => {
 
 const { terminalWsRoute } = await import("../terminal-ws.js");
 
-function makeMockContext(query: Record<string, string>) {
+function makeMockContext(query: Record<string, string>, headers: Record<string, string> = {}) {
   return {
     req: {
       query: (key: string) => query[key] || "",
+      header: (key: string) => headers[key.toLowerCase()],
     },
   };
 }
@@ -89,7 +90,7 @@ describe("terminalWsRoute session-token allowlist (issue #162)", () => {
 
   it("accepts a session token for an allowed user", () => {
     const token = createSession({ id: Number(TEST_USER_ID), first_name: "Allowed" });
-    const c = makeMockContext({ token });
+    const c = makeMockContext({ token }, { origin: "https://cpc.claude.do" });
     const handlers = terminalWsRoute(c);
     const ws = makeMockWs();
 
@@ -108,7 +109,7 @@ describe("terminalWsRoute session-token allowlist (issue #162)", () => {
 
   it("rejects a session token for a non-allowed user", () => {
     const token = createSession({ id: Number(INTRUDER_ID), first_name: "Intruder" });
-    const c = makeMockContext({ token });
+    const c = makeMockContext({ token }, { origin: "https://cpc.claude.do" });
     const handlers = terminalWsRoute(c);
     const ws = makeMockWs();
 
