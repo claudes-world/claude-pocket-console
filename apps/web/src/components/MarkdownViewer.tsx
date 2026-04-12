@@ -1,5 +1,5 @@
 import React, { Children, isValidElement, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeSlug from "rehype-slug";
@@ -40,7 +40,7 @@ function getTextContent(children: ReactNode): string {
     .join("");
 }
 
-function CodeBlock({ className, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: any; className?: string }) {
+function CodeBlock({ className, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'code'> & ExtraProps) {
   const language = getLanguage(className);
 
   if (language === "mermaid") {
@@ -58,7 +58,7 @@ function CodeBlock({ className, children, node: _node, ...props }: React.Compone
   );
 }
 
-function ScrollableTable({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'table'> & { node?: any }) {
+function ScrollableTable({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'table'> & ExtraProps) {
   return (
     <div className="md-table-scroll">
       <table {...props}>{children}</table>
@@ -73,7 +73,7 @@ function isMermaidCodeChild(child: ReactNode): boolean {
   );
 }
 
-function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'pre'> & { node?: any }) {
+function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'pre'> & ExtraProps) {
   const childArray = Children.toArray(children);
 
   if (childArray.length === 1 && isMermaidCodeChild(childArray[0])) {
@@ -176,7 +176,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
     return {
       ...baseComponents,
       ...headingComponents,
-      section: ({ node: _node, children, ...props }: any) => {
+      section: ({ node: _node, children, ...props }: React.ComponentPropsWithoutRef<'section'> & ExtraProps & { "data-fold-slug"?: string }) => {
         const slug = props["data-fold-slug"] as string | undefined;
         if (!slug) return <section {...props}>{children}</section>;
         // Compute effective-hidden inline using collected headings.
