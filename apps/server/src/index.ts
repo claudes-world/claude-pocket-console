@@ -8,7 +8,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
-import { validateTelegramLoginWidget, createSession, getAllowedUsers } from "./auth.js";
+import { validateTelegramLoginWidget, createSession } from "./auth.js";
+import { isAllowedUser } from "./lib/allowed-users.js";
 import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
@@ -64,8 +65,7 @@ app.post("/api/auth/telegram-widget", async (c) => {
   if (!valid || !user) return c.json({ error: "Invalid login" }, 401);
 
   // Check allowlist
-  const allowed = getAllowedUsers();
-  if (allowed.size > 0 && !allowed.has(String(user.id))) {
+  if (!isAllowedUser(user.id)) {
     return c.json({ error: "User not authorized" }, 403);
   }
 
@@ -96,15 +96,20 @@ const webDistRoot = join(__dirname, "../../web/dist");
 
 const earlyHintsLinks: string[] = [];
 try {
-  const indexHtml = readFileSync(join(webDistRoot, "index.html"), "utf-8");
-  const js = indexHtml.match(/<script[^>]+src="(\/assets\/index-[^"]+\.js)"/);
-  const css = indexHtml.match(/<link[^>]+href="(\/assets\/index-[^"]+\.css)"/);
-
-  if (js) earlyHintsLinks.push(`<${js[1]}>; rel=preload; as=script; crossorigin`);
-  if (css) earlyHintsLinks.push(`<${css[1]}>; rel=preload; as=style`);
+  const manifestPath = join(webDistRoot, ".vite/manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  // Find the entry point (has isEntry: true)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entry = Object.values(manifest).find((e: any) => e.isEntry) as any;
+  if (entry) {
+    if (entry.file) earlyHintsLinks.push(`</${entry.file}>; rel=preload; as=script; crossorigin`);
+    for (const css of entry.css ?? []) {
+      earlyHintsLinks.push(`</${css}>; rel=preload; as=style`);
+    }
+  }
   earlyHintsLinks.push("<https://telegram.org>; rel=preconnect");
 } catch (e: any) {
-  console.warn(`[earlyHints] Unable to read ${join(webDistRoot, "index.html")}: ${e.message}`);
+  console.warn(`[earlyHints] Unable to read manifest: ${e.message}`);
 }
 
 app.use("/*", async (c, next) => {

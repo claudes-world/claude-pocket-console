@@ -5,23 +5,15 @@ import { resolve } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { db } from "../db.js";
-import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
+import {
+  ALLOWED_FILE_ROOTS,
+  isPathAllowed as isPathAllowedShared,
+} from "../lib/path-allowed.js";
 
 const app = new Hono();
 
-// Allowed root directories — kept in sync with files.ts. Uses the shared
-// hardened helper from apps/server/src/lib/path-allowed.ts (added in PR #62)
-// which enforces a separator boundary and resolves symlinks via realpath.
-const ALLOWED_ROOTS = [
-  "/home/claude/claudes-world",
-  "/home/claude/code",
-  "/home/claude/bin",
-  "/home/claude/.claude",
-  "/home/claude/claudes-world/.claude",
-];
-
 function isPathAllowed(absPath: string): Promise<boolean> {
-  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+  return isPathAllowedShared(absPath, ALLOWED_FILE_ROOTS);
 }
 
 // Env vars are read LAZILY (via getters) instead of snapshotted at module

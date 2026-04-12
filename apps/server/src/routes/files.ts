@@ -33,8 +33,9 @@ type DownloadTicket = {
 
 const downloadTickets = new Map<string, DownloadTicket>();
 
-// Allowed root directories the file viewer can access
-const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
+// Allowed root directories the file viewer can access — canonical list lives
+// in path-allowed.ts; used directly here (no spread copy needed).
+const ALLOWED_ROOTS = ALLOWED_FILE_ROOTS;
 
 function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
@@ -344,7 +345,7 @@ app.get("/search", async (c) => {
   const q = qRaw;
 
   const scopeRaw = c.req.query("scope");
-  let roots: string[] = ALLOWED_ROOTS;
+  let roots: readonly string[] = ALLOWED_ROOTS;
   if (scopeRaw) {
     const scopeResolved = resolve(scopeRaw);
     // Reject scopes that aren't inside an allowed root. Same check as every

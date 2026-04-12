@@ -1,6 +1,7 @@
 import { spawn, execSync } from "node:child_process";
 import type { WSContext } from "hono/ws";
-import { checkAuth, validateSession, validateJwtToken, getAllowedUsers } from "../auth.js";
+import { checkAuth, validateSession, validateJwtToken } from "../auth.js";
+import { isAllowedUser } from "../lib/allowed-users.js";
 // Import the validated TMUX_SESSION from routes/utils so we inherit the
 // `/^[A-Za-z0-9_.-]+$/` character-set check that runs once at module load.
 // Keeping a local unvalidated copy would bypass that fence and leave the
@@ -52,8 +53,7 @@ export function terminalWsRoute(c: any) {
     if (token) {
       const { valid, user } = validateSession(token);
       if (valid && user) {
-        const allowed = getAllowedUsers();
-        if (allowed.size === 0 || allowed.has(String(user.id))) {
+        if (isAllowedUser(user.id)) {
           authResult = { ok: true, user };
         } else {
           authResult = { ok: false, error: "User not in allowlist" };
@@ -66,8 +66,7 @@ export function terminalWsRoute(c: any) {
         if (botToken) {
           const { valid: jwtValid, user: jwtUser } = validateJwtToken(token, botToken);
           if (jwtValid && jwtUser) {
-            const allowed = getAllowedUsers();
-            if (allowed.size === 0 || allowed.has(String(jwtUser.id))) {
+            if (isAllowedUser(jwtUser.id)) {
               authResult = { ok: true, user: jwtUser };
             }
           }

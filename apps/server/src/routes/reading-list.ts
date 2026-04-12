@@ -1,20 +1,17 @@
 import { Hono } from "hono";
-import { basename, resolve } from "node:path";
+import { basename } from "node:path";
 import { db } from "../db.js";
 import { getUserId } from "../lib/get-user-id.js";
 import { ALLOWED_FILE_ROOTS, isPathAllowed } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
-const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
-
-function normalizePath(path: string): string {
-  // Trim before resolve() — otherwise leading/trailing whitespace (e.g. from
-  // copy/paste) would make resolve() treat the input as a CWD-relative path
-  // segment, causing false 403s on /save and false 404s on /delete. /check
-  // also trims each segment upstream; doing it here is idempotent and keeps
-  // all endpoints consistent.
-  return resolve(path.trim());
+function normalizePath(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/")) {
+    throw new Error(`Path must be absolute: ${trimmed}`);
+  }
+  return trimmed;
 }
 
 // POST /save — save a file to reading list (upsert)
@@ -38,7 +35,7 @@ app.post("/save", async (c) => {
 
   const normalizedPath = normalizePath(path);
 
-  if (!(await isPathAllowed(normalizedPath, ALLOWED_ROOTS))) {
+  if (!(await isPathAllowed(normalizedPath, ALLOWED_FILE_ROOTS))) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -94,20 +91,9 @@ app.get("/check", (c) => {
     return c.json({ error: "auth required" }, 401);
   }
 
-  const pathsParam = c.req.query("paths");
-  if (!pathsParam) {
-    return c.json({ saved: {} });
-  }
-
-  // Trim each segment first so `?paths=a, b` doesn't produce a path relative
-  // to CWD after normalization. The response is keyed by the *trimmed* input
-  // (universal cleanup, not a path-semantic normalization), so clients can
-  // look up results using essentially the paths they sent — just without the
-  // accidental whitespace.
+  const rawPaths = c.req.queries("paths") ?? [];
   const originalInputs = [
-    ...new Set(
-      pathsParam.split(",").map((p) => p.trim()).filter(Boolean),
-    ),
+    ...new Set(rawPaths.map((p) => p.trim()).filter(Boolean)),
   ];
   if (originalInputs.length === 0) {
     return c.json({ saved: {} });
