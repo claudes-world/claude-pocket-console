@@ -2,7 +2,10 @@ import React, { Children, isValidElement, useState, useCallback, useMemo, useRef
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+import { remarkAlert } from "remark-github-blockquote-alert";
+import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
+import "highlight.js/styles/tokyo-night-dark.css";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { rehypeCollapsibleSections } from "./markdown/rehype-collapsible-sections";
 import { makeHeadingComponent, type HeadingEntry } from "./markdown/CollapsibleHeading";
@@ -12,12 +15,17 @@ interface MarkdownViewerProps {
   fileName: string;
 }
 
-export const markdownRemarkPlugins = [remarkGfm, remarkBreaks];
+export const markdownRemarkPlugins = [remarkGfm, remarkBreaks, remarkAlert];
 
+// rehype-highlight runs first so code blocks get syntax spans before slug/section processing.
 // rehype-slug is pinned to major 6 in package.json. Heading IDs are a contract
 // for deep links, TOC state, and collapsible headings.
 // rehypeCollapsibleSections must run AFTER rehypeSlug so slug IDs exist.
-export const markdownRehypePlugins = [rehypeSlug, rehypeCollapsibleSections];
+export const markdownRehypePlugins = [
+  [rehypeHighlight, { detect: false, plainText: ["mermaid"] }] as [typeof rehypeHighlight, Parameters<typeof rehypeHighlight>[0]],
+  rehypeSlug,
+  rehypeCollapsibleSections,
+];
 
 function getLanguage(className?: string): string {
   return (
@@ -73,6 +81,9 @@ function isMermaidCodeChild(child: ReactNode): boolean {
   );
 }
 
+/** Stop horizontal touch events from bubbling to the app-level tab-swipe handler. */
+const stopTouchPropagation = (e: React.TouchEvent) => e.stopPropagation();
+
 function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'pre'> & ExtraProps) {
   const childArray = Children.toArray(children);
 
@@ -80,13 +91,58 @@ function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWitho
     return <>{children}</>;
   }
 
-  return <pre {...props}>{children}</pre>;
+  return (
+    <pre
+      {...props}
+      onTouchStart={stopTouchPropagation}
+      onTouchMove={stopTouchPropagation}
+      onTouchEnd={stopTouchPropagation}
+    >
+      {children}
+    </pre>
+  );
+}
+
+function isExternalUrl(href: string | undefined): boolean {
+  if (!href) return false;
+  try {
+    const url = new URL(href, window.location.origin);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function MarkdownLink({ href, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'a'> & ExtraProps) {
+  if (!isExternalUrl(href)) {
+    return <a href={href} {...props}>{children}</a>;
+  }
+
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg && typeof (tg as any).openLink === "function") {
+        (tg as any).openLink(href);
+        return;
+      }
+    } catch { /* fallback */ }
+    window.open(href!, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <a href={href} onClick={handleClick} {...props}>
+      {children}
+    </a>
+  );
 }
 
 const baseComponents: Partial<Components> = {
   code: CodeBlock,
   table: ScrollableTable,
   pre: PreBlock,
+  a: MarkdownLink,
 };
 
 /** @deprecated Use baseComponents internally; kept for test compatibility */
@@ -273,6 +329,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           padding: 12px 16px;
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
           margin: 12px 0;
         }
         .md-content pre code {
@@ -326,6 +383,58 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           color: var(--color-fg-muted);
           background: var(--color-bg);
           border-radius: 0 4px 4px 0;
+        }
+        /* GitHub-style alert admonitions */
+        .md-content .markdown-alert {
+          border-left-width: 3px;
+          border-left-style: solid;
+          border-radius: 0 4px 4px 0;
+          margin: 12px 0;
+          padding: 8px 16px;
+          background: var(--color-bg);
+        }
+        .md-content .markdown-alert .markdown-alert-title {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 600;
+          font-size: 13px;
+          margin-bottom: 4px;
+        }
+        .md-content .markdown-alert .markdown-alert-title svg.octicon {
+          width: 16px;
+          height: 16px;
+          fill: currentColor;
+        }
+        .md-content .markdown-alert-note {
+          border-left-color: #7aa2f7;
+        }
+        .md-content .markdown-alert-note .markdown-alert-title {
+          color: #7aa2f7;
+        }
+        .md-content .markdown-alert-tip {
+          border-left-color: #9ece6a;
+        }
+        .md-content .markdown-alert-tip .markdown-alert-title {
+          color: #9ece6a;
+        }
+        .md-content .markdown-alert-important {
+          border-left-color: #bb9af7;
+        }
+        .md-content .markdown-alert-important .markdown-alert-title {
+          color: #bb9af7;
+        }
+        .md-content .markdown-alert-warning {
+          border-left-color: #e0af68;
+        }
+        .md-content .markdown-alert-warning .markdown-alert-title {
+          color: #e0af68;
+        }
+        .md-content .markdown-alert-caution {
+          border-left-color: #f7768e;
+        }
+        .md-content .markdown-alert-caution .markdown-alert-title {
+          color: #f7768e;
         }
         .md-content hr {
           border: none;
@@ -391,18 +500,19 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         .md-content .cpc-collapsible-heading {
           display: flex;
           align-items: center;
-          gap: 6px;
         }
         .md-content .cpc-fold-btn {
           all: unset;
-          flex: 0 0 auto;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
-          justify-content: center;
-          width: 20px;
-          height: 20px;
+          gap: 6px;
           border-radius: 3px;
+          width: 100%;
+        }
+        .md-content .cpc-fold-label {
+          flex: 1 1 auto;
+          min-width: 0;
         }
         .md-content .cpc-fold-btn:focus-visible {
           outline: 2px solid var(--color-accent-blue);
