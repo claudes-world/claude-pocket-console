@@ -110,6 +110,7 @@ export function PrTicker() {
       return "current";
     }
   });
+  const [loading, setLoading] = useState(true);
   const [lastPollAt, setLastPollAt] = useState<number>(0);
   const [pollError, setPollError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -127,14 +128,22 @@ export function PrTicker() {
       const res = await fetch("/api/prs", { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (mountedRef.current && data.ok) {
-        setPrs(data.prs ?? []);
-        setLastPollAt(data.lastPollOk || Date.now());
-        setPollError(data.lastPollErr ?? null);
+      if (mountedRef.current) {
+        if (data.ok) {
+          setPrs(data.prs ?? []);
+          setLastPollAt(data.lastPollOk || Date.now());
+          setPollError(data.lastPollErr ?? null);
+        } else {
+          setPollError(data.error ?? "Unknown error");
+        }
       }
     } catch (err) {
       if (mountedRef.current) {
         setPollError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
       }
     }
   }, []);
@@ -277,7 +286,20 @@ export function PrTicker() {
         overflowY: "auto",
         WebkitOverflowScrolling: "touch",
       }}>
-        {filteredPrs.length === 0 ? (
+        {loading ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: COLORS.textMuted,
+            fontSize: 14,
+            padding: 20,
+            textAlign: "center",
+          }}>
+            Loading PRs...
+          </div>
+        ) : filteredPrs.length === 0 ? (
           <div style={{
             display: "flex",
             alignItems: "center",
