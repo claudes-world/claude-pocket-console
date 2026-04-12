@@ -30,8 +30,16 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  process.env.TELEGRAM_BOT_TOKEN = savedBotToken;
-  process.env.ALLOWED_TELEGRAM_USERS = savedAllowed;
+  if (savedBotToken === undefined) {
+    delete process.env.TELEGRAM_BOT_TOKEN;
+  } else {
+    process.env.TELEGRAM_BOT_TOKEN = savedBotToken;
+  }
+  if (savedAllowed === undefined) {
+    delete process.env.ALLOWED_TELEGRAM_USERS;
+  } else {
+    process.env.ALLOWED_TELEGRAM_USERS = savedAllowed;
+  }
 });
 
 // Mock child_process so tmux spawn/exec doesn't actually run.
@@ -93,6 +101,9 @@ describe("terminalWsRoute session-token allowlist (issue #162)", () => {
       try { return JSON.parse(s).type === "error"; } catch { return false; }
     });
     expect(errorMessages).toHaveLength(0);
+
+    // Clean up the setInterval started by onOpen to prevent timer leaks
+    (ws as any)._cleanup?.();
   });
 
   it("rejects a session token for a non-allowed user", () => {

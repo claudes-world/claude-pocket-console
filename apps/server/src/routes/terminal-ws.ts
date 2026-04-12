@@ -40,6 +40,8 @@ export function terminalWsRoute(c: any) {
         const allowed = getAllowedUsers();
         if (allowed.size === 0 || allowed.has(String(user.id))) {
           authResult = { ok: true, user };
+        } else {
+          authResult = { ok: false, error: "User not in allowlist" };
         }
       }
 
