@@ -37,7 +37,12 @@ export function terminalWsRoute(c: any) {
     if (token) {
       const { valid, user } = validateSession(token);
       if (valid && user) {
-        authResult = { ok: true, user };
+        const allowed = getAllowedUsers();
+        if (allowed.size === 0 || allowed.has(String(user.id))) {
+          authResult = { ok: true, user };
+        } else {
+          authResult = { ok: false, error: "User not in allowlist" };
+        }
       }
 
       // Fallback: JWT token validation (keyboard button auth)
