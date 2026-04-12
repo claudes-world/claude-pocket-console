@@ -121,23 +121,17 @@ describe("POST /save", () => {
 
 
 
-  it("normalizes equivalent path variants to one record", async () => {
-    await req("POST", "/save", {
+  it("stores paths with ../ literally (no resolve)", async () => {
+    const res = await req("POST", "/save", {
       path: "/home/claude/code/folder/../file.ts",
-      title: "First",
+      title: "With dot-dot",
     });
-
-    await req("POST", "/save", {
-      path: "/home/claude/code/file.ts",
-      title: "Second",
-    });
-
-    const rows = testDb.prepare(
-      "SELECT * FROM reading_list WHERE user_id = ? AND path = ?"
-    ).all("test-user-123", "/home/claude/code/file.ts");
-
-    expect(rows.length).toBe(1);
-    expect((rows[0] as any).title).toBe("Second");
+    expect(res.status).toBe(200);
+    const row = testDb.prepare(
+      "SELECT path, title FROM reading_list WHERE user_id = ?"
+    ).get("test-user-123") as any;
+    expect(row.path).toBe("/home/claude/code/folder/../file.ts");
+    expect(row.title).toBe("With dot-dot");
   });
 
   it("bumps created_at on re-save so the item moves to the top of /list", async () => {
@@ -277,7 +271,7 @@ describe("GET /check", () => {
 
     const res = await req(
       "GET",
-      "/check?paths=/home/claude/code/saved.ts,/home/claude/code/not-saved.ts"
+      "/check?paths=/home/claude/code/saved.ts&paths=/home/claude/code/not-saved.ts"
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -287,42 +281,33 @@ describe("GET /check", () => {
 
 
 
-  it("normalizes incoming paths before checking (response keyed by original input)", async () => {
+  it("does not resolve ../ segments (paths are literal after trim)", async () => {
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
     ).run("test-user-123", "/home/claude/code/saved.ts", "Saved");
-
     const res = await req(
       "GET",
       "/check?paths=/home/claude/code/dir/../saved.ts"
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    // Response is keyed by the EXACT input string, not the normalized form,
-    // so clients can look up results using the paths they sent.
-    expect(body.saved["/home/claude/code/dir/../saved.ts"]).toBe(true);
-    expect(body.saved["/home/claude/code/saved.ts"]).toBeUndefined();
+    expect(body.saved["/home/claude/code/dir/../saved.ts"]).toBe(false);
   });
 
-  it("trims whitespace from comma-separated paths before normalization", async () => {
+  it("trims whitespace from repeated paths params", async () => {
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
     ).run("test-user-123", "/home/claude/code/a.ts", "A");
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
     ).run("test-user-123", "/home/claude/code/b.ts", "B");
-
-    // Note the leading spaces after the commas — these must be trimmed
-    // before path.resolve() runs, or they'd become CWD-relative paths.
     const res = await req(
       "GET",
-      "/check?paths=/home/claude/code/a.ts, /home/claude/code/b.ts",
+      "/check?paths= /home/claude/code/a.ts &paths= /home/claude/code/b.ts ",
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.saved["/home/claude/code/a.ts"]).toBe(true);
-    // Response key is the trimmed form (trim is universal cleanup, not a
-    // path-semantic normalization), so clients see the clean string.
     expect(body.saved["/home/claude/code/b.ts"]).toBe(true);
   });
   it("returns empty map when no paths param", async () => {
@@ -333,8 +318,8 @@ describe("GET /check", () => {
   });
 
   it("rejects more than 256 paths with 413", async () => {
-    const paths = Array.from({ length: 257 }, (_, i) => `/home/claude/code/f${i}.ts`).join(",");
-    const res = await req("GET", `/check?paths=${paths}`);
+    const pathParams = Array.from({ length: 257 }, (_, i) => `paths=/home/claude/code/f${i}.ts`).join("&");
+    const res = await req("GET", `/check?${pathParams}`);
     expect(res.status).toBe(413);
   });
 
@@ -379,15 +364,12 @@ describe("POST /delete", () => {
 
 
 
-  it("normalizes path before deleting", async () => {
+  it("does not resolve ../ on delete (path is literal after trim)", async () => {
     testDb.prepare(
       "INSERT INTO reading_list (user_id, path, title) VALUES (?, ?, ?)"
     ).run("test-user-123", "/home/claude/code/norm.ts", "Norm");
-
     const res = await req("POST", "/delete", { path: "/home/claude/code/dir/../norm.ts" });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
+    expect(res.status).toBe(404);
   });
 
   it("trims whitespace from path on /delete (prevents false 404)", async () => {
