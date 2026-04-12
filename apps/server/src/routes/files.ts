@@ -13,7 +13,10 @@ import { createReadStream } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { constants as fsConstants } from "node:fs";
 import { Readable } from "node:stream";
-import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
+import {
+  ALLOWED_FILE_ROOTS,
+  isPathAllowed as isPathAllowedShared,
+} from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -30,13 +33,7 @@ type DownloadTicket = {
 const downloadTickets = new Map<string, DownloadTicket>();
 
 // Allowed root directories the file viewer can access
-const ALLOWED_ROOTS = [
-  "/home/claude/claudes-world",
-  "/home/claude/code",
-  "/home/claude/bin",
-  "/home/claude/.claude",
-  "/home/claude/claudes-world/.claude",
-];
+const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
 
 function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);

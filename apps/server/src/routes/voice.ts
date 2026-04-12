@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { nanoid } from "nanoid";
 import { db } from "../db.js";
-import type { TelegramUser } from "../auth.js";
+import { getUserId as getUserIdShared } from "../lib/get-user-id.js";
 
 /**
  * Allowlist for uploaded-audio file extensions. Anything outside this set is
@@ -43,10 +43,10 @@ loadOpenAIEnv();
 
 const app = new Hono();
 
+// Delegates to the shared helper in lib/get-user-id.ts.
+// Returns null for anonymous callers; routes return 401 when null.
 function getUserId(c: any): string | null {
-  const telegramUser = c.get("telegramUser") as TelegramUser | undefined;
-  if (!telegramUser?.id) return null;
-  return String(telegramUser.id);
+  return getUserIdShared(c);
 }
 
 function countWords(text: string): number {
