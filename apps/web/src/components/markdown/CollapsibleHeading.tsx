@@ -18,7 +18,8 @@
  *  - aria-controls points to the section element's id
  *  - Enter/Space activate the button natively
  */
-import { type ReactNode, type MutableRefObject, useCallback } from "react";
+import React, { type MutableRefObject, useCallback } from "react";
+import type { ExtraProps } from "react-markdown";
 
 export interface HeadingEntry {
   slug: string;
@@ -34,12 +35,7 @@ export interface FoldControls {
   registerHeading: (entry: HeadingEntry) => void;
 }
 
-interface HeadingProps {
-  node?: any;
-  children?: ReactNode;
-  id?: string;
-  [key: string]: any;
-}
+type HeadingProps = React.ComponentPropsWithoutRef<'h1'> & ExtraProps & { "data-has-section"?: string };
 
 // Heading level from tag name (e.g. "h2" → 2)
 function tagLevel(tag: string): number {
