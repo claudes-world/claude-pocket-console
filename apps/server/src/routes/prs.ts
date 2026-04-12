@@ -48,15 +48,25 @@ export interface RepoInfo {
   branch: string;     // current HEAD branch
 }
 
-/** Parse owner/repo from a git remote URL (HTTPS or SSH). Returns null if unparseable. */
+/** Parse owner/repo from a git remote URL (HTTPS or SSH). Returns null if unparseable or non-GitHub. */
 export function parseGitRemote(url: string): { owner: string; repoName: string } | null {
-  // SSH: git@github.com:owner/repo.git
-  const sshMatch = url.match(/git@[^:]+:([^/]+)\/([^/]+?)(?:\.git)?$/);
+  // SSH: git@github.com:owner/repo.git — require github.com host explicitly
+  const sshMatch = url.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
   if (sshMatch) return { owner: sshMatch[1], repoName: sshMatch[2] };
 
-  // HTTPS: https://github.com/owner/repo.git
-  const httpsMatch = url.match(/https?:\/\/[^/]+\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (httpsMatch) return { owner: httpsMatch[1], repoName: httpsMatch[2] };
+  // HTTPS: https://[user@]github.com/owner/repo.git — use URL parser to handle
+  // optional credentials (e.g. https://token@github.com/...) while still requiring
+  // a github.com hostname. Regex-only approaches miss the credentialed form.
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname !== "github.com") return null;
+      const parts = parsed.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
+      if (parts.length >= 2) return { owner: parts[0], repoName: parts[1] };
+    } catch {
+      // URL constructor threw — not a valid HTTPS URL
+    }
+  }
 
   return null;
 }
@@ -90,7 +100,10 @@ export function discoverRepos(): RepoInfo[] {
     if (!existsSync(join(repoPath, ".git"))) continue;
 
     try {
-      // Get remote URL
+      // Get remote URL.
+      // execFileSync is intentional: discoverRepos() runs at most once per 5-min TTL,
+      // covers <20 repos in practice, and completes in <2s total. Converting to async
+      // would complicate callers (currentBranchScope, pollOnce) for negligible gain.
       const remoteUrl = execFileSync("git", ["-C", repoPath, "remote", "get-url", "origin"], {
         timeout: GIT_TIMEOUT_MS,
         encoding: "utf-8",

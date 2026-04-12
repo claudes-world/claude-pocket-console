@@ -107,11 +107,13 @@ function ciLabel(pr: PrRow): string {
 // --- Group PRs by org -> repo ---
 
 function groupPrs(prs: PrRow[], repos: RepoSummary[]): GroupedPrs {
-  const grouped: GroupedPrs = {};
+  // Use Object.create(null) to avoid prototype pollution from org/repo names
+  // that could shadow Object prototype properties (e.g. "constructor", "toString").
+  const grouped = Object.create(null) as GroupedPrs;
 
   // Seed structure from repos (so repos with 0 PRs still show)
   for (const repo of repos) {
-    if (!grouped[repo.org]) grouped[repo.org] = {};
+    if (!grouped[repo.org]) grouped[repo.org] = Object.create(null) as Record<string, { branch: string; prs: PrRow[] }>;
     if (!grouped[repo.org][repo.fullName]) {
       grouped[repo.org][repo.fullName] = { branch: repo.branch, prs: [] };
     }
@@ -120,7 +122,7 @@ function groupPrs(prs: PrRow[], repos: RepoSummary[]): GroupedPrs {
   // Place PRs into groups
   for (const pr of prs) {
     const [org] = pr.repo.split("/");
-    if (!grouped[org]) grouped[org] = {};
+    if (!grouped[org]) grouped[org] = Object.create(null) as Record<string, { branch: string; prs: PrRow[] }>;
     if (!grouped[org][pr.repo]) {
       // Repo not in discovery (edge case: leftover from cache)
       const repoInfo = repos.find((r) => r.fullName === pr.repo);
