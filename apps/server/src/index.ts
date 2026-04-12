@@ -96,15 +96,20 @@ const webDistRoot = join(__dirname, "../../web/dist");
 
 const earlyHintsLinks: string[] = [];
 try {
-  const indexHtml = readFileSync(join(webDistRoot, "index.html"), "utf-8");
-  const js = indexHtml.match(/<script[^>]+src="(\/assets\/index-[^"]+\.js)"/);
-  const css = indexHtml.match(/<link[^>]+href="(\/assets\/index-[^"]+\.css)"/);
-
-  if (js) earlyHintsLinks.push(`<${js[1]}>; rel=preload; as=script; crossorigin`);
-  if (css) earlyHintsLinks.push(`<${css[1]}>; rel=preload; as=style`);
+  const manifestPath = join(webDistRoot, ".vite/manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  // Find the entry point (has isEntry: true)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entry = Object.values(manifest).find((e: any) => e.isEntry) as any;
+  if (entry) {
+    if (entry.file) earlyHintsLinks.push(`</${entry.file}>; rel=preload; as=script; crossorigin`);
+    for (const css of entry.css ?? []) {
+      earlyHintsLinks.push(`</${css}>; rel=preload; as=style`);
+    }
+  }
   earlyHintsLinks.push("<https://telegram.org>; rel=preconnect");
 } catch (e: any) {
-  console.warn(`[earlyHints] Unable to read ${join(webDistRoot, "index.html")}: ${e.message}`);
+  console.warn(`[earlyHints] Unable to read manifest: ${e.message}`);
 }
 
 app.use("/*", async (c, next) => {
