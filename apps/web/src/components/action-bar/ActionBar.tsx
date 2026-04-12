@@ -208,9 +208,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setAudioLoading(true);
     setAudioOp("checking");
     try {
-      setAudioStatus(await checkAudio(filePath));
+      const status = await checkAudio(filePath);
+      // Guard: if generate/send started while check was in-flight, don't
+      // overwrite their loading/op state with a stale check result.
+      if (!audioInFlightRef.current) setAudioStatus(status);
     } catch {
-      setAudioStatus(null);
+      if (!audioInFlightRef.current) setAudioStatus(null);
     } finally {
       // Only clear loading if no generate/send started while we were checking
       if (!audioInFlightRef.current) {
