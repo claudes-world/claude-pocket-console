@@ -6,8 +6,6 @@ import { ALLOWED_FILE_ROOTS, isPathAllowed } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
-const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
-
 function normalizePath(input: string): string {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) {
@@ -37,7 +35,7 @@ app.post("/save", async (c) => {
 
   const normalizedPath = normalizePath(path);
 
-  if (!(await isPathAllowed(normalizedPath, ALLOWED_ROOTS))) {
+  if (!(await isPathAllowed(normalizedPath, ALLOWED_FILE_ROOTS))) {
     return c.json({ error: "Access denied" }, 403);
   }
 
