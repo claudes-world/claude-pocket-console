@@ -42,6 +42,18 @@ function makePr(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeRepo(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "inbox",
+    dirName: "tryinbox-sh",
+    org: "claudes-world",
+    fullName: "claudes-world/inbox",
+    branch: "main",
+    prCount: 0,
+    ...overrides,
+  };
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -51,24 +63,18 @@ beforeEach(() => {
   fetchMock = vi.fn();
   global.fetch = fetchMock as unknown as typeof fetch;
 
-  // Default: empty PR list and no branches
+  // Default: empty PR list, no repos
   fetchMock.mockImplementation(async (url: string) => {
     if (url === "/api/prs") {
       return {
         ok: true,
-        json: async () => ({ ok: true, prs: [], lastPollOk: Date.now() }),
-      };
-    }
-    if (url === "/api/prs/current-branch-scope") {
-      return {
-        ok: true,
-        json: async () => ({ ok: true, branches: [] }),
+        json: async () => ({ ok: true, prs: [], repos: [], lastPollOk: Date.now() }),
       };
     }
     if (url === "/api/prs/refresh") {
       return {
         ok: true,
-        json: async () => ({ ok: true, prs: [], lastPollOk: Date.now() }),
+        json: async () => ({ ok: true, prs: [], repos: [], lastPollOk: Date.now() }),
       };
     }
     return { ok: false, status: 404, json: async () => ({}) };
@@ -81,27 +87,21 @@ afterEach(() => {
 });
 
 describe("PrTicker", () => {
-  it("renders empty state when there are no PRs", async () => {
+  it("renders empty state when there are no repos", async () => {
     render(<PrTicker />);
 
     await waitFor(() => {
-      expect(screen.getByText("No open PRs")).toBeInTheDocument();
+      expect(screen.getByText("No repos discovered")).toBeInTheDocument();
     });
   });
 
-  it("shows 'No PRs on current branch' when filter is current but PRs exist on other branches", async () => {
-    const pr = makePr({ headRefName: "feat/other-branch" });
+  it("shows 'no open PRs' for a repo with zero PRs", async () => {
+    const repo = makeRepo({ prCount: 0 });
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/prs") {
         return {
           ok: true,
-          json: async () => ({ ok: true, prs: [pr], lastPollOk: Date.now() }),
-        };
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return {
-          ok: true,
-          json: async () => ({ ok: true, branches: ["main"] }),
+          json: async () => ({ ok: true, prs: [], repos: [repo], lastPollOk: Date.now() }),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -110,25 +110,21 @@ describe("PrTicker", () => {
     render(<PrTicker />);
 
     await waitFor(() => {
-      expect(screen.getByText(/No PRs on current branch/)).toBeInTheDocument();
+      expect(screen.getByText("no open PRs")).toBeInTheDocument();
     });
   });
 
-  it("renders PR rows when data is returned", async () => {
-    const pr1 = makePr({ number: 42, title: "Fix the widget", headRefName: "fix/widget" });
-    const pr2 = makePr({ number: 43, title: "Add feature X", headRefName: "feat/x" });
+  it("renders PR rows grouped by org and repo", async () => {
+    const pr1 = makePr({ number: 42, title: "Fix the widget", headRefName: "fix/widget", repo: "claudes-world/inbox", key: "claudes-world/inbox#42" });
+    const pr2 = makePr({ number: 43, title: "Add feature X", headRefName: "feat/x", repo: "claudes-world/claude-pocket-console", key: "claudes-world/claude-pocket-console#43" });
+    const repo1 = makeRepo({ name: "inbox", fullName: "claudes-world/inbox", prCount: 1 });
+    const repo2 = makeRepo({ name: "claude-pocket-console", fullName: "claudes-world/claude-pocket-console", prCount: 1 });
 
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/prs") {
         return {
           ok: true,
-          json: async () => ({ ok: true, prs: [pr1, pr2], lastPollOk: Date.now() }),
-        };
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return {
-          ok: true,
-          json: async () => ({ ok: true, branches: ["fix/widget", "feat/x"] }),
+          json: async () => ({ ok: true, prs: [pr1, pr2], repos: [repo1, repo2], lastPollOk: Date.now() }),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -142,27 +138,20 @@ describe("PrTicker", () => {
       expect(screen.getByText("#43")).toBeInTheDocument();
       expect(screen.getByText("Add feature X")).toBeInTheDocument();
     });
+
+    // Org heading should be visible
+    expect(screen.getByText("claudes-world")).toBeInTheDocument();
   });
 
-  it("switches from 'current branch' to 'all' filter when chip is clicked", async () => {
-    const prOnBranch = makePr({ number: 1, title: "On branch", headRefName: "dev" });
-    const prOffBranch = makePr({ number: 2, title: "Off branch", headRefName: "other" });
+  it("collapses and expands org sections", async () => {
+    const pr = makePr({ number: 1, key: "claudes-world/inbox#1", title: "Test PR" });
+    const repo = makeRepo({ prCount: 1 });
 
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/prs") {
         return {
           ok: true,
-          json: async () => ({
-            ok: true,
-            prs: [prOnBranch, prOffBranch],
-            lastPollOk: Date.now(),
-          }),
-        };
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return {
-          ok: true,
-          json: async () => ({ ok: true, branches: ["dev"] }),
+          json: async () => ({ ok: true, prs: [pr], repos: [repo], lastPollOk: Date.now() }),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -170,49 +159,35 @@ describe("PrTicker", () => {
 
     render(<PrTicker />);
 
-    // Wait for data to load — in "current" mode only PR #1 is visible
+    // Wait for PR to show
     await waitFor(() => {
       expect(screen.getByText("#1")).toBeInTheDocument();
     });
-    expect(screen.queryByText("#2")).not.toBeInTheDocument();
 
-    // Click "all" filter chip
-    fireEvent.click(screen.getByText("all"));
+    // Click org heading to collapse
+    fireEvent.click(screen.getByText("claudes-world"));
 
+    // PR should no longer be visible
     await waitFor(() => {
-      expect(screen.getByText("#2")).toBeInTheDocument();
-    });
-    expect(screen.getByText("#1")).toBeInTheDocument();
-  });
-
-  it("persists filter mode to localStorage", async () => {
-    render(<PrTicker />);
-
-    // Default is "current"
-    await waitFor(() => {
-      expect(localStorageMock.setItem).toHaveBeenCalledWith("cpc-pr-filter-mode", "current");
+      expect(screen.queryByText("#1")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("all"));
+    // Click again to expand
+    fireEvent.click(screen.getByText("claudes-world"));
 
     await waitFor(() => {
-      expect(localStorageMock.setItem).toHaveBeenCalledWith("cpc-pr-filter-mode", "all");
+      expect(screen.getByText("#1")).toBeInTheDocument();
     });
   });
 
-  it("displays the footer count matching visible PRs", async () => {
-    const pr = makePr({ headRefName: "dev" });
+  it("displays the footer count matching total PRs", async () => {
+    const pr = makePr();
+    const repo = makeRepo({ prCount: 1 });
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/prs") {
         return {
           ok: true,
-          json: async () => ({ ok: true, prs: [pr], lastPollOk: Date.now() }),
-        };
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return {
-          ok: true,
-          json: async () => ({ ok: true, branches: ["dev"] }),
+          json: async () => ({ ok: true, prs: [pr], repos: [repo], lastPollOk: Date.now() }),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -221,7 +196,9 @@ describe("PrTicker", () => {
     render(<PrTicker />);
 
     await waitFor(() => {
-      expect(screen.getByText("1 open")).toBeInTheDocument();
+      // "1 open" appears in both the repo subheading and the footer
+      const matches = screen.getAllByText("1 open");
+      expect(matches.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -229,9 +206,6 @@ describe("PrTicker", () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/prs") {
         throw new Error("Network down");
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return { ok: true, json: async () => ({ ok: true, branches: [] }) };
       }
       return { ok: true, json: async () => ({}) };
     });
@@ -248,11 +222,8 @@ describe("PrTicker", () => {
       if (url === "/api/prs") {
         return {
           ok: true,
-          json: async () => ({ ok: true, prs: [], lastPollOk: Date.now(), lastPollErr: "rate limited" }),
+          json: async () => ({ ok: true, prs: [], repos: [], lastPollOk: Date.now(), lastPollErr: "rate limited" }),
         };
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return { ok: true, json: async () => ({ ok: true, branches: [] }) };
       }
       return { ok: true, json: async () => ({}) };
     });
@@ -267,22 +238,16 @@ describe("PrTicker", () => {
   it("displays review and CI status labels on PR rows", async () => {
     const pr = makePr({
       number: 99,
-      headRefName: "dev",
       reviewDecision: "APPROVED",
       ciStatus: "SUCCESS",
     });
+    const repo = makeRepo({ prCount: 1 });
 
     fetchMock.mockImplementation(async (url: string) => {
       if (url === "/api/prs") {
         return {
           ok: true,
-          json: async () => ({ ok: true, prs: [pr], lastPollOk: Date.now() }),
-        };
-      }
-      if (url === "/api/prs/current-branch-scope") {
-        return {
-          ok: true,
-          json: async () => ({ ok: true, branches: ["dev"] }),
+          json: async () => ({ ok: true, prs: [pr], repos: [repo], lastPollOk: Date.now() }),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -293,6 +258,73 @@ describe("PrTicker", () => {
     await waitFor(() => {
       expect(screen.getByText("approved")).toBeInTheDocument();
       expect(screen.getByText("CI pass")).toBeInTheDocument();
+    });
+  });
+
+  it("shows repo count in header", async () => {
+    const repo1 = makeRepo({ name: "inbox", fullName: "claudes-world/inbox" });
+    const repo2 = makeRepo({ name: "cpc", fullName: "claudes-world/claude-pocket-console" });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [repo1, repo2], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+
+    await waitFor(() => {
+      expect(screen.getByText("2 repos")).toBeInTheDocument();
+    });
+  });
+
+  it("shows branch badge on repo subheading", async () => {
+    const repo = makeRepo({ branch: "dev" });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+
+    await waitFor(() => {
+      expect(screen.getByText("dev")).toBeInTheDocument();
+    });
+  });
+
+  it("handles multi-org grouping", async () => {
+    const pr1 = makePr({ number: 1, repo: "claudes-world/inbox", key: "claudes-world/inbox#1" });
+    const pr2 = makePr({ number: 2, repo: "mcorrig4/personal-site", key: "mcorrig4/personal-site#2" });
+    const repo1 = makeRepo({ name: "inbox", org: "claudes-world", fullName: "claudes-world/inbox", prCount: 1 });
+    const repo2 = makeRepo({ name: "personal-site", org: "mcorrig4", fullName: "mcorrig4/personal-site", prCount: 1 });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [pr1, pr2], repos: [repo1, repo2], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+
+    await waitFor(() => {
+      expect(screen.getByText("claudes-world")).toBeInTheDocument();
+      expect(screen.getByText("mcorrig4")).toBeInTheDocument();
+      expect(screen.getByText("#1")).toBeInTheDocument();
+      expect(screen.getByText("#2")).toBeInTheDocument();
     });
   });
 });
