@@ -86,15 +86,15 @@ interface ErrorFallbackProps {
 
 function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) {
   // Tokyo Night palette to match the rest of CPC.
-  // bg #1a1b26, fg #c0caf5, error accent #f7768e, muted #565f89, action blue #7aa2f7
+  // bg var(--color-bg), fg var(--color-fg), error accent var(--color-accent-red), muted var(--color-muted), action blue var(--color-accent-blue)
   return (
     <div
       role="alert"
       style={{
         minHeight: level === "tab" ? "100%" : "100dvh",
         width: "100%",
-        background: "#1a1b26",
-        color: "#c0caf5",
+        background: "var(--color-bg)",
+        color: "var(--color-fg)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -112,7 +112,7 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
         style={{
           fontSize: 22,
           fontWeight: 600,
-          color: "#f7768e",
+          color: "var(--color-accent-red)",
           margin: 0,
           textAlign: "center",
         }}
@@ -122,7 +122,7 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
       <p
         style={{
           fontSize: 14,
-          color: "#a9b1d6",
+          color: "var(--color-fg-muted)",
           margin: 0,
           textAlign: "center",
           maxWidth: 360,
@@ -146,8 +146,8 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
           type="button"
           onClick={onReload}
           style={{
-            background: "#7aa2f7",
-            color: "#1a1b26",
+            background: "var(--color-accent-blue)",
+            color: "var(--color-bg)",
             border: "none",
             borderRadius: 8,
             padding: "10px 20px",
@@ -163,8 +163,8 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
           onClick={onRetry}
           style={{
             background: "transparent",
-            color: "#7aa2f7",
-            border: "1px solid #7aa2f7",
+            color: "var(--color-accent-blue)",
+            border: "1px solid var(--color-accent-blue)",
             borderRadius: 8,
             padding: "10px 20px",
             fontSize: 14,
@@ -179,8 +179,8 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
           onClick={() => copyErrorDetails(error)}
           style={{
             background: "transparent",
-            color: "#565f89",
-            border: "1px solid #414868",
+            color: "var(--color-muted)",
+            border: "1px solid var(--color-border-alt)",
             borderRadius: 8,
             padding: "10px 20px",
             fontSize: 14,
@@ -197,15 +197,15 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
           marginTop: 16,
           width: "100%",
           maxWidth: 480,
-          background: "#16161e",
-          border: "1px solid #2a2b3d",
+          background: "var(--color-bg-alt)",
+          border: "1px solid var(--color-border)",
           borderRadius: 8,
           padding: 12,
         }}
       >
         <summary
           style={{
-            color: "#9ece6a",
+            color: "var(--color-accent-green)",
             fontSize: 12,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
             cursor: "pointer",
@@ -216,7 +216,7 @@ function ErrorFallback({ error, level, onRetry, onReload }: ErrorFallbackProps) 
         </summary>
         <pre
           style={{
-            color: "#c0caf5",
+            color: "var(--color-fg)",
             fontSize: 11,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
             marginTop: 8,

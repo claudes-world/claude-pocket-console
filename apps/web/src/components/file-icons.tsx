@@ -58,7 +58,7 @@ function BadgeIcon({ color, label }: { color: string; label: string }) {
         fontSize="7"
         fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
         fontWeight="700"
-        fill="#1a1b26"
+        fill="var(--color-bg)"
       >
         {label}
       </text>
@@ -73,7 +73,7 @@ function JsonIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#e0af68"
+      stroke="var(--color-accent-yellow)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -93,7 +93,7 @@ function MdIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#7dcfff"
+      stroke="var(--color-accent-cyan)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -114,7 +114,7 @@ function ShIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#9ece6a"
+      stroke="var(--color-accent-green)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -135,7 +135,7 @@ function PyIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#7aa2f7"
+      stroke="var(--color-accent-blue)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -158,7 +158,7 @@ function CssIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#7dcfff"
+      stroke="var(--color-accent-cyan)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -180,7 +180,7 @@ function HtmlIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#e0af68"
+      stroke="var(--color-accent-yellow)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -200,7 +200,7 @@ function ImageIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#bb9af7"
+      stroke="var(--color-accent-purple)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -222,7 +222,7 @@ function TxtIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#c0caf5"
+      stroke="var(--color-fg)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -245,7 +245,7 @@ function FolderIcon() {
       height={SIZE}
       viewBox="0 0 16 16"
       fill="none"
-      stroke="#7aa2f7"
+      stroke="var(--color-accent-blue)"
       strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -277,10 +277,10 @@ export function getFileIcon(filename: string, isFolder: boolean): ReactNode {
       return <JsonIcon />;
     case "ts":
     case "tsx":
-      return <BadgeIcon color="#7aa2f7" label="TS" />;
+      return <BadgeIcon color="var(--color-accent-blue)" label="TS" />;
     case "js":
     case "jsx":
-      return <BadgeIcon color="#e0af68" label="JS" />;
+      return <BadgeIcon color="var(--color-accent-yellow)" label="JS" />;
     case "md":
     case "markdown":
       return <MdIcon />;
@@ -308,6 +308,6 @@ export function getFileIcon(filename: string, isFolder: boolean): ReactNode {
     case "log":
       return <TxtIcon />;
     default:
-      return <DocIcon color="#c0caf5" />;
+      return <DocIcon color="var(--color-fg)" />;
   }
 }
