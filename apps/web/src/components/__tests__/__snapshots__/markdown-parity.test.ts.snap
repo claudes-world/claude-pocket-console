@@ -42,32 +42,32 @@ exports[`Markdown parity baseline (react-markdown) > renders code-blocks through
 "<div class="md-content"><h1 id="code-blocks-and-commands" data-has-section="true">Code Blocks And Commands</h1><section class="cpc-section" id="section-code-blocks-and-commands" data-fold-slug="code-blocks-and-commands">
 <p>Inline code such as <code>getAuthHeaders()</code> and <code>Telegram.WebApp.disableVerticalSwipes()</code><br/>
 appears beside fenced examples in CPC docs.</p>
-<pre><code class="language-ts">type SessionStatus = &quot;connected&quot; | &quot;paused&quot; | &quot;failed&quot;;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">type</span> <span class="hljs-title class_">SessionStatus</span> = <span class="hljs-string">&quot;connected&quot;</span> | <span class="hljs-string">&quot;paused&quot;</span> | <span class="hljs-string">&quot;failed&quot;</span>;
 
-export function labelForStatus(status: SessionStatus): string {
-  switch (status) {
-    case &quot;connected&quot;:
-      return &quot;Connected&quot;;
-    case &quot;paused&quot;:
-      return &quot;Paused&quot;;
-    case &quot;failed&quot;:
-      return &quot;Needs attention&quot;;
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">labelForStatus</span>(<span class="hljs-params"><span class="hljs-attr">status</span>: <span class="hljs-title class_">SessionStatus</span></span>): <span class="hljs-built_in">string</span> {
+  <span class="hljs-keyword">switch</span> (status) {
+    <span class="hljs-keyword">case</span> <span class="hljs-string">&quot;connected&quot;</span>:
+      <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Connected&quot;</span>;
+    <span class="hljs-keyword">case</span> <span class="hljs-string">&quot;paused&quot;</span>:
+      <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Paused&quot;</span>;
+    <span class="hljs-keyword">case</span> <span class="hljs-string">&quot;failed&quot;</span>:
+      <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Needs attention&quot;</span>;
   }
 }
 </code></pre>
-<pre><code class="language-bash">cd /home/claude/code/cpc-impl-react-markdown
+<pre><code class="hljs language-bash"><span class="hljs-built_in">cd</span> /home/claude/code/cpc-impl-react-markdown
 pnpm install --silent
-pnpm --filter @cpc/web exec tsc -b
-pnpm --filter @cpc/web test
+pnpm --filter @cpc/web <span class="hljs-built_in">exec</span> tsc -b
+pnpm --filter @cpc/web <span class="hljs-built_in">test</span>
 </code></pre>
-<pre><code class="language-json">{
-  &quot;server&quot;: {
-    &quot;port&quot;: 38830,
-    &quot;prodTunnel&quot;: &quot;https://cpc.claude.do&quot;,
-    &quot;devTunnel&quot;: &quot;https://cpc-dev.claude.do&quot;
-  },
-  &quot;features&quot;: [&quot;files&quot;, &quot;terminal&quot;, &quot;voice&quot;]
-}
+<pre><code class="hljs language-json"><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;server&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">&quot;port&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-number">38830</span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;prodTunnel&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;https://cpc.claude.do&quot;</span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;devTunnel&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;https://cpc-dev.claude.do&quot;</span>
+  <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;features&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">&quot;files&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;terminal&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;voice&quot;</span><span class="hljs-punctuation">]</span>
+<span class="hljs-punctuation">}</span>
 </code></pre>
 <p>An unlabelled block still matters:</p>
 <pre><code>Actions -&gt; Develop -&gt; Voice
@@ -105,7 +105,7 @@ unexpected empty paragraphs.</p>
 <li>Unordered child
 <blockquote>
 <p>Quote inside a list item.</p>
-<pre><code class="language-bash">pnpm --filter @cpc/web test
+<pre><code class="hljs language-bash">pnpm --filter @cpc/web <span class="hljs-built_in">test</span>
 </code></pre>
 </blockquote>
 </li>
@@ -118,7 +118,7 @@ unexpected empty paragraphs.</p>
 <li>A quoted list item</li>
 <li>Another quoted list item with <code>code</code></li>
 </ul>
-<pre><code class="language-ts">const source = &quot;quoted code&quot;;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> source = <span class="hljs-string">&quot;quoted code&quot;</span>;
 </code></pre>
 </blockquote>
 <hr/>
@@ -215,16 +215,16 @@ Do not edit the external Telegram plugin.</p>
 <h2 id="6-example-route-notes">6. Example Route Notes</h2>
 <p>The web app uses a base path from Vite. Static assets should keep working at<br/>
 both <code>https://cpc.claude.do</code> and <code>https://cpc-dev.claude.do</code>.</p>
-<pre><code class="language-ts">export function buildAssetPath(baseUrl: string, name: string): string {
-  const base = baseUrl.endsWith(&quot;/&quot;) ? baseUrl : \`\${baseUrl}/\`;
-  return new URL(name, base).toString();
+<pre><code class="hljs language-ts"><span class="hljs-keyword">export</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">buildAssetPath</span>(<span class="hljs-params"><span class="hljs-attr">baseUrl</span>: <span class="hljs-built_in">string</span>, <span class="hljs-attr">name</span>: <span class="hljs-built_in">string</span></span>): <span class="hljs-built_in">string</span> {
+  <span class="hljs-keyword">const</span> base = baseUrl.<span class="hljs-title function_">endsWith</span>(<span class="hljs-string">&quot;/&quot;</span>) ? baseUrl : <span class="hljs-string">\`<span class="hljs-subst">\${baseUrl}</span>/\`</span>;
+  <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-title function_">URL</span>(name, base).<span class="hljs-title function_">toString</span>();
 }
 </code></pre>
 <h2 id="7-shell-recipe">7. Shell Recipe</h2>
-<pre><code class="language-bash">set -euo pipefail
+<pre><code class="hljs language-bash"><span class="hljs-built_in">set</span> -euo pipefail
 pnpm install --silent
-pnpm --filter @cpc/web exec tsc -b
-pnpm --filter @cpc/web test
+pnpm --filter @cpc/web <span class="hljs-built_in">exec</span> tsc -b
+pnpm --filter @cpc/web <span class="hljs-built_in">test</span>
 pnpm --filter @cpc/web build
 </code></pre>
 <h2 id="8-failure-modes">8. Failure Modes</h2>
@@ -259,15 +259,15 @@ WebView does not expose the browser media prompt consistently.</p>
 <p>Terminal output can include long paths such as<br/>
 <code>/home/claude/code/cpc-impl-react-markdown/apps/web/src/components/MarkdownViewer.tsx</code>.</p>
 <h2 id="11-json-payload">11. JSON Payload</h2>
-<pre><code class="language-json">{
-  &quot;kind&quot;: &quot;SessionStart&quot;,
-  &quot;buttons&quot;: [&quot;Actions&quot;, &quot;Develop&quot;, &quot;Voice&quot;],
-  &quot;viewer&quot;: {
-    &quot;markdown&quot;: true,
-    &quot;mermaid&quot;: true,
-    &quot;rawHtml&quot;: &quot;baseline-only&quot;
-  }
-}
+<pre><code class="hljs language-json"><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;kind&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;SessionStart&quot;</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;buttons&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">&quot;Actions&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;Develop&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;Voice&quot;</span><span class="hljs-punctuation">]</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;viewer&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">&quot;markdown&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">true</span></span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;mermaid&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">true</span></span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;rawHtml&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;baseline-only&quot;</span>
+  <span class="hljs-punctuation">}</span>
+<span class="hljs-punctuation">}</span>
 </code></pre>
 <h2 id="12-closing-notes">12. Closing Notes</h2>
 <p>Soft breaks appear here<br/>

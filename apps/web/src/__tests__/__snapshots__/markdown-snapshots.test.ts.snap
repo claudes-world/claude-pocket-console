@@ -98,25 +98,25 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consiste
 exports[`MarkdownViewer (react-markdown baseline) > renders 03-code-block-short.md consistently 1`] = `
 "<div class="md-content"><h1 id="short-code-block" data-has-section="true">Short code block</h1><section class="cpc-section" id="section-short-code-block" data-fold-slug="short-code-block">
 <p>Here is a small TypeScript snippet:</p>
-<pre><code class="language-ts">function greet(name: string): string {
-  return \`Hello, \${name}!\`;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">function</span> <span class="hljs-title function_">greet</span>(<span class="hljs-params"><span class="hljs-attr">name</span>: <span class="hljs-built_in">string</span></span>): <span class="hljs-built_in">string</span> {
+  <span class="hljs-keyword">return</span> <span class="hljs-string">\`Hello, <span class="hljs-subst">\${name}</span>!\`</span>;
 }
 
-greet(&quot;world&quot;);
+<span class="hljs-title function_">greet</span>(<span class="hljs-string">&quot;world&quot;</span>);
 </code></pre>
 <p>And a short bash example:</p>
-<pre><code class="language-bash">pnpm install
-pnpm test
+<pre><code class="hljs language-bash">pnpm install
+pnpm <span class="hljs-built_in">test</span>
 </code></pre></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 04-code-block-wide.md consistently 1`] = `
 "<div class="md-content"><h1 id="wide-code-block-horizontal-scroll-target" data-has-section="true">Wide code block (horizontal scroll target)</h1><section class="cpc-section" id="section-wide-code-block-horizontal-scroll-target" data-fold-slug="wide-code-block-horizontal-scroll-target">
 <p>This fixture exists to pin down the PR #20 regression around wide code blocks and horizontal scrolling.</p>
-<pre><code class="language-ts">// This single line is intentionally very long to force horizontal scrolling inside the rendered &lt;pre&gt;&lt;code&gt; container so we can diff how marked and react-markdown lay out the overflow behavior under the same CSS.
-const veryLongIdentifier = { alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8, iota: 9, kappa: 10, lambda: 11, mu: 12, nu: 13, xi: 14, omicron: 15, pi: 16, rho: 17, sigma: 18, tau: 19, upsilon: 20, phi: 21, chi: 22, psi: 23, omega: 24 };
-function doSomethingThatTakesAbsurdlyManyArgumentsAndReturnsAnAbsurdlyLongInlineTypeAnnotation(arg1: string, arg2: number, arg3: boolean, arg4: Record&lt;string, unknown&gt;, arg5: Array&lt;{ id: string; value: number; metadata: Record&lt;string, string&gt; }&gt;): Promise&lt;{ ok: true; data: Array&lt;{ id: string; value: number; metadata: Record&lt;string, string&gt; }&gt; } | { ok: false; error: string }&gt; {
-  return Promise.resolve({ ok: true, data: arg5 });
+<pre><code class="hljs language-ts"><span class="hljs-comment">// This single line is intentionally very long to force horizontal scrolling inside the rendered &lt;pre&gt;&lt;code&gt; container so we can diff how marked and react-markdown lay out the overflow behavior under the same CSS.</span>
+<span class="hljs-keyword">const</span> veryLongIdentifier = { <span class="hljs-attr">alpha</span>: <span class="hljs-number">1</span>, <span class="hljs-attr">beta</span>: <span class="hljs-number">2</span>, <span class="hljs-attr">gamma</span>: <span class="hljs-number">3</span>, <span class="hljs-attr">delta</span>: <span class="hljs-number">4</span>, <span class="hljs-attr">epsilon</span>: <span class="hljs-number">5</span>, <span class="hljs-attr">zeta</span>: <span class="hljs-number">6</span>, <span class="hljs-attr">eta</span>: <span class="hljs-number">7</span>, <span class="hljs-attr">theta</span>: <span class="hljs-number">8</span>, <span class="hljs-attr">iota</span>: <span class="hljs-number">9</span>, <span class="hljs-attr">kappa</span>: <span class="hljs-number">10</span>, <span class="hljs-attr">lambda</span>: <span class="hljs-number">11</span>, <span class="hljs-attr">mu</span>: <span class="hljs-number">12</span>, <span class="hljs-attr">nu</span>: <span class="hljs-number">13</span>, <span class="hljs-attr">xi</span>: <span class="hljs-number">14</span>, <span class="hljs-attr">omicron</span>: <span class="hljs-number">15</span>, <span class="hljs-attr">pi</span>: <span class="hljs-number">16</span>, <span class="hljs-attr">rho</span>: <span class="hljs-number">17</span>, <span class="hljs-attr">sigma</span>: <span class="hljs-number">18</span>, <span class="hljs-attr">tau</span>: <span class="hljs-number">19</span>, <span class="hljs-attr">upsilon</span>: <span class="hljs-number">20</span>, <span class="hljs-attr">phi</span>: <span class="hljs-number">21</span>, <span class="hljs-attr">chi</span>: <span class="hljs-number">22</span>, <span class="hljs-attr">psi</span>: <span class="hljs-number">23</span>, <span class="hljs-attr">omega</span>: <span class="hljs-number">24</span> };
+<span class="hljs-keyword">function</span> <span class="hljs-title function_">doSomethingThatTakesAbsurdlyManyArgumentsAndReturnsAnAbsurdlyLongInlineTypeAnnotation</span>(<span class="hljs-params"><span class="hljs-attr">arg1</span>: <span class="hljs-built_in">string</span>, <span class="hljs-attr">arg2</span>: <span class="hljs-built_in">number</span>, <span class="hljs-attr">arg3</span>: <span class="hljs-built_in">boolean</span>, <span class="hljs-attr">arg4</span>: <span class="hljs-title class_">Record</span>&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">unknown</span>&gt;, <span class="hljs-attr">arg5</span>: <span class="hljs-title class_">Array</span>&lt;{ id: <span class="hljs-built_in">string</span>; value: <span class="hljs-built_in">number</span>; metadata: Record&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">string</span>&gt; }&gt;</span>): <span class="hljs-title class_">Promise</span>&lt;{ <span class="hljs-attr">ok</span>: <span class="hljs-literal">true</span>; <span class="hljs-attr">data</span>: <span class="hljs-title class_">Array</span>&lt;{ <span class="hljs-attr">id</span>: <span class="hljs-built_in">string</span>; <span class="hljs-attr">value</span>: <span class="hljs-built_in">number</span>; <span class="hljs-attr">metadata</span>: <span class="hljs-title class_">Record</span>&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">string</span>&gt; }&gt; } | { <span class="hljs-attr">ok</span>: <span class="hljs-literal">false</span>; <span class="hljs-attr">error</span>: <span class="hljs-built_in">string</span> }&gt; {
+  <span class="hljs-keyword">return</span> <span class="hljs-title class_">Promise</span>.<span class="hljs-title function_">resolve</span>({ <span class="hljs-attr">ok</span>: <span class="hljs-literal">true</span>, <span class="hljs-attr">data</span>: arg5 });
 }
 </code></pre>
 <p>And a short line afterwards to verify the following paragraph wraps normally after a wide code block:</p>
@@ -174,7 +174,7 @@ It spans two lines of markdown source.</p>
 </blockquote>
 <p>Blockquote containing a code block:</p>
 <blockquote>
-<pre><code class="language-ts">const quoted = &quot;code inside blockquote&quot;;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> quoted = <span class="hljs-string">&quot;code inside blockquote&quot;</span>;
 </code></pre>
 </blockquote></section></div>"
 `;
@@ -775,37 +775,37 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 </ol>
 <h3 id="hide-mechanism-a-single-css-class">Hide mechanism: a single CSS class</h3>
 <p>Add to the existing <code>&lt;style&gt;</code> block:</p>
-<pre><code class="language-css">.cpc-folded { display: none !important; }
-.md-content h1, .md-content h2, .md-content h3,
-.md-content h4, .md-content h5, .md-content h6 {
-  position: relative;
+<pre><code class="hljs language-css"><span class="hljs-selector-class">.cpc-folded</span> { <span class="hljs-attribute">display</span>: none <span class="hljs-meta">!important</span>; }
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h1</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h2</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h3</span>,
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h4</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h5</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h6</span> {
+  <span class="hljs-attribute">position</span>: relative;
 }
-.md-content .cpc-toggle {
-  position: absolute;
-  left: -22px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 32px; height: 32px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; border: none; color: #565f89;
-  cursor: pointer; font-size: 14px;
-  /* hit area extends past the visible 14px triangle */
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-class">.cpc-toggle</span> {
+  <span class="hljs-attribute">position</span>: absolute;
+  <span class="hljs-attribute">left</span>: -<span class="hljs-number">22px</span>;
+  <span class="hljs-attribute">top</span>: <span class="hljs-number">50%</span>;
+  <span class="hljs-attribute">transform</span>: <span class="hljs-built_in">translateY</span>(-<span class="hljs-number">50%</span>);
+  <span class="hljs-attribute">width</span>: <span class="hljs-number">32px</span>; <span class="hljs-attribute">height</span>: <span class="hljs-number">32px</span>;
+  <span class="hljs-attribute">display</span>: flex; <span class="hljs-attribute">align-items</span>: center; <span class="hljs-attribute">justify-content</span>: center;
+  <span class="hljs-attribute">background</span>: transparent; <span class="hljs-attribute">border</span>: none; <span class="hljs-attribute">color</span>: <span class="hljs-number">#565f89</span>;
+  <span class="hljs-attribute">cursor</span>: pointer; <span class="hljs-attribute">font-size</span>: <span class="hljs-number">14px</span>;
+  <span class="hljs-comment">/* hit area extends past the visible 14px triangle */</span>
 }
-.md-content .cpc-toggle:hover { color: #7aa2f7; }
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-class">.cpc-toggle</span><span class="hljs-selector-pseudo">:hover</span> { <span class="hljs-attribute">color</span>: <span class="hljs-number">#7aa2f7</span>; }
 </code></pre>
 <p>Then <code>node.classList.add(&quot;cpc-folded&quot;)</code> / <code>removeAttribute(&quot;class&quot;)</code> is the entire collapse mechanic. We never touch <code>style.display</code>, so we never have to remember original display values. This cleanly handles <code>display: block</code>, <code>display: flex</code> (none of the markdown elements use it but defensively), <code>display: table</code> (for <code>&lt;table&gt;</code>), etc.</p>
 <h3 id="nested-fold-preservation">Nested fold preservation</h3>
 <p>Because hidden ancestors don&#x27;t run their own fold logic (we just <code>display: none</code> everything inside them), a collapsed h3 stays in <code>foldedSections</code> even when its parent h2 is also collapsed. When the h2 expands, the h3 remains collapsed because its slug is still in the set and the next post-process pass re-applies it. Exactly what we want.</p>
 <h3 id="click-handling">Click handling</h3>
 <p>Single delegated listener on <code>rootRef.current</code>:</p>
-<pre><code class="language-ts">const onClick = (e: MouseEvent) =&gt; {
-  const btn = (e.target as HTMLElement).closest(&#x27;.cpc-toggle&#x27;);
-  if (!btn) return;
-  const slug = btn.getAttribute(&#x27;data-slug&#x27;);
-  if (!slug) return;
-  e.preventDefault();
-  e.stopPropagation();
-  toggleFold(slug);
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> <span class="hljs-title function_">onClick</span> = (<span class="hljs-params"><span class="hljs-attr">e</span>: <span class="hljs-title class_">MouseEvent</span></span>) =&gt; {
+  <span class="hljs-keyword">const</span> btn = (e.<span class="hljs-property">target</span> <span class="hljs-keyword">as</span> <span class="hljs-title class_">HTMLElement</span>).<span class="hljs-title function_">closest</span>(<span class="hljs-string">&#x27;.cpc-toggle&#x27;</span>);
+  <span class="hljs-keyword">if</span> (!btn) <span class="hljs-keyword">return</span>;
+  <span class="hljs-keyword">const</span> slug = btn.<span class="hljs-title function_">getAttribute</span>(<span class="hljs-string">&#x27;data-slug&#x27;</span>);
+  <span class="hljs-keyword">if</span> (!slug) <span class="hljs-keyword">return</span>;
+  e.<span class="hljs-title function_">preventDefault</span>();
+  e.<span class="hljs-title function_">stopPropagation</span>();
+  <span class="hljs-title function_">toggleFold</span>(slug);
 };
 </code></pre>
 <p>Where <code>toggleFold</code> is a callback passed from <code>App.tsx</code> (or <code>FileViewer</code>) that updates <code>foldedSections</code>.</p>
@@ -813,24 +813,24 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <h2 id="part-5--toc-sync-strategy">Part 5 — TOC sync strategy</h2>
 <h3 id="state-management--recommendation">State management — recommendation</h3>
 <p><strong>Lift to <code>App.tsx</code>.</strong> Add:</p>
-<pre><code class="language-ts">const [foldedSections, setFoldedSections] = useState&lt;Set&lt;string&gt;&gt;(new Set());
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> [foldedSections, setFoldedSections] = useState&lt;<span class="hljs-title class_">Set</span>&lt;<span class="hljs-built_in">string</span>&gt;&gt;(<span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>());
 
-// Reset whenever the viewing file changes
-useEffect(() =&gt; { setFoldedSections(new Set()); }, [viewingFile?.path]);
+<span class="hljs-comment">// Reset whenever the viewing file changes</span>
+<span class="hljs-title function_">useEffect</span>(<span class="hljs-function">() =&gt;</span> { <span class="hljs-title function_">setFoldedSections</span>(<span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>()); }, [viewingFile?.<span class="hljs-property">path</span>]);
 
-const toggleFold = useCallback((slug: string) =&gt; {
-  setFoldedSections(prev =&gt; {
-    const next = new Set(prev);
-    if (next.has(slug)) next.delete(slug); else next.add(slug);
-    return next;
+<span class="hljs-keyword">const</span> toggleFold = <span class="hljs-title function_">useCallback</span>(<span class="hljs-function">(<span class="hljs-params"><span class="hljs-attr">slug</span>: <span class="hljs-built_in">string</span></span>) =&gt;</span> {
+  <span class="hljs-title function_">setFoldedSections</span>(<span class="hljs-function"><span class="hljs-params">prev</span> =&gt;</span> {
+    <span class="hljs-keyword">const</span> next = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>(prev);
+    <span class="hljs-keyword">if</span> (next.<span class="hljs-title function_">has</span>(slug)) next.<span class="hljs-title function_">delete</span>(slug); <span class="hljs-keyword">else</span> next.<span class="hljs-title function_">add</span>(slug);
+    <span class="hljs-keyword">return</span> next;
   });
 }, []);
 
-const expandAncestors = useCallback((slugs: string[]) =&gt; {
-  setFoldedSections(prev =&gt; {
-    const next = new Set(prev);
-    for (const s of slugs) next.delete(s);
-    return next;
+<span class="hljs-keyword">const</span> expandAncestors = <span class="hljs-title function_">useCallback</span>(<span class="hljs-function">(<span class="hljs-params"><span class="hljs-attr">slugs</span>: <span class="hljs-built_in">string</span>[]</span>) =&gt;</span> {
+  <span class="hljs-title function_">setFoldedSections</span>(<span class="hljs-function"><span class="hljs-params">prev</span> =&gt;</span> {
+    <span class="hljs-keyword">const</span> next = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>(prev);
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">const</span> s <span class="hljs-keyword">of</span> slugs) next.<span class="hljs-title function_">delete</span>(s);
+    <span class="hljs-keyword">return</span> next;
   });
 }, []);
 </code></pre>
@@ -904,17 +904,17 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 <ol>
 <li>Add a slug helper in <code>MarkdownViewer.tsx</code> (or a new <code>lib/slug.ts</code> if you prefer): <code>function slugify(text: string, used: Set&lt;string&gt;): string</code> that lowercases, strips punctuation, replaces whitespace with <code>-</code>, and appends <code>-2</code>, <code>-3</code> for duplicates.</li>
 <li>Override marked&#x27;s heading renderer:
-<pre><code class="language-ts">const slugCounts = new Map&lt;string, number&gt;();
-marked.use({
-  renderer: {
-    heading({ tokens, depth }) {
-      const text = this.parser.parseInline(tokens);
-      const plain = text.replace(/&lt;[^&gt;]*&gt;/g, &#x27;&#x27;);  // strip inline HTML for slug
-      const base = slugify(plain);
-      const n = (slugCounts.get(base) ?? 0) + 1;
-      slugCounts.set(base, n);
-      const slug = n === 1 ? base : \`\${base}-\${n}\`;
-      return \`&lt;h\${depth} id=&quot;\${slug}&quot;&gt;\${text}&lt;/h\${depth}&gt;\\n\`;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> slugCounts = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Map</span>&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">number</span>&gt;();
+marked.<span class="hljs-title function_">use</span>({
+  <span class="hljs-attr">renderer</span>: {
+    <span class="hljs-title function_">heading</span>(<span class="hljs-params">{ tokens, depth }</span>) {
+      <span class="hljs-keyword">const</span> text = <span class="hljs-variable language_">this</span>.<span class="hljs-property">parser</span>.<span class="hljs-title function_">parseInline</span>(tokens);
+      <span class="hljs-keyword">const</span> plain = text.<span class="hljs-title function_">replace</span>(<span class="hljs-regexp">/&lt;[^&gt;]*&gt;/g</span>, <span class="hljs-string">&#x27;&#x27;</span>);  <span class="hljs-comment">// strip inline HTML for slug</span>
+      <span class="hljs-keyword">const</span> base = <span class="hljs-title function_">slugify</span>(plain);
+      <span class="hljs-keyword">const</span> n = (slugCounts.<span class="hljs-title function_">get</span>(base) ?? <span class="hljs-number">0</span>) + <span class="hljs-number">1</span>;
+      slugCounts.<span class="hljs-title function_">set</span>(base, n);
+      <span class="hljs-keyword">const</span> slug = n === <span class="hljs-number">1</span> ? base : <span class="hljs-string">\`<span class="hljs-subst">\${base}</span>-<span class="hljs-subst">\${n}</span>\`</span>;
+      <span class="hljs-keyword">return</span> <span class="hljs-string">\`&lt;h<span class="hljs-subst">\${depth}</span> id=&quot;<span class="hljs-subst">\${slug}</span>&quot;&gt;<span class="hljs-subst">\${text}</span>&lt;/h<span class="hljs-subst">\${depth}</span>&gt;\\n\`</span>;
     }
   }
 });
@@ -979,8 +979,8 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 13-mermaid.md consis
 <h2 id="flowchart">Flowchart</h2>
 <div class="mermaid-mount"><div class="mermaid-loading">Loading diagram…</div></div>
 <h2 id="regular-code-block-should-stay-as-code">Regular code block (should stay as code)</h2>
-<pre><code class="language-js">const hello = &quot;world&quot;;
-console.log(hello);
+<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> hello = <span class="hljs-string">&quot;world&quot;</span>;
+<span class="hljs-variable language_">console</span>.<span class="hljs-title function_">log</span>(hello);
 </code></pre>
 <p>Done.</p></section></div>"
 `;
