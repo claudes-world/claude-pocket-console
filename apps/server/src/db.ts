@@ -60,6 +60,12 @@ db.exec(`
   -- constraint already creates an identical implicit index.
 `);
 
+// Prune stale TL;DR cache entries older than 30 days.
+// Runs on every startup; idx_tldr_created keeps this fast.
+db.exec(
+  `DELETE FROM tldr_cache WHERE created_at < unixepoch() * 1000 - 30 * 86400 * 1000`
+);
+
 // Migration: early builds of reading_list shipped `created_at TEXT DEFAULT
 // (datetime('now'))`. The route layer (and tests) now assume epoch-ms
 // INTEGER. `CREATE TABLE IF NOT EXISTS` never rewrites an existing schema,
