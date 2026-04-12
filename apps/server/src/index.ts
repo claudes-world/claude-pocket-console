@@ -103,7 +103,9 @@ try {
   const entry = Object.values(manifest).find((e: any) => e.isEntry) as any;
   if (entry) {
     if (entry.file) earlyHintsLinks.push(`</${entry.file}>; rel=preload; as=script; crossorigin`);
-    if (entry.css?.[0]) earlyHintsLinks.push(`</${entry.css[0]}>; rel=preload; as=style`);
+    for (const css of entry.css ?? []) {
+      earlyHintsLinks.push(`</${css}>; rel=preload; as=style`);
+    }
   }
   earlyHintsLinks.push("<https://telegram.org>; rel=preconnect");
 } catch (e: any) {
