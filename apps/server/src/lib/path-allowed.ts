@@ -70,7 +70,7 @@ export function __resetRealRootCacheForTests(): void {
 
 export async function isPathAllowed(
   absPath: string,
-  allowedRoots: string[],
+  allowedRoots: readonly string[],
 ): Promise<boolean> {
   let realCandidate: string;
   try {

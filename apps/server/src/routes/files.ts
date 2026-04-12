@@ -33,11 +33,8 @@ type DownloadTicket = {
 
 const downloadTickets = new Map<string, DownloadTicket>();
 
-// Allowed root directories the file viewer can access
-const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
-
 function isPathAllowed(absPath: string): Promise<boolean> {
-  return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+  return isPathAllowedShared(absPath, ALLOWED_FILE_ROOTS);
 }
 
 function pruneExpiredDownloadTickets(now = Date.now()) {
@@ -122,7 +119,7 @@ function sanitizeFilename(raw: string): string | null {
 // List available root directories
 app.get("/roots", (c) => {
   return c.json({
-    roots: ALLOWED_ROOTS.map((r) => ({
+    roots: ALLOWED_FILE_ROOTS.map((r) => ({
       path: r,
       name: r.replace("/home/claude/", "~/"),
     })),
@@ -178,7 +175,7 @@ app.get("/list", async (c) => {
     });
 
     // Return parent: null ONLY if `resolve(resolved, "..")` is itself
-    // NOT allowed. Using `ALLOWED_ROOTS.includes(resolved)` would break
+    // NOT allowed. Using `ALLOWED_FILE_ROOTS.includes(resolved)` would break
     // nested allowed roots — e.g. if both /a/b and /a/b/c are in the
     // list, a user at /a/b/c could see `parent: null` and be unable to
     // navigate up to /a/b even though that path is allowed. Use the
@@ -344,7 +341,7 @@ app.get("/search", async (c) => {
   const q = qRaw;
 
   const scopeRaw = c.req.query("scope");
-  let roots: string[] = ALLOWED_ROOTS;
+  let roots: readonly string[] = ALLOWED_FILE_ROOTS;
   if (scopeRaw) {
     const scopeResolved = resolve(scopeRaw);
     // Reject scopes that aren't inside an allowed root. Same check as every
@@ -446,7 +443,7 @@ app.post(
     //     same suffix), and
     // (b) symlink-redirected writes (a symlink inside an allowed dir pointing
     //     outside the allowed root would trick the write into landing outside
-    //     ALLOWED_ROOTS).
+    //     ALLOWED_FILE_ROOTS).
     //
     // Verify the target directory exists before attempting writes. If it
     // doesn't, open() would throw ENOENT which would surface as a generic 500.
@@ -623,7 +620,7 @@ app.post(
     //     two concurrent callers pick the same suffix), and
     // (b) symlink-redirected writes (an attacker placing a symlink inside
     //     an allowed dir that points outside the allowed root would otherwise
-    //     trick the write into landing outside ALLOWED_ROOTS).
+    //     trick the write into landing outside ALLOWED_FILE_ROOTS).
     //
     // Try the chosen filename, then incrementing suffixes until O_EXCL
     // succeeds or we give up.
