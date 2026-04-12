@@ -3,10 +3,20 @@
 # Usage: scripts/extract-release-section.sh <version> [<changelog-path>]
 set -euo pipefail
 VERSION="${1:?version required (e.g. 1.10.0, no v prefix)}"
+
+# Validate semver format (no v prefix) — prevents path traversal via /tmp filename
+if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+  echo "ERROR: version must be semver format (e.g. 1.10.0)" >&2
+  exit 1
+fi
+
 FILE="${2:-CHANGELOG.md}"
 OUT="/tmp/release-notes-${VERSION}.md"
 
-awk -v v="$VERSION" '
+# Escape dots so awk treats them as literal characters, not regex wildcards
+ESC_VERSION=$(echo "$VERSION" | sed 's/\./\\./g')
+
+awk -v v="$ESC_VERSION" '
   $0 ~ "^## \\[" v "\\]" { found=1; next }
   found && /^## \[/ { exit }
   found { print }
