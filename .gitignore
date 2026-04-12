@@ -342,3 +342,6 @@ __marimo__/
 
 test-results/
 
+# Worktree-local port allocations from port-for (ADR 0003)
+.world/ports.lock
+

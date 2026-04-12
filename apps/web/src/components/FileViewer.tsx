@@ -3,6 +3,7 @@ import { FiDownload } from "react-icons/fi";
 import { getAuthHeaders } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BottomSheet } from "./BottomSheet";
+import { getFileIcon } from "./file-icons";
 
 const PASTE_MAX_BYTES = 1024 * 1024;
 
@@ -155,54 +156,49 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
   const handleDownload = async () => {
     if (!filePath || !fileName || downloading) return;
-    setDownloading(true);
     setError(null);
+
+    const downloadWindow = window.open("about:blank", "_blank");
+    if (!downloadWindow) {
+      setError("Download blocked by browser. Allow popups for this site.");
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/files/download?path=${encodeURIComponent(filePath)}`, {
-        headers: getAuthHeaders(),
+      downloadWindow.opener = null;
+    } catch {
+      // Some WebViews make opener read-only. The ticket is still single-use.
+    }
+
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/files/download-ticket", {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ path: filePath }),
       });
       if (!res.ok) {
-        // Try to surface server error message if JSON
+        downloadWindow.close();
         let msg = `Download failed (${res.status})`;
         try {
           const data = await res.json();
           if (data?.error) msg = data.error;
         } catch { /* not JSON */ }
-        setError(msg);
-        return;
+        throw new Error(msg);
       }
-      // Re-type the response bytes as octet-stream. iOS Safari / Telegram
-      // in-app webview ignore the `download` attribute on anchors pointing
-      // at blob URLs whose MIME type is something the browser can render
-      // inline (text/markdown, text/plain, text/html, etc.). The result is
-      // that instead of triggering a save, the webview navigates to the
-      // blob URL in-place and shows the raw content, which Liam reported as
-      // "raw markdown in the viewer" for v1.8.0 .md files. Forcing
-      // application/octet-stream keeps the browser from sniffing a
-      // renderable type and reliably routes the click through the normal
-      // file-save path on iOS, Android, and desktop.
-      //
-      // Use Blob.slice() instead of `new Blob([rawBlob], {...})` because
-      // slice returns a view over the existing bytes (zero-copy) whereas
-      // the Blob constructor clones the whole payload. The server caps
-      // downloads at 50MB, and doubling that in WebView RAM has been known
-      // to get the renderer killed mid-download on low-memory iOS devices.
-      const rawBlob = await res.blob();
-      const blob = rawBlob.slice(0, rawBlob.size, "application/octet-stream");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      // rel=noopener is a safety belt: if a browser ever opens the link in
-      // a new context instead of downloading, we don't want it to inherit
-      // window.opener access back into the CPC app.
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Give the browser a tick before revoking the object URL
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      const data = await res.json() as { ticket?: string };
+      if (!data.ticket) {
+        downloadWindow.close();
+        throw new Error("Download failed: missing ticket");
+      }
+
+      downloadWindow.location.href = `/api/files/download?ticket=${encodeURIComponent(data.ticket)}`;
     } catch (err) {
+      downloadWindow.close();
       setError(err instanceof Error ? err.message : "Download failed");
     } finally {
       setDownloading(false);
@@ -623,7 +619,11 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           `4px 8px` so the 44px button heights don't grow the header
           visibly — with box-sizing: border-box the 44px floor already
           absorbs the padding, and the buttons themselves still read as
-          inline icons. */}
+          inline icons. The header also stops touch propagation because
+          the FileViewer lives inside the app-wide swipeable tab viewport;
+          otherwise small tap drift on these buttons can be interpreted as
+          a tab swipe and make the controls feel hard to press even when
+          their DOM boxes are 44x44. */}
       <div
         style={{
           padding: "4px 8px",
@@ -636,6 +636,9 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
           maxWidth: "100%",
           overflow: "hidden",
         }}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
       >
         {/* Back/Up button. When viewing a file it goes back to the
             directory listing; when in a directory with a parent it goes
@@ -835,13 +838,14 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             >
               <span
                 style={{
-                  color: entry.type === "dir" ? "#7aa2f7" : "#c0caf5",
-                  fontSize: 14,
                   width: 20,
-                  textAlign: "center",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                 }}
               >
-                {entry.type === "dir" ? "📁" : "📄"}
+                {getFileIcon(entry.name, entry.type === "dir")}
               </span>
               <span
                 style={{

@@ -1,4 +1,5 @@
 import React from "react";
+import { pushDebug } from "../debug/capture";
 
 type ErrorBoundaryLevel = "root" | "tab";
 
@@ -26,6 +27,18 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     const label = this.props.name ? `:${this.props.name}` : "";
     // Visible in browser devtools and any future debug overlay.
     console.error(`[ErrorBoundary${label}]`, error, info);
+
+    // Bridge to debug overlay capture store
+    try {
+      pushDebug({
+        type: "error",
+        message: error.message,
+        detail: (error.stack || "") + "\n" + (info.componentStack || ""),
+        source: `ErrorBoundary${label}`,
+      });
+    } catch {
+      // Debug bridge must never break the boundary
+    }
 
     // Telegram haptic buzz on crash, if the WebApp object is reachable.
     try {

@@ -1,32 +1,102 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { randomBytes } from "node:crypto";
 import {
   open,
   readdir,
   readFile,
   stat,
   unlink,
-  writeFile,
 } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { constants as fsConstants } from "node:fs";
-import { isPathAllowed as isPathAllowedShared } from "../lib/path-allowed.js";
+import { Readable } from "node:stream";
+import {
+  ALLOWED_FILE_ROOTS,
+  isPathAllowed as isPathAllowedShared,
+} from "../lib/path-allowed.js";
 
 const app = new Hono();
 
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
+const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const UPLOAD_BODY_LIMIT = 50 * 1024 * 1024;
+const UPLOAD_BODY_LIMIT_MB = UPLOAD_BODY_LIMIT / (1024 * 1024);
+const DOWNLOAD_TICKET_TTL_MS = 60 * 1000;
+
+type DownloadTicket = {
+  path: string;
+  expiresAt: number;
+  used: boolean;
+};
+
+const downloadTickets = new Map<string, DownloadTicket>();
 
 // Allowed root directories the file viewer can access
-const ALLOWED_ROOTS = [
-  "/home/claude/claudes-world",
-  "/home/claude/code",
-  "/home/claude/bin",
-  "/home/claude/.claude",
-  "/home/claude/claudes-world/.claude",
-];
+const ALLOWED_ROOTS = [...ALLOWED_FILE_ROOTS];
 
 function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+}
+
+function pruneExpiredDownloadTickets(now = Date.now()) {
+  for (const [ticket, record] of downloadTickets) {
+    if (record.expiresAt <= now) {
+      downloadTickets.delete(ticket);
+    }
+  }
+}
+
+async function getDownloadableFile(filePath: string): Promise<
+  | { ok: true; path: string; size: number; name: string }
+  | { ok: false; status: 400 | 403 | 404 | 413 | 500; error: string }
+> {
+  const resolved = resolve(filePath);
+  if (!await isPathAllowed(resolved)) {
+    return { ok: false, status: 403, error: "Access denied" };
+  }
+
+  try {
+    const st = await stat(resolved);
+    if (!st.isFile()) {
+      return { ok: false, status: 400, error: "Not a file" };
+    }
+
+    if (st.size > DOWNLOAD_MAX_BYTES) {
+      return { ok: false, status: 413, error: `File too large (max ${DOWNLOAD_MAX_BYTES / (1024 * 1024)}MB)` };
+    }
+
+    return {
+      ok: true,
+      path: resolved,
+      size: st.size,
+      name: basename(resolved) || "file",
+    };
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      return { ok: false, status: 404, error: "File not found" };
+    }
+    console.error("[files/download] stat error:", err);
+    return { ok: false, status: 500, error: "Failed to read file" };
+  }
+}
+
+function createDownloadResponse(file: { path: string; size: number; name: string }) {
+  const encodedName = encodeURIComponent(file.name);
+  const safeName = file.name.replace(/["\r\n]/g, "") || "file";
+  const body = Readable.toWeb(createReadStream(file.path)) as unknown as BodyInit;
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(file.size),
+      "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 /**
@@ -192,61 +262,72 @@ app.get("/read", async (c) => {
 });
 
 // Download file (raw bytes, preserves binary content)
+app.post("/download-ticket", async (c) => {
+  pruneExpiredDownloadTickets();
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!body || typeof body !== "object" || typeof (body as { path?: unknown }).path !== "string") {
+    return c.json({ error: "path required" }, 400);
+  }
+
+  const file = await getDownloadableFile((body as { path: string }).path);
+  if (!file.ok) {
+    return c.json({ error: file.error }, file.status);
+  }
+
+  const ticket = randomBytes(16).toString("hex");
+  downloadTickets.set(ticket, {
+    path: file.path,
+    expiresAt: Date.now() + DOWNLOAD_TICKET_TTL_MS,
+    used: false,
+  });
+
+  return c.json({ ticket });
+});
+
 app.get("/download", async (c) => {
+  const ticket = c.req.query("ticket");
+  if (ticket) {
+    // Pruning happens in the POST handler so the map doesn't grow unbounded;
+    // the per-request expiry check below handles correctness on GET.
+    const record = downloadTickets.get(ticket);
+    if (!record || record.used || record.expiresAt <= Date.now()) {
+      return c.json({ error: "invalid or expired ticket" }, 403);
+    }
+
+    // Claim the ticket synchronously (before any await) so two concurrent
+    // GETs can't both pass the `record.used` check and both receive the file.
+    // If the subsequent file validation fails we undo the claim so the user
+    // can retry with the same ticket.
+    record.used = true;
+
+    const file = await getDownloadableFile(record.path);
+    if (!file.ok) {
+      // Undo claim on file-not-available so the caller can retry.
+      record.used = false;
+      return c.json({ error: file.error }, file.status);
+    }
+
+    return createDownloadResponse(file);
+  }
+
   const filePath = c.req.query("path");
   if (!filePath) {
     return c.json({ error: "path parameter required" }, 400);
   }
 
-  const resolved = resolve(filePath);
-  if (!await isPathAllowed(resolved)) {
-    return c.json({ error: "Access denied" }, 403);
+  const file = await getDownloadableFile(filePath);
+  if (!file.ok) {
+    return c.json({ error: file.error }, file.status);
   }
 
-  try {
-    const st = await stat(resolved);
-    if (!st.isFile()) {
-      return c.json({ error: "Not a file" }, 400);
-    }
-
-    // Cap download size at 50MB for safety
-    if (st.size > 50 * 1024 * 1024) {
-      return c.json({ error: "File too large (max 50MB)" }, 413);
-    }
-
-    const content = await readFile(resolved);
-    const baseName = resolved.split("/").pop() || "file";
-
-    // Basic content-type guess by extension (keeps browsers from mis-sniffing)
-    const ext = baseName.split(".").pop()?.toLowerCase() || "";
-    const typeMap: Record<string, string> = {
-      md: "text/markdown", txt: "text/plain", json: "application/json",
-      js: "application/javascript", ts: "application/typescript",
-      html: "text/html", css: "text/css", csv: "text/csv",
-      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-      gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
-      pdf: "application/pdf", mp3: "audio/mpeg", mp4: "video/mp4",
-      webm: "video/webm", wav: "audio/wav", ogg: "audio/ogg",
-      zip: "application/zip", gz: "application/gzip",
-    };
-    const contentType = typeMap[ext] || "application/octet-stream";
-
-    // RFC 5987 encoding for Content-Disposition filename to handle unicode safely
-    const encodedName = encodeURIComponent(baseName);
-
-    return new Response(new Uint8Array(content), {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": String(content.length),
-        "Content-Disposition": `attachment; filename="${baseName.replace(/"/g, "")}"; filename*=UTF-8''${encodedName}`,
-        "Cache-Control": "no-store",
-      },
-    });
-  } catch (err) {
-    console.error("[files/download] error:", err);
-    return c.json({ error: "Failed to read file" }, 500);
-  }
+  return createDownloadResponse(file);
 });
 
 // Fuzzy file/path search — BFS across all allowed roots.
@@ -325,7 +406,17 @@ app.get("/search", async (c) => {
 });
 
 // Upload file to current directory
-app.post("/upload", async (c) => {
+app.post(
+  "/upload",
+  bodyLimit({
+    maxSize: UPLOAD_BODY_LIMIT,
+    onError: (c) =>
+      c.json(
+        { error: `Request body too large (max ${UPLOAD_BODY_LIMIT_MB}MB)` },
+        413,
+      ),
+  }),
+  async (c) => {
   const body = await c.req.parseBody();
   const file = body["file"];
   const dir = (body["dir"] as string) || BASE_DIR;
@@ -340,46 +431,101 @@ app.post("/upload", async (c) => {
   }
 
   try {
-    // Strip any directory components from the user-supplied filename so a
-    // value like "../../etc/passwd" cannot escape the validated `resolved`
-    // directory via path.join. basename() returns just the trailing segment.
-    let fileName = basename((file as File).name || "uploaded-file");
-    // basename() returns `.`, `..`, or `""` unchanged, which path.join would
-    // then normalize into the parent/current directory. Reject those and
-    // fall back to the default name so the upload always writes a new file
-    // inside the validated root.
-    if (fileName === "" || fileName === "." || fileName === "..") {
-      fileName = "uploaded-file";
-    }
-    const destPath = join(resolved, fileName);
-
-    // Don't overwrite existing files — add suffix
-    let finalPath = destPath;
-    let counter = 1;
-    try {
-      while (await stat(finalPath)) {
-        const ext = fileName.includes(".") ? "." + fileName.split(".").pop() : "";
-        const base = fileName.includes(".") ? fileName.slice(0, fileName.lastIndexOf(".")) : fileName;
-        finalPath = join(resolved, `${base}-${counter}${ext}`);
-        counter++;
-      }
-    } catch {
-      // File doesn't exist — good, use this path
-    }
-
+    // Strip directory components then run through sanitizeFilename() which
+    // additionally rejects control characters, null bytes, reserved Windows
+    // names, and other dangerous patterns. basename() is applied first so
+    // sanitizeFilename() never sees a slash-separated path.
+    const rawName = basename((file as File).name || "uploaded-file");
+    const sanitized = sanitizeFilename(rawName);
+    let fileName = sanitized ?? "uploaded-file";
     const arrayBuffer = await (file as File).arrayBuffer();
-    await writeFile(finalPath, Buffer.from(arrayBuffer));
+    const data = Buffer.from(arrayBuffer);
+
+    // Atomic exclusive create with O_NOFOLLOW to defeat both:
+    // (a) TOCTOU race (stat-then-write where two concurrent uploads pick the
+    //     same suffix), and
+    // (b) symlink-redirected writes (a symlink inside an allowed dir pointing
+    //     outside the allowed root would trick the write into landing outside
+    //     ALLOWED_ROOTS).
+    //
+    // Verify the target directory exists before attempting writes. If it
+    // doesn't, open() would throw ENOENT which would surface as a generic 500.
+    try {
+      const dirStat = await stat(resolved);
+      if (!dirStat.isDirectory()) {
+        return c.json({ error: "Target path is not a directory" }, 400);
+      }
+    } catch (err: any) {
+      if (err && err.code === "ENOENT") {
+        return c.json({ error: "Target directory does not exist" }, 404);
+      }
+      throw err;
+    }
+
+    // Try the chosen filename, then incrementing suffixes until O_EXCL
+    // succeeds or we give up.
+    const dotIdx = fileName.lastIndexOf(".");
+    const hasExt = dotIdx > 0;
+    const base = hasExt ? fileName.slice(0, dotIdx) : fileName;
+    const ext = hasExt ? fileName.slice(dotIdx) : "";
+
+    let finalPath = "";
+    for (let counter = 0; counter <= 9999; counter++) {
+      const candidate =
+        counter === 0
+          ? join(resolved, fileName)
+          : join(resolved, `${base}-${counter}${ext}`);
+      let opened = false;
+      try {
+        const handle = await open(
+          candidate,
+          fsConstants.O_WRONLY |
+            fsConstants.O_CREAT |
+            fsConstants.O_EXCL |
+            fsConstants.O_NOFOLLOW,
+          0o644,
+        );
+        opened = true;
+        try {
+          await handle.writeFile(data);
+        } finally {
+          await handle.close();
+        }
+        finalPath = candidate;
+        break;
+      } catch (err: any) {
+        if (err && err.code === "EEXIST") continue;
+        if (err && (err.code === "ELOOP" || err.code === "EMLINK")) {
+          return c.json(
+            { error: "Refusing to write through symlink" },
+            403,
+          );
+        }
+        if (opened) {
+          try {
+            await unlink(candidate);
+          } catch {
+            // ignore — already gone or unlink not allowed
+          }
+        }
+        throw err;
+      }
+    }
+    if (!finalPath) {
+      throw new Error("Could not find available filename");
+    }
 
     return c.json({
       ok: true,
-      path: finalPath,
-      name: finalPath.split("/").pop(),
+      name: basename(finalPath),
       size: arrayBuffer.byteLength,
     });
   } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+    console.error("[files/upload] write error:", err);
+    return c.json({ error: "Failed to write file" }, 500);
   }
-});
+  },
+);
 
 // Paste text content into the current directory as a new file.
 // JSON body: { filename: string, content: string, dir: string }

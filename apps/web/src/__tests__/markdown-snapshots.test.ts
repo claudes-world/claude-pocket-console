@@ -2,20 +2,37 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Marked } from "marked";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
+import {
+  markdownComponents,
+  markdownRehypePlugins,
+  markdownRemarkPlugins,
+} from "../components/MarkdownViewer";
 
-// Use the same marked parser options as MarkdownViewer.tsx, but snapshot only
-// the raw HTML emitted by marked.parse(). This is intentionally a parser-level
-// baseline and does not cover any MarkdownViewer post-processing that happens
-// after parsing (for example, React-rendered replacements such as mermaid).
-// When the react-markdown migration lands, a follow-up test can render the
-// same fixtures through the component and compare the resulting DOM output.
-const marked = new Marked({ gfm: true, breaks: true });
+function renderMarkdown(content: string): string {
+  return renderToStaticMarkup(
+    createElement(
+      "div",
+      { className: "md-content" },
+      createElement(
+        ReactMarkdown,
+        {
+          remarkPlugins: markdownRemarkPlugins,
+          rehypePlugins: markdownRehypePlugins,
+          components: markdownComponents,
+        },
+        content,
+      ),
+    ),
+  );
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(__dirname, "../__fixtures__/markdown");
 
-describe("MarkdownViewer (marked baseline)", () => {
+describe("MarkdownViewer (react-markdown baseline)", () => {
   const fixtures = readdirSync(FIXTURE_DIR)
     .filter((f) => f.endsWith(".md"))
     .sort();
@@ -23,8 +40,7 @@ describe("MarkdownViewer (marked baseline)", () => {
   for (const fixture of fixtures) {
     it(`renders ${fixture} consistently`, () => {
       const content = readFileSync(resolve(FIXTURE_DIR, fixture), "utf-8");
-      const html = marked.parse(content);
-      expect(html).toMatchSnapshot();
+      expect(renderMarkdown(content)).toMatchSnapshot();
     });
   }
 });

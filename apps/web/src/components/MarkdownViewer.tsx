@@ -1,74 +1,212 @@
-import { useEffect, useMemo, useRef } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { marked } from "marked";
+import React, { Children, isValidElement, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+import rehypeSlug from "rehype-slug";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { rehypeCollapsibleSections } from "./markdown/rehype-collapsible-sections";
+import { makeHeadingComponent, type HeadingEntry } from "./markdown/CollapsibleHeading";
 
 interface MarkdownViewerProps {
   content: string;
   fileName: string;
 }
 
-// Configure marked for safe rendering
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+export const markdownRemarkPlugins = [remarkGfm, remarkBreaks];
+
+// rehype-slug is pinned to major 6 in package.json. Heading IDs are a contract
+// for deep links, TOC state, and collapsible headings.
+// rehypeCollapsibleSections must run AFTER rehypeSlug so slug IDs exist.
+export const markdownRehypePlugins = [rehypeSlug, rehypeCollapsibleSections];
+
+function getLanguage(className?: string): string {
+  return (
+    className
+      ?.split(/\s+/)
+      .find((part) => part.startsWith("language-"))
+      ?.replace("language-", "") ?? ""
+  );
+}
+
+function getTextContent(children: ReactNode): string {
+  return Children.toArray(children)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number") {
+        return String(child);
+      }
+
+      return "";
+    })
+    .join("");
+}
+
+function CodeBlock({ className, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: any; className?: string }) {
+  const language = getLanguage(className);
+
+  if (language === "mermaid") {
+    return (
+      <div className="mermaid-mount">
+        <MermaidDiagram source={getTextContent(children).trim()} />
+      </div>
+    );
+  }
+
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+}
+
+function ScrollableTable({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'table'> & { node?: any }) {
+  return (
+    <div className="md-table-scroll">
+      <table {...props}>{children}</table>
+    </div>
+  );
+}
+
+function isMermaidCodeChild(child: ReactNode): boolean {
+  return (
+    isValidElement<{ className?: string }>(child) &&
+    getLanguage(child.props.className) === "mermaid"
+  );
+}
+
+function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'pre'> & { node?: any }) {
+  const childArray = Children.toArray(children);
+
+  if (childArray.length === 1 && isMermaidCodeChild(childArray[0])) {
+    return <>{children}</>;
+  }
+
+  return <pre {...props}>{children}</pre>;
+}
+
+const baseComponents: Partial<Components> = {
+  code: CodeBlock,
+  table: ScrollableTable,
+  pre: PreBlock,
+};
+
+/** @deprecated Use baseComponents internally; kept for test compatibility */
+export const markdownComponents: Components = baseComponents as Components;
+
+function computeEffectiveHidden(
+  headings: HeadingEntry[],
+  foldedIds: Set<string>,
+): Set<string> {
+  if (foldedIds.size === 0) return foldedIds; // fast path: nothing folded
+
+  const hidden = new Set<string>();
+  // Stack tracks ancestor headings; each entry is { level, folded }
+  const ancestors: { level: number; folded: boolean }[] = [];
+
+  for (const { slug, level } of headings) {
+    // Pop ancestors that are not parents of this level
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1].level >= level) {
+      ancestors.pop();
+    }
+
+    const anyAncestorFolded = ancestors.some((a) => a.folded);
+    const selfFolded = foldedIds.has(slug);
+
+    if (anyAncestorFolded || selfFolded) {
+      hidden.add(slug);
+    }
+
+    ancestors.push({ level, folded: selfFolded });
+  }
+
+  return hidden;
+}
 
 export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
-  const html = useMemo(() => {
-    return marked.parse(content) as string;
-  }, [content]);
+  const [foldedIds, setFoldedIds] = useState<Set<string>>(new Set());
 
-  const contentRef = useRef<HTMLDivElement | null>(null);
+  // Collect heading entries as heading components render (Finding 1 fix).
+  // This replaces the fragile regex parser — slugs now come directly from
+  // rehype-slug's id prop, guaranteeing parity.
+  const headingsRef = useRef<HeadingEntry[]>([]);
+  const firstH1SlugRef = useRef<string | null>(null);
 
-  // After marked renders the HTML, find any ```mermaid code blocks and
-  // replace them with a React-rendered MermaidDiagram component. We track
-  // each root we create so we can unmount them on cleanup to avoid leaks.
-  useEffect(() => {
-    const container = contentRef.current;
-    if (!container) return;
+  // Reset collected headings at the start of each render pass.
+  // Reading/writing refs during render is safe here because:
+  //  - we reset at the top of the render (before children mount)
+  //  - heading components append during the same synchronous render pass
+  //  - section components read the ref during the same render pass
+  // This is a well-known "accumulator ref" pattern in React.
+  headingsRef.current = [];
+  firstH1SlugRef.current = null;
 
-    const codeBlocks = container.querySelectorAll<HTMLElement>(
-      "code.language-mermaid"
-    );
-    const roots: Root[] = [];
+  const registerHeading = useCallback((entry: HeadingEntry) => {
+    headingsRef.current.push(entry);
+    if (entry.level === 1 && firstH1SlugRef.current === null) {
+      firstH1SlugRef.current = entry.slug;
+    }
+  }, []);
 
-    codeBlocks.forEach((codeEl) => {
-      const pre = codeEl.closest("pre");
-      if (!pre || !pre.parentNode) return;
-
-      const source = codeEl.textContent ?? "";
-      const mountPoint = document.createElement("div");
-      mountPoint.className = "mermaid-mount";
-      pre.parentNode.replaceChild(mountPoint, pre);
-
-      const root = createRoot(mountPoint);
-      root.render(<MermaidDiagram source={source} />);
-      roots.push(root);
+  const toggleFold = useCallback((id: string) => {
+    setFoldedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
+  }, []);
 
-    return () => {
-      // Defer unmount to avoid "synchronously unmounting a root while React
-      // was already rendering" warnings (React 18+ StrictMode double-invoke).
-      const toUnmount = roots.slice();
-      queueMicrotask(() => {
-        toUnmount.forEach((root) => {
-          try {
-            root.unmount();
-          } catch {
-            // Best-effort cleanup.
-          }
-        });
+  // Build components with fold controls. Recreated when fold state changes,
+  // which is acceptable — react-markdown must re-render on toggle anyway.
+  // Heading components are created via makeHeadingComponent at module-level
+  // factory (Finding 2 fix) — useMemo ensures stable component references
+  // between renders when fold state hasn't changed.
+  const components = useMemo<Components>(() => {
+    const hTags = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+    const headingComponents: Partial<Components> = {};
+
+    for (const tag of hTags) {
+      headingComponents[tag] = makeHeadingComponent(tag, {
+        foldedIds,
+        toggleFold,
+        firstH1SlugRef,
+        registerHeading,
       });
+    }
+
+    return {
+      ...baseComponents,
+      ...headingComponents,
+      section: ({ node: _node, children, ...props }: any) => {
+        const slug = props["data-fold-slug"] as string | undefined;
+        if (!slug) return <section {...props}>{children}</section>;
+        // Compute effective-hidden inline using collected headings.
+        // By the time a section renders, all preceding heading components
+        // have already called registerHeading (synchronous render order).
+        const hidden = computeEffectiveHidden(headingsRef.current, foldedIds).has(slug);
+        return (
+          <section
+            {...props}
+            className={
+              [props.className, hidden ? "cpc-folded" : ""]
+                .filter(Boolean)
+                .join(" ")
+            }
+            aria-hidden={hidden || undefined}
+          >
+            {children}
+          </section>
+        );
+      },
     };
-  }, [html]);
+  }, [foldedIds, toggleFold, registerHeading]);
 
   return (
     <div
+      className="md-viewer-scroll"
       style={{
         padding: "16px 16px",
         overflowY: "auto",
-        overflowX: "auto",
+        overflowX: "hidden",
         height: "100%",
         width: "100%",
         maxWidth: "100%",
@@ -149,12 +287,18 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           white-space: pre;
           max-width: none;
         }
-        .md-content table {
-          display: block;
-          overflow-x: auto;
+        .md-content .md-table-scroll {
           width: 100%;
-          border-collapse: collapse;
+          max-width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
           margin: 12px 0;
+        }
+        .md-content table {
+          width: max-content;
+          min-width: 100%;
+          border-collapse: collapse;
+          margin: 0;
           font-size: 13px;
         }
         .md-content th {
@@ -243,12 +387,49 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
         .md-content .mermaid-error pre {
           margin: 0;
         }
+        /* Collapsible headings */
+        .md-content .cpc-collapsible-heading {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .md-content .cpc-fold-btn {
+          all: unset;
+          flex: 0 0 auto;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 3px;
+        }
+        .md-content .cpc-fold-btn:focus-visible {
+          outline: 2px solid #7aa2f7;
+          outline-offset: 1px;
+        }
+        .md-content .cpc-toggle-chevron {
+          color: #565f89;
+          font-size: 10px;
+          transition: transform 0.2s ease;
+        }
+        .md-content .cpc-fold-btn:hover .cpc-toggle-chevron {
+          color: #7aa2f7;
+          background: rgba(122, 162, 247, 0.1);
+        }
+        .md-content .cpc-section.cpc-folded {
+          display: none;
+        }
       `}</style>
-      <div
-        ref={contentRef}
-        className="md-content"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className="md-content">
+        <ReactMarkdown
+          remarkPlugins={markdownRemarkPlugins}
+          rehypePlugins={markdownRehypePlugins}
+          components={components}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }

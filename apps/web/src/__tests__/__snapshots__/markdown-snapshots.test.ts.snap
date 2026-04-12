@@ -1,49 +1,51 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`MarkdownViewer (marked baseline) > renders 01-headings.md consistently 1`] = `
-"<h1>Heading Level 1</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 01-headings.md consistently 1`] = `
+"<div class="md-content"><h1 id="heading-level-1" data-has-section="true">Heading Level 1</h1><section class="cpc-section" id="section-heading-level-1" data-fold-slug="heading-level-1">
 <p>Some content under an h1 with <strong>bold</strong> text.</p>
-<h2>Heading Level 2</h2>
+<h2 id="heading-level-2">Heading Level 2</h2>
 <p>A paragraph under h2 with <code>inline code</code> and a <a href="https://example.com">link</a>.</p>
-<h3>Heading Level 3</h3>
+<h3 id="heading-level-3">Heading Level 3</h3>
 <ul>
 <li>A bullet under h3</li>
 <li>Another bullet</li>
 </ul>
-<h4>Heading Level 4</h4>
+<h4 id="heading-level-4">Heading Level 4</h4>
 <p>Paragraph under h4.</p>
-<h5>Heading Level 5</h5>
+<h5 id="heading-level-5">Heading Level 5</h5>
 <blockquote>
 <p>A blockquote under h5.</p>
 </blockquote>
-<h6>Heading Level 6</h6>
+<h6 id="heading-level-6">Heading Level 6</h6>
 <p>Final paragraph under the smallest heading.</p>
-<h2>Another H2 After H6</h2>
+<h2 id="another-h2-after-h6">Another H2 After H6</h2>
 <p>Content to test heading-reset behavior.</p>
-<h3>Nested h3</h3>
-<p>And some trailing content.</p>
-"
+<h3 id="nested-h3">Nested h3</h3>
+<p>And some trailing content.</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 02-lists.md consistently 1`] = `
-"<h1>Lists</h1>
-<h2>Unordered</h2>
+exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consistently 1`] = `
+"<div class="md-content"><h1 id="lists" data-has-section="true">Lists</h1><section class="cpc-section" id="section-lists" data-fold-slug="lists">
+<h2 id="unordered">Unordered</h2>
 <ul>
 <li>Apple</li>
 <li>Banana</li>
 <li>Cherry</li>
 </ul>
-<h2>Ordered</h2>
+<h2 id="ordered">Ordered</h2>
 <ol>
 <li>First</li>
 <li>Second</li>
 <li>Third</li>
 </ol>
-<h2>Nested (3+ deep)</h2>
+<h2 id="nested-3-deep">Nested (3+ deep)</h2>
 <ul>
-<li>Level 1 item A<ul>
-<li>Level 2 item A.1<ul>
-<li>Level 3 item A.1.a<ul>
+<li>Level 1 item A
+<ul>
+<li>Level 2 item A.1
+<ul>
+<li>Level 3 item A.1.a
+<ul>
 <li>Level 4 item A.1.a.i</li>
 </ul>
 </li>
@@ -55,41 +57,46 @@ exports[`MarkdownViewer (marked baseline) > renders 02-lists.md consistently 1`]
 </li>
 <li>Level 1 item B</li>
 </ul>
-<h2>Task list</h2>
-<ul>
-<li><input disabled="" type="checkbox"> Open task</li>
-<li><input checked="" disabled="" type="checkbox"> Completed task</li>
-<li><input disabled="" type="checkbox"> Another open task<ul>
-<li><input checked="" disabled="" type="checkbox"> Nested completed subtask</li>
-<li><input disabled="" type="checkbox"> Nested open subtask</li>
+<h2 id="task-list">Task list</h2>
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" disabled=""/> Open task</li>
+<li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Completed task</li>
+<li class="task-list-item"><input type="checkbox" disabled=""/> Another open task
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Nested completed subtask</li>
+<li class="task-list-item"><input type="checkbox" disabled=""/> Nested open subtask</li>
 </ul>
 </li>
 </ul>
-<h2>Mixed ordered + unordered</h2>
+<h2 id="mixed-ordered--unordered">Mixed ordered + unordered</h2>
 <ol>
-<li><p>First ordered</p>
+<li>
+<p>First ordered</p>
 <ul>
 <li>Unordered sub A</li>
-<li>Unordered sub B<ol>
+<li>Unordered sub B
+<ol>
 <li>Re-ordered sub-sub</li>
 <li>Another re-ordered sub-sub</li>
 </ol>
 </li>
 </ul>
 </li>
-<li><p>Second ordered</p>
+<li>
+<p>Second ordered</p>
 </li>
-<li><p>Third ordered with a paragraph.</p>
+<li>
+<p>Third ordered with a paragraph.</p>
 <p>Continuation paragraph inside list item.</p>
 </li>
-<li><p>Fourth ordered</p>
+<li>
+<p>Fourth ordered</p>
 </li>
-</ol>
-"
+</ol></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 03-code-block-short.md consistently 1`] = `
-"<h1>Short code block</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 03-code-block-short.md consistently 1`] = `
+"<div class="md-content"><h1 id="short-code-block" data-has-section="true">Short code block</h1><section class="cpc-section" id="section-short-code-block" data-fold-slug="short-code-block">
 <p>Here is a small TypeScript snippet:</p>
 <pre><code class="language-ts">function greet(name: string): string {
   return \`Hello, \${name}!\`;
@@ -100,12 +107,11 @@ greet(&quot;world&quot;);
 <p>And a short bash example:</p>
 <pre><code class="language-bash">pnpm install
 pnpm test
-</code></pre>
-"
+</code></pre></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 04-code-block-wide.md consistently 1`] = `
-"<h1>Wide code block (horizontal scroll target)</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 04-code-block-wide.md consistently 1`] = `
+"<div class="md-content"><h1 id="wide-code-block-horizontal-scroll-target" data-has-section="true">Wide code block (horizontal scroll target)</h1><section class="cpc-section" id="section-wide-code-block-horizontal-scroll-target" data-fold-slug="wide-code-block-horizontal-scroll-target">
 <p>This fixture exists to pin down the PR #20 regression around wide code blocks and horizontal scrolling.</p>
 <pre><code class="language-ts">// This single line is intentionally very long to force horizontal scrolling inside the rendered &lt;pre&gt;&lt;code&gt; container so we can diff how marked and react-markdown lay out the overflow behavior under the same CSS.
 const veryLongIdentifier = { alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8, iota: 9, kappa: 10, lambda: 11, mu: 12, nu: 13, xi: 14, omicron: 15, pi: 16, rho: 17, sigma: 18, tau: 19, upsilon: 20, phi: 21, chi: 22, psi: 23, omega: 24 };
@@ -116,99 +122,27 @@ function doSomethingThatTakesAbsurdlyManyArgumentsAndReturnsAnAbsurdlyLongInline
 <p>And a short line afterwards to verify the following paragraph wraps normally after a wide code block:</p>
 <pre><code>$ curl -sSL https://example.com/some/very/long/path/that/should/not/wrap/inside/the/pre/block/because/pre/preserves/whitespace/and/horizontal/scroll/should/kick/in?query=param1&amp;query=param2&amp;query=param3
 </code></pre>
-<p>End of wide fixture.</p>
-"
+<p>End of wide fixture.</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 05-table-narrow.md consistently 1`] = `
-"<h1>Narrow table</h1>
-<table>
-<thead>
-<tr>
-<th>Name</th>
-<th align="right">Count</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Apples</td>
-<td align="right">3</td>
-</tr>
-<tr>
-<td>Bananas</td>
-<td align="right">12</td>
-</tr>
-<tr>
-<td>Cherries</td>
-<td align="right">47</td>
-</tr>
-</tbody></table>
-<p>A short paragraph after the table.</p>
-"
+exports[`MarkdownViewer (react-markdown baseline) > renders 05-table-narrow.md consistently 1`] = `
+"<div class="md-content"><h1 id="narrow-table" data-has-section="true">Narrow table</h1><section class="cpc-section" id="section-narrow-table" data-fold-slug="narrow-table">
+<div class="md-table-scroll"><table><thead><tr><th>Name</th><th style="text-align:right">Count</th></tr></thead><tbody><tr><td>Apples</td><td style="text-align:right">3</td></tr><tr><td>Bananas</td><td style="text-align:right">12</td></tr><tr><td>Cherries</td><td style="text-align:right">47</td></tr></tbody></table></div>
+<p>A short paragraph after the table.</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 06-table-wide.md consistently 1`] = `
-"<h1>Wide table</h1>
-<table>
-<thead>
-<tr>
-<th align="left">Column A</th>
-<th align="center">Column B</th>
-<th align="left">Column C (with a long header)</th>
-<th align="right">Column D</th>
-<th>Column E</th>
-<th>Column F</th>
-</tr>
-</thead>
-<tbody><tr>
-<td align="left">alpha</td>
-<td align="center">beta</td>
-<td align="left">this is a fairly long cell value that should push the column width out</td>
-<td align="right">1</td>
-<td>true</td>
-<td><code>code</code></td>
-</tr>
-<tr>
-<td align="left">gamma</td>
-<td align="center">delta</td>
-<td align="left">another long cell with <strong>bold</strong> and <em>italic</em> inline styles interleaved</td>
-<td align="right">22</td>
-<td>false</td>
-<td><a href="https://example.com">link</a></td>
-</tr>
-<tr>
-<td align="left">epsilon</td>
-<td align="center">zeta</td>
-<td align="left">short</td>
-<td align="right">333</td>
-<td>true</td>
-<td>plain</td>
-</tr>
-<tr>
-<td align="left">eta</td>
-<td align="center">theta</td>
-<td align="left">cell with a pipe escape | inside it</td>
-<td align="right">4444</td>
-<td>false</td>
-<td><code>x</code></td>
-</tr>
-<tr>
-<td align="left">iota</td>
-<td align="center">kappa</td>
-<td align="left">final row with a <a href="https://example.com/path?a=1&b=2">link</a> embedded</td>
-<td align="right">55555</td>
-<td>true</td>
-<td>done</td>
-</tr>
-</tbody></table>
-<p>Trailing paragraph to verify flow after a wide table.</p>
-"
+exports[`MarkdownViewer (react-markdown baseline) > renders 06-table-wide.md consistently 1`] = `
+"<div class="md-content"><h1 id="wide-table" data-has-section="true">Wide table</h1><section class="cpc-section" id="section-wide-table" data-fold-slug="wide-table">
+<div class="md-table-scroll"><table><thead><tr><th style="text-align:left">Column A</th><th style="text-align:center">Column B</th><th style="text-align:left">Column C (with a long header)</th><th style="text-align:right">Column D</th><th>Column E</th><th>Column F</th></tr></thead><tbody><tr><td style="text-align:left">alpha</td><td style="text-align:center">beta</td><td style="text-align:left">this is a fairly long cell value that should push the column width out</td><td style="text-align:right">1</td><td>true</td><td><code>code</code></td></tr><tr><td style="text-align:left">gamma</td><td style="text-align:center">delta</td><td style="text-align:left">another long cell with <strong>bold</strong> and <em>italic</em> inline styles interleaved</td><td style="text-align:right">22</td><td>false</td><td><a href="https://example.com">link</a></td></tr><tr><td style="text-align:left">epsilon</td><td style="text-align:center">zeta</td><td style="text-align:left">short</td><td style="text-align:right">333</td><td>true</td><td>plain</td></tr><tr><td style="text-align:left">eta</td><td style="text-align:center">theta</td><td style="text-align:left">cell with a pipe escape | inside it</td><td style="text-align:right">4444</td><td>false</td><td><code>x</code></td></tr><tr><td style="text-align:left">iota</td><td style="text-align:center">kappa</td><td style="text-align:left">final row with a <a href="https://example.com/path?a=1&amp;b=2">link</a> embedded</td><td style="text-align:right">55555</td><td>true</td><td>done</td></tr></tbody></table></div>
+<p>Trailing paragraph to verify flow after a wide table.</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 07-blockquote.md consistently 1`] = `
-"<h1>Blockquotes</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 07-blockquote.md consistently 1`] = `
+"<div class="md-content"><h1 id="blockquotes" data-has-section="true">Blockquotes</h1><section class="cpc-section" id="section-blockquotes" data-fold-slug="blockquotes">
 <p>Single-level blockquote:</p>
 <blockquote>
-<p>This is a simple single-level blockquote.<br>It spans two lines of markdown source.</p>
+<p>This is a simple single-level blockquote.<br/>
+It spans two lines of markdown source.</p>
 </blockquote>
 <p>With inline formatting:</p>
 <blockquote>
@@ -230,7 +164,8 @@ exports[`MarkdownViewer (marked baseline) > renders 07-blockquote.md consistentl
 <blockquote>
 <ul>
 <li>Item one inside quote</li>
-<li>Item two inside quote<ul>
+<li>Item two inside quote
+<ul>
 <li>Nested item</li>
 </ul>
 </li>
@@ -241,26 +176,26 @@ exports[`MarkdownViewer (marked baseline) > renders 07-blockquote.md consistentl
 <blockquote>
 <pre><code class="language-ts">const quoted = &quot;code inside blockquote&quot;;
 </code></pre>
-</blockquote>
-"
+</blockquote></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 08-mixed-inline.md consistently 1`] = `
-"<h1>Mixed inline formatting</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 08-mixed-inline.md consistently 1`] = `
+"<div class="md-content"><h1 id="mixed-inline-formatting" data-has-section="true">Mixed inline formatting</h1><section class="cpc-section" id="section-mixed-inline-formatting" data-fold-slug="mixed-inline-formatting">
 <p>A single dense paragraph with <strong>bold</strong>, <em>italic</em>, <em><strong>bold-italic</strong></em>, <code>inline code</code>, <del>strikethrough</del>, and a <a href="https://example.com">link</a> all interleaved into one flowing sentence so the renderer has to deal with many inline transitions in a row without any breaks between them at all.</p>
 <p>Another paragraph that <strong>combines <code>code inside bold</code></strong> and <em><a href="https://example.com">links inside italics</a></em> and <code>**not bold inside code**</code> to verify escape semantics.</p>
 <p>A line with emphasis edges: <strong>bold at start</strong> of a sentence, and another sentence ending with <strong>bold at end</strong>. Also <em>italic at start</em> and <em>italic at end</em>.</p>
 <p>Adjacent inline tokens: <strong>bold</strong><code>code</code> and <em>italic</em><strong>bold</strong> and <code>code</code><a href="https://example.com">link</a>.</p>
 <p>Strikethrough combos: <del>plain strike</del>, <del><strong>bold strike</strong></del>, <del><em>italic strike</em></del>, <del><code>code strike</code></del>.</p>
-<p>Line 1 with trailing spaces to force a soft break<br>Line 2 after the soft break.</p>
-<p>Line A<br>Line B (single newline between — with <code>breaks: true</code>, marked renders this as <code>&lt;br&gt;</code>).</p>
-"
+<p>Line 1 with trailing spaces to force a soft break<br/>
+Line 2 after the soft break.</p>
+<p>Line A<br/>
+Line B (single newline between — with <code>breaks: true</code>, marked renders this as <code>&lt;br&gt;</code>).</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 09-link-edge-cases.md consistently 1`] = `
-"<h1>Link edge cases</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 09-link-edge-cases.md consistently 1`] = `
+"<link rel="preload" as="image" href="https://shared.claude.do/public/placeholder.png"/><div class="md-content"><h1 id="link-edge-cases" data-has-section="true">Link edge cases</h1><section class="cpc-section" id="section-link-edge-cases" data-fold-slug="link-edge-cases">
 <p>Inline link with parens in URL: <a href="https://en.wikipedia.org/wiki/Markdown_(software)">wiki article</a>.</p>
-<p>Inline link with query + fragment: <a href="https://example.com/path?query=foo&bar=baz#section-2">search</a>.</p>
+<p>Inline link with query + fragment: <a href="https://example.com/path?query=foo&amp;bar=baz#section-2">search</a>.</p>
 <p>Inline link with title: <a href="https://example.com" title="Example title">hover me</a>.</p>
 <p>Autolink: <a href="https://example.com/autolink">https://example.com/autolink</a>.</p>
 <p>Autolink email: <a href="mailto:someone@example.com">someone@example.com</a>.</p>
@@ -269,18 +204,20 @@ exports[`MarkdownViewer (marked baseline) > renders 09-link-edge-cases.md consis
 <p>Collapsed reference: <a href="https://example.com/collapsed">collapsed</a>.</p>
 <p>Shortcut reference: <a href="https://example.com/shortcut">shortcut</a>.</p>
 <p>Link with special chars in text: <a href="https://example.com"><code>code</code> in <strong>bold</strong> link text</a>.</p>
-<p>Image: <img src="https://shared.claude.do/public/placeholder.png" alt="alt text" title="image title">.</p>
+<p>Image: <img src="https://shared.claude.do/public/placeholder.png" alt="alt text" title="image title"/>.</p>
 <p>Link followed immediately by punctuation: see <a href="https://example.com">example</a>, then continue.</p>
-<p>Bare URL (not autolinked without angle brackets): <a href="https://example.com/bare">https://example.com/bare</a></p>
-"
+<p>Bare URL (not autolinked without angle brackets): <a href="https://example.com/bare">https://example.com/bare</a></p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 10-real-doc-adr.md consistently 1`] = `
-"<h1>ADR 0001: Package CPC as the Shareable Hub with Toolbox as a Git Submodule</h1>
-<p><strong>Status:</strong> Proposed<br><strong>Date:</strong> 2026-04-06<br><strong>Deciders:</strong> Liam (Chaintail), Claude<br><strong>Context:</strong> Hackathon friends asked for GitHub links to &quot;what we built.&quot; This forced the question of what artifact best represents Claude&#39;s World as a sharable, runnable system.</p>
-<hr>
-<h2>Context</h2>
-<p>Claude&#39;s World is currently spread across multiple repositories and directories with no single artifact a new user could clone to &quot;get the system&quot;:</p>
+exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md consistently 1`] = `
+"<div class="md-content"><h1 id="adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule" data-has-section="true">ADR 0001: Package CPC as the Shareable Hub with Toolbox as a Git Submodule</h1><section class="cpc-section" id="section-adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule" data-fold-slug="adr-0001-package-cpc-as-the-shareable-hub-with-toolbox-as-a-git-submodule">
+<p><strong>Status:</strong> Proposed<br/>
+<strong>Date:</strong> 2026-04-06<br/>
+<strong>Deciders:</strong> Liam (Chaintail), Claude<br/>
+<strong>Context:</strong> Hackathon friends asked for GitHub links to &quot;what we built.&quot; This forced the question of what artifact best represents Claude&#x27;s World as a sharable, runnable system.</p>
+<hr/>
+<h2 id="context">Context</h2>
+<p>Claude&#x27;s World is currently spread across multiple repositories and directories with no single artifact a new user could clone to &quot;get the system&quot;:</p>
 <ul>
 <li><strong>CPC</strong> (<code>~/code/claude-pocket-console</code>) — the Telegram mini app, the most polished and visually impressive piece</li>
 <li><strong>Toolbox</strong> (<code>~/code/toolbox</code>) — reusable scripts (md-speak, share-doc, transcribe, hooks). About 20 of the 40 entries in <code>~/bin</code> are now symlinks into this repo. Migration is in progress.</li>
@@ -288,14 +225,14 @@ exports[`MarkdownViewer (marked baseline) > renders 10-real-doc-adr.md consisten
 <li><strong>Host config</strong> (<code>~/do-box</code>) — VPS-specific systemd, Caddy, cloudflared (brittle whitelist-driven snapshot)</li>
 <li><strong>Live state</strong> (<code>~/claudes-world/</code>) — working directory, knowledge base, memory, ephemeral files</li>
 </ul>
-<p>When the user&#39;s hackathon friends asked for GitHub links, there was no clean answer. Pointing them to CPC alone misses the supporting infrastructure. Pointing them to multiple repos requires explaining the relationships. A monolithic &quot;everything in one repo&quot; approach was considered but rejected (see Alternatives).</p>
+<p>When the user&#x27;s hackathon friends asked for GitHub links, there was no clean answer. Pointing them to CPC alone misses the supporting infrastructure. Pointing them to multiple repos requires explaining the relationships. A monolithic &quot;everything in one repo&quot; approach was considered but rejected (see Alternatives).</p>
 <p>The user proposed: <strong>what if CPC stays as the primary shareable artifact and toolbox is included as a dependency inside it?</strong> This ADR captures that decision.</p>
-<hr>
-<h2>Decision</h2>
-<p><strong>CPC will be the primary shareable artifact for Claude&#39;s World. Toolbox will be embedded as a git submodule.</strong></p>
+<hr/>
+<h2 id="decision">Decision</h2>
+<p><strong>CPC will be the primary shareable artifact for Claude&#x27;s World. Toolbox will be embedded as a git submodule.</strong></p>
 <p>The structure will be:</p>
 <pre><code>claude-pocket-console/             ← what new users clone
-├── README.md                      ← &quot;This is Claude&#39;s World&quot;
+├── README.md                      ← &quot;This is Claude&#x27;s World&quot;
 ├── apps/web/                      ← React/Vite mini app
 ├── apps/server/                   ← Hono API
 ├── tools/                         ← git submodule → toolbox repo
@@ -318,53 +255,53 @@ exports[`MarkdownViewer (marked baseline) > renders 10-real-doc-adr.md consisten
 <li>Optionally install the toolbox scripts to their own <code>~/bin</code> for full Claude Code integration</li>
 </ol>
 <p>Toolbox keeps its own repository, its own commit history, and its own lifecycle. CPC pins to a specific toolbox commit via the submodule reference, and bumps that pin intentionally when toolbox ships changes.</p>
-<hr>
-<h2>Consequences</h2>
-<h3>Positive</h3>
+<hr/>
+<h2 id="consequences">Consequences</h2>
+<h3 id="positive">Positive</h3>
 <ul>
 <li><strong>One link to share.</strong> &quot;Check out github.com/{user}/claude-pocket-console&quot; gives someone the whole system. The first impression is the polished mini app, not a wall of bash scripts.</li>
 <li><strong>Toolbox stays portable.</strong> Someone who wants only the scripts can clone toolbox alone without pulling CPC. The two repos serve different audiences (CPC for &quot;show me the system,&quot; toolbox for &quot;give me the tools&quot;).</li>
 <li><strong>Independent lifecycles.</strong> Toolbox can ship breaking changes, ship rapid iterations, or be totally rewritten without forcing a CPC release. CPC pins to a known-good commit and bumps deliberately.</li>
-<li><strong>Smaller blast radius.</strong> A bug in toolbox doesn&#39;t break CPC unless CPC explicitly bumps the submodule. Reverting is one commit away.</li>
-<li><strong>Existing structure preserved.</strong> The toolbox repo doesn&#39;t need restructuring. It just becomes a sub-tree inside CPC at <code>tools/</code>.</li>
+<li><strong>Smaller blast radius.</strong> A bug in toolbox doesn&#x27;t break CPC unless CPC explicitly bumps the submodule. Reverting is one commit away.</li>
+<li><strong>Existing structure preserved.</strong> The toolbox repo doesn&#x27;t need restructuring. It just becomes a sub-tree inside CPC at <code>tools/</code>.</li>
 <li><strong>Matches how people discover the project.</strong> &quot;Claude Pocket Console&quot; is the recognizable name. Toolbox is invisible infrastructure. The submodule pattern reflects this asymmetry honestly.</li>
 </ul>
-<h3>Negative</h3>
+<h3 id="negative">Negative</h3>
 <ul>
-<li><strong>Submodule UX is clunky.</strong> New contributors will forget <code>--recursive</code> on clone. They&#39;ll see an empty <code>tools/</code> directory and be confused. Mitigation: README has a &quot;first steps&quot; section that explicitly addresses this, and <code>pnpm install</code> could check for the submodule and warn if missing.</li>
+<li><strong>Submodule UX is clunky.</strong> New contributors will forget <code>--recursive</code> on clone. They&#x27;ll see an empty <code>tools/</code> directory and be confused. Mitigation: README has a &quot;first steps&quot; section that explicitly addresses this, and <code>pnpm install</code> could check for the submodule and warn if missing.</li>
 <li><strong>Submodule pin updates require explicit commits.</strong> When toolbox ships a fix, CPC needs a commit to pull it in. Not bad in practice (usually you want this control) but adds a step.</li>
 <li><strong>Two-repo cognitive load.</strong> Anyone contributing to both CPC and toolbox has to manage two repos, two commit histories, two PR workflows. Mitigation: most contributors will only touch one or the other.</li>
-<li><strong>The &quot;host&quot; pieces still don&#39;t have a home.</strong> This ADR doesn&#39;t address where systemd/Caddy/cloudflared configs live. They&#39;re VPS-specific and don&#39;t belong in CPC. A separate decision is needed for the do-box replacement.</li>
+<li><strong>The &quot;host&quot; pieces still don&#x27;t have a home.</strong> This ADR doesn&#x27;t address where systemd/Caddy/cloudflared configs live. They&#x27;re VPS-specific and don&#x27;t belong in CPC. A separate decision is needed for the do-box replacement.</li>
 <li><strong>Skills location split.</strong> Skills currently live in <code>~/.claude/skills/</code> AND <code>~/claudes-world/.claude/skills/</code>. Deciding which is canonical and migrating to <code>claude-pocket-console/skills/</code> is a follow-up task.</li>
 </ul>
-<h3>Neutral</h3>
+<h3 id="neutral">Neutral</h3>
 <ul>
-<li>The user&#39;s <code>~/code/claude-pocket-console</code> working directory and the GitHub repo will share a name (already the case). Nothing changes locally.</li>
+<li>The user&#x27;s <code>~/code/claude-pocket-console</code> working directory and the GitHub repo will share a name (already the case). Nothing changes locally.</li>
 <li>The <code>~/.world/</code> directory concept (per-project overrides) is orthogonal to this decision and can still be added.</li>
 </ul>
-<hr>
-<h2>Alternatives Considered</h2>
-<h3>Alternative 1: Single monorepo containing everything</h3>
+<hr/>
+<h2 id="alternatives-considered">Alternatives Considered</h2>
+<h3 id="alternative-1-single-monorepo-containing-everything">Alternative 1: Single monorepo containing everything</h3>
 <p>Move CPC, toolbox, skills, host config, and apps into one new repo at <code>github.com/{user}/claudes-world</code>. Each becomes a top-level package.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
 <li>Breaks the existing CPC and toolbox repo histories (or requires complex git filter-repo work)</li>
 <li>Forces all packages to share a release cadence</li>
-<li>The &quot;host&quot; pieces (systemd, Caddy) don&#39;t belong in a portable repo at all — they&#39;re VPS-specific</li>
+<li>The &quot;host&quot; pieces (systemd, Caddy) don&#x27;t belong in a portable repo at all — they&#x27;re VPS-specific</li>
 <li>A new monorepo means a new repo name that nobody recognizes</li>
-<li>Doesn&#39;t match how the user actually thinks about the system (CPC is the recognizable thing, everything else supports it)</li>
+<li>Doesn&#x27;t match how the user actually thinks about the system (CPC is the recognizable thing, everything else supports it)</li>
 </ul>
 <p>The original portability design doc proposed this approach. After discussing it with the user, the CPC-as-hub model is a better fit for the actual goal (a shareable artifact for hackathon friends) without the migration cost.</p>
-<h3>Alternative 2: Git subtree instead of submodule</h3>
-<p>Same end state but using <code>git subtree</code> to merge toolbox&#39;s history into CPC at <code>tools/</code>. Consumers don&#39;t need <code>--recursive</code>.</p>
+<h3 id="alternative-2-git-subtree-instead-of-submodule">Alternative 2: Git subtree instead of submodule</h3>
+<p>Same end state but using <code>git subtree</code> to merge toolbox&#x27;s history into CPC at <code>tools/</code>. Consumers don&#x27;t need <code>--recursive</code>.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
-<li>Subtrees are harder to update bidirectionally. Pushing changes from CPC&#39;s <code>tools/</code> back to the toolbox repo requires <code>git subtree split</code> and manual reconciliation.</li>
+<li>Subtrees are harder to update bidirectionally. Pushing changes from CPC&#x27;s <code>tools/</code> back to the toolbox repo requires <code>git subtree split</code> and manual reconciliation.</li>
 <li>Subtree is less commonly understood than submodule. Most developers know <code>git submodule update --init --recursive</code>; fewer know <code>git subtree pull</code>.</li>
 <li>The &quot;no init step&quot; benefit is real but small — a one-line README note solves it.</li>
 <li>Could revisit if submodule pain proves worse than subtree pain in practice.</li>
 </ul>
-<h3>Alternative 3: pnpm workspace / npm package</h3>
+<h3 id="alternative-3-pnpm-workspace--npm-package">Alternative 3: pnpm workspace / npm package</h3>
 <p>Publish toolbox to npm and have CPC depend on it via <code>package.json</code>. Cleanest from a JS perspective.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
@@ -373,55 +310,58 @@ exports[`MarkdownViewer (marked baseline) > renders 10-real-doc-adr.md consisten
 <li>Versioning becomes a release-management chore — every toolbox change needs a version bump and publish.</li>
 <li>Adds an external dependency (npm registry) for what should be a self-contained system.</li>
 </ul>
-<h3>Alternative 4: Symlinks (do nothing)</h3>
+<h3 id="alternative-4-symlinks-do-nothing">Alternative 4: Symlinks (do nothing)</h3>
 <p>The current state. <code>~/bin</code> symlinks into <code>~/code/toolbox</code>, CPC is a separate repo. No packaging.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
-<li>This is exactly what the user is trying to fix. The current state has no shareable artifact and the relationships are invisible to anyone outside the user&#39;s head.</li>
-<li>Doesn&#39;t survive a host migration. Symlinks are filesystem-specific.</li>
-<li>Doesn&#39;t help hackathon friends at all.</li>
+<li>This is exactly what the user is trying to fix. The current state has no shareable artifact and the relationships are invisible to anyone outside the user&#x27;s head.</li>
+<li>Doesn&#x27;t survive a host migration. Symlinks are filesystem-specific.</li>
+<li>Doesn&#x27;t help hackathon friends at all.</li>
 </ul>
-<hr>
-<h2>Follow-Up Actions</h2>
+<hr/>
+<h2 id="follow-up-actions">Follow-Up Actions</h2>
 <p>These are not part of this ADR but are needed to execute the decision:</p>
 <ol>
 <li><strong>Decide on the host config story</strong> — separate ADR. The do-box replacement (manifest-driven, deterministic rebuild) is its own design problem.</li>
 <li><strong>Decide on skills canonical location</strong> — consolidate <code>~/.claude/skills/</code> and <code>~/claudes-world/.claude/skills/</code>, then migrate to <code>claude-pocket-console/skills/</code>.</li>
-<li><strong>Adopt progressive disclosure docs in CPC</strong> — restructure CPC&#39;s existing AGENTS.md and docs into the OmniPass <code>reference/guides/conventions/</code> pattern. (See ADR 0002, forthcoming.)</li>
+<li><strong>Adopt progressive disclosure docs in CPC</strong> — restructure CPC&#x27;s existing AGENTS.md and docs into the OmniPass <code>reference/guides/conventions/</code> pattern. (See ADR 0002, forthcoming.)</li>
 <li><strong>Submodule integration plan</strong> — actually create the submodule, write the README &quot;first steps&quot; section, set up CI to verify the submodule resolves cleanly.</li>
 <li><strong>Port convention v2</strong> — separate ADR. The current 38xxx/48xxx/58xxx convention is too coarse and caused hackathon collisions.</li>
 <li><strong>Plugin packaging (longer term)</strong> — if CPC grows into a Claude Code plugin, the plugin manifest can reference the same submodule structure. No conflict.</li>
 </ol>
-<hr>
-<h2>References</h2>
+<hr/>
+<h2 id="references">References</h2>
 <ul>
 <li><code>~/claudes-world/knowledge/claudes-world-portability-design.md</code> — the broader design doc this ADR resolves</li>
 <li><code>~/code/omnipass-world/AGENTS.md</code> — the progressive disclosure pattern used as the docs model</li>
 <li><code>~/code/claude-pocket-console/</code> — the CPC repo to be restructured</li>
 <li><code>~/code/toolbox/</code> — the toolbox repo to become a submodule</li>
 <li><a href="https://git-scm.com/book/en/v2/Git-Tools-Submodules">Git submodule docs</a></li>
-</ul>
-"
+</ul></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 11-real-doc-overnight-summary.md consistently 1`] = `
-"<h1>Overnight Final Report — April 6-7, 2026</h1>
-<p><strong>Session start:</strong> ~7:30pm ET April 6<br><strong>Session end:</strong> ~9:30pm ET April 6 (this report)<br><strong>Format:</strong> Single document for morning review</p>
-<hr>
-<h2>TL;DR</h2>
+exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnight-summary.md consistently 1`] = `
+"<div class="md-content"><h1 id="overnight-final-report--april-6-7-2026" data-has-section="true">Overnight Final Report — April 6-7, 2026</h1><section class="cpc-section" id="section-overnight-final-report--april-6-7-2026" data-fold-slug="overnight-final-report--april-6-7-2026">
+<p><strong>Session start:</strong> ~7:30pm ET April 6<br/>
+<strong>Session end:</strong> ~9:30pm ET April 6 (this report)<br/>
+<strong>Format:</strong> Single document for morning review</p>
+<hr/>
+<h2 id="tldr">TL;DR</h2>
 <p><strong>8 PRs open and ready for your review.</strong> None merged. Foundational tools shipped (Scrum button, send-md fix). Three big-picture synthesis docs are ready for morning decisions (reading list, portability, theme). One known issue: the dev tunnel is currently 502 because of agent worktree coordination — fixes itself when you merge PR #21.</p>
-<hr>
-<h2>What&#39;s ready for you to merge (in order)</h2>
-<h3>Toolbox</h3>
+<hr/>
+<h2 id="whats-ready-for-you-to-merge-in-order">What&#x27;s ready for you to merge (in order)</h2>
+<h3 id="toolbox">Toolbox</h3>
 <ol>
-<li><p><strong>toolbox PR #1</strong> — <code>tune: reduce heading pauses, speed up body voice</code></p>
+<li>
+<p><strong>toolbox PR #1</strong> — <code>tune: reduce heading pauses, speed up body voice</code></p>
 <ul>
 <li>6 line edits, body voice 0.95 → 1.05, heading pauses cut ~30%</li>
 <li>Verdict: LGTM SHIP IT</li>
 <li>Branch: <code>tune/md-speak-pacing</code> → <code>main</code></li>
 </ul>
 </li>
-<li><p><strong>toolbox PR #2</strong> — <code>feat(hooks): Scrum button + share-doc backtick fix</code></p>
+<li>
+<p><strong>toolbox PR #2</strong> — <code>feat(hooks): Scrum button + share-doc backtick fix</code></p>
 <ul>
 <li>Scrum button on launcher keyboard + handler</li>
 <li>share-doc dual-mode (file path or inline content) — fixes the backtick truncation bug</li>
@@ -430,49 +370,56 @@ exports[`MarkdownViewer (marked baseline) > renders 11-real-doc-overnight-summar
 </ul>
 </li>
 </ol>
-<h3>CPC (in recommended merge order)</h3>
+<h3 id="cpc-in-recommended-merge-order">CPC (in recommended merge order)</h3>
 <ol>
-<li><p><strong>PR #21</strong> — <code>fix: allow cpc.claude.do host in Vite dev server</code></p>
+<li>
+<p><strong>PR #21</strong> — <code>fix: allow cpc.claude.do host in Vite dev server</code></p>
 <ul>
 <li><strong>MERGE FIRST</strong> — unblocks the dev tunnel which is currently 502</li>
 <li>Adds <code>host: &quot;127.0.0.1&quot;</code> and <code>allowedHosts: [&quot;cpc.claude.do&quot;]</code> to vite.config.ts</li>
 <li>Verdict: APPROVE WITH NITS (Gemini suggested also updating proxy + HMR config — see follow-up items)</li>
 </ul>
 </li>
-<li><p><strong>PR #19</strong> — <code>feat(links): Companion + T3 app icon links</code></p>
+<li>
+<p><strong>PR #19</strong> — <code>feat(links): Companion + T3 app icon links</code></p>
 <ul>
 <li>Trivial (+12/-0), no risk</li>
 <li>Verdict: SHIP IT</li>
 </ul>
 </li>
-<li><p><strong>PR #18</strong> — <code>feat: download button in file viewer</code></p>
+<li>
+<p><strong>PR #18</strong> — <code>feat: download button in file viewer</code></p>
 <ul>
 <li>New <code>/api/files/download</code> endpoint + FiDownload button in FileViewer</li>
 <li>Verdict: APPROVE WITH NITS</li>
-<li><strong>Should-fix items Gemini caught (you decide):</strong><ul>
+<li><strong>Should-fix items Gemini caught (you decide):</strong>
+<ul>
 <li>Use <code>buf.length</code> instead of <code>st.size</code> for Content-Length (TOCTOU)</li>
-<li>Sanitize 500 error messages (don&#39;t leak internal paths)</li>
+<li>Sanitize 500 error messages (don&#x27;t leak internal paths)</li>
 <li>Consider streaming instead of <code>readFile</code> for large files (memory pressure)</li>
 </ul>
 </li>
 <li><strong>Pre-existing security issue Gemini flagged:</strong> <code>isPathAllowed</code> uses startsWith — vulnerable to prefix-based path traversal. Affects ALL existing routes (<code>/list</code>, <code>/read</code>, <code>/search</code>, <code>/upload</code>) AND this new <code>/download</code>. Should be its own hardening PR.</li>
 </ul>
 </li>
-<li><p><strong>PR #20</strong> — <code>fix: code block horizontal scroll in markdown viewer</code></p>
+<li>
+<p><strong>PR #20</strong> — <code>fix: code block horizontal scroll in markdown viewer</code></p>
 <ul>
-<li>Two commits: original fix + follow-up addressing Gemini&#39;s &quot;right padding lost on scroll&quot; finding</li>
+<li>Two commits: original fix + follow-up addressing Gemini&#x27;s &quot;right padding lost on scroll&quot; finding</li>
 <li>Now includes <code>width: max-content; min-width: 100%</code> on <code>pre code</code></li>
 <li>Verdict: APPROVE</li>
 </ul>
 </li>
-<li><p><strong>PR #22</strong> — <code>feat: render Mermaid diagrams in markdown viewer</code></p>
+<li>
+<p><strong>PR #22</strong> — <code>feat: render Mermaid diagrams in markdown viewer</code></p>
 <ul>
 <li>Lazy-loaded mermaid (main bundle stays at 595KB, mermaid in own 652KB chunk)</li>
 <li>Two commits: initial component + follow-up wiring (vite.config.ts manualChunks, MarkdownViewer integration, mermaid dependency)</li>
 <li>Verdict: pending agent re-review (running)</li>
 </ul>
 </li>
-<li><p><strong>PR #23</strong> — <code>feat: file viewer sort control with persistence</code></p>
+<li>
+<p><strong>PR #23</strong> — <code>feat: file viewer sort control with persistence</code></p>
 <ul>
 <li>Inline sort control row in FileViewer header</li>
 <li>localStorage persistence + SortMode type promotion + sort logic hardening</li>
@@ -480,14 +427,15 @@ exports[`MarkdownViewer (marked baseline) > renders 11-real-doc-overnight-summar
 </ul>
 </li>
 </ol>
-<hr>
-<h2>Big-picture decisions waiting for your input</h2>
-<p>These are the three synthesis docs from the devil&#39;s advocate sessions. Each has my recommended answers — if you agree with my recs, just say &quot;go&quot; and I&#39;ll execute. If you disagree, tell me which.</p>
-<h3>Reading list feature</h3>
+<hr/>
+<h2 id="big-picture-decisions-waiting-for-your-input">Big-picture decisions waiting for your input</h2>
+<p>These are the three synthesis docs from the devil&#x27;s advocate sessions. Each has my recommended answers — if you agree with my recs, just say &quot;go&quot; and I&#x27;ll execute. If you disagree, tell me which.</p>
+<h3 id="reading-list-feature">Reading list feature</h3>
 <ul>
 <li><strong>Doc:</strong> <code>tmp/20260406-reading-list-synthesis.md</code></li>
 <li><strong>3 reviewers:</strong> Gemini (RETHINK), Codex (NEEDS WORK), Sonnet (NEEDS WORK)</li>
-<li><strong>6 decisions to make:</strong><ol>
+<li><strong>6 decisions to make:</strong>
+<ol>
 <li>Hard delete instead of soft delete (my rec: yes)</li>
 <li>Reject <code>default</code> user for reading list endpoints (my rec: yes — security)</li>
 <li>Save button in ActionBar instead of FileViewer header (my rec: yes — consistency)</li>
@@ -497,148 +445,111 @@ exports[`MarkdownViewer (marked baseline) > renders 11-real-doc-overnight-summar
 </ol>
 </li>
 </ul>
-<h3>Claude&#39;s World portability / .world directory</h3>
+<h3 id="claudes-world-portability--world-directory">Claude&#x27;s World portability / .world directory</h3>
 <ul>
 <li><strong>Doc:</strong> <code>tmp/20260406-portability-synthesis.md</code></li>
 <li><strong>2 reviewers:</strong> Gemini (RETHINK), Codex (NEEDS WORK)</li>
-<li><strong>Key takeaway:</strong> ADR 0001 (CPC + toolbox submodule) already addresses most critiques. The original maximalist monorepo doc has one factual contradiction to fix (don&#39;t version live state in git). 5 follow-up ADRs identified.</li>
+<li><strong>Key takeaway:</strong> ADR 0001 (CPC + toolbox submodule) already addresses most critiques. The original maximalist monorepo doc has one factual contradiction to fix (don&#x27;t version live state in git). 5 follow-up ADRs identified.</li>
 <li><strong>My rec:</strong> Keep ADR 0001 as Proposed and continue. Update the original design doc to remove the monorepo-version-memory contradiction.</li>
 </ul>
-<h3>Light/dark mode</h3>
+<h3 id="lightdark-mode">Light/dark mode</h3>
 <ul>
 <li><strong>Doc:</strong> <code>tmp/20260406-theme-synthesis.md</code></li>
 <li><strong>1 reviewer:</strong> Gemini (RETHINK)</li>
 <li><strong>Critical issue:</strong> No accessibility/contrast analysis for the proposed light palette</li>
 <li><strong>My rec:</strong> Defer entirely until you have time for a proper week-long migration. The current plan is correct but not a sleep-time job.</li>
 </ul>
-<hr>
-<h2>Documents shipped to your Telegram tonight</h2>
-<table>
-<thead>
-<tr>
-<th>Doc</th>
-<th>Type</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>ADR 0001 — CPC + toolbox submodule packaging</td>
-<td>Decision</td>
-</tr>
-<tr>
-<td>ADR 0003 — Port allocation v2 / port-for</td>
-<td>Decision</td>
-</tr>
-<tr>
-<td>Reading list 3-way DA synthesis</td>
-<td>Synthesis</td>
-</tr>
-<tr>
-<td>Portability 2-way DA synthesis</td>
-<td>Synthesis</td>
-</tr>
-<tr>
-<td>Theme DA review</td>
-<td>Synthesis</td>
-</tr>
-<tr>
-<td>PR reviews summary (5 PRs)</td>
-<td>Status</td>
-</tr>
-<tr>
-<td>Overnight status hour 1</td>
-<td>Status</td>
-</tr>
-<tr>
-<td>.world skeleton README</td>
-<td>Proposal</td>
-</tr>
-<tr>
-<td>.world skeleton AGENTS.md</td>
-<td>Proposal</td>
-</tr>
-<tr>
-<td>USDX white paper (downloadable)</td>
-<td>Re-shared</td>
-</tr>
-</tbody></table>
+<hr/>
+<h2 id="documents-shipped-to-your-telegram-tonight">Documents shipped to your Telegram tonight</h2>
+<div class="md-table-scroll"><table><thead><tr><th>Doc</th><th>Type</th></tr></thead><tbody><tr><td>ADR 0001 — CPC + toolbox submodule packaging</td><td>Decision</td></tr><tr><td>ADR 0003 — Port allocation v2 / port-for</td><td>Decision</td></tr><tr><td>Reading list 3-way DA synthesis</td><td>Synthesis</td></tr><tr><td>Portability 2-way DA synthesis</td><td>Synthesis</td></tr><tr><td>Theme DA review</td><td>Synthesis</td></tr><tr><td>PR reviews summary (5 PRs)</td><td>Status</td></tr><tr><td>Overnight status hour 1</td><td>Status</td></tr><tr><td>.world skeleton README</td><td>Proposal</td></tr><tr><td>.world skeleton AGENTS.md</td><td>Proposal</td></tr><tr><td>USDX white paper (downloadable)</td><td>Re-shared</td></tr></tbody></table></div>
 <p>All are saved in <code>~/claudes-world/tmp/</code> or <code>~/claudes-world/knowledge/</code> and can be re-shared via the deep-link system.</p>
-<hr>
-<h2>Outside-the-box ideas (ranked by ROI × feasibility)</h2>
-<h3>For Claude&#39;s World infrastructure</h3>
+<hr/>
+<h2 id="outside-the-box-ideas-ranked-by-roi--feasibility">Outside-the-box ideas (ranked by ROI × feasibility)</h2>
+<h3 id="for-claudes-world-infrastructure">For Claude&#x27;s World infrastructure</h3>
 <ol>
-<li><p><strong>Morning brief cron job</strong> — runs at 7am ET, sends a markdown doc with overnight git changes, open PRs needing review, weather, calendar (when OAuth wired), memory-based reminders.</p>
+<li>
+<p><strong>Morning brief cron job</strong> — runs at 7am ET, sends a markdown doc with overnight git changes, open PRs needing review, weather, calendar (when OAuth wired), memory-based reminders.</p>
 <ul>
-<li>ROI: HIGH — zero ongoing effort, captures all the context you&#39;d assemble manually</li>
+<li>ROI: HIGH — zero ongoing effort, captures all the context you&#x27;d assemble manually</li>
 <li>Feasibility: HIGH — ~1-2 hours of work, all pieces exist</li>
 <li>Recommended next step</li>
 </ul>
 </li>
-<li><p><strong>A &quot;next thing to work on&quot; agent</strong> — ask via Telegram, scans TODO.md / open PRs / recent memories / calendar, suggests highest-leverage next action.</p>
+<li>
+<p><strong>A &quot;next thing to work on&quot; agent</strong> — ask via Telegram, scans TODO.md / open PRs / recent memories / calendar, suggests highest-leverage next action.</p>
 <ul>
 <li>ROI: HIGH — decision fatigue is real</li>
 <li>Feasibility: HIGH — small focused skill, 1 hour to write</li>
 </ul>
 </li>
-<li><p><strong>Sleep-aware agent operation</strong> — agents stop dispatching new high-risk work after midnight ET unless explicitly told. Morning checks are still allowed but mutations are paused.</p>
+<li>
+<p><strong>Sleep-aware agent operation</strong> — agents stop dispatching new high-risk work after midnight ET unless explicitly told. Morning checks are still allowed but mutations are paused.</p>
 <ul>
 <li>ROI: MEDIUM-HIGH — prevents bad-overnight surprises</li>
 <li>Feasibility: HIGH — trivial guard at agent dispatch</li>
 </ul>
 </li>
-<li><p><strong>Auto-archive <code>quarantine/</code> after 30 days</strong> — cron moves untrusted research artifacts older than 30 days into compressed archive.</p>
+<li>
+<p><strong>Auto-archive <code>quarantine/</code> after 30 days</strong> — cron moves untrusted research artifacts older than 30 days into compressed archive.</p>
 <ul>
 <li>ROI: LOW-MEDIUM — keeps active workspace clean</li>
 <li>Feasibility: HIGH — 10-line bash + systemd timer</li>
 </ul>
 </li>
-<li><p><strong>Meta-skill: lints other skills</strong> — periodic agent that scans <code>~/.claude/skills/</code> against the skill-authoring-tips guide. Flags any missing descriptions, vague triggers, etc.</p>
+<li>
+<p><strong>Meta-skill: lints other skills</strong> — periodic agent that scans <code>~/.claude/skills/</code> against the skill-authoring-tips guide. Flags any missing descriptions, vague triggers, etc.</p>
 <ul>
 <li>ROI: MEDIUM — prevents skill bloat over time</li>
 <li>Feasibility: MEDIUM — couple hours</li>
 </ul>
 </li>
 </ol>
-<h3>For your IRL life (Liam)</h3>
+<h3 id="for-your-irl-life-liam">For your IRL life (Liam)</h3>
 <ol>
-<li><p><strong>Conference contact card MVP</strong> (the one we discussed) — single highest-leverage thing you could ship next month for IRL networking. Day or two of work, transforms every conference for you.</p>
+<li>
+<p><strong>Conference contact card MVP</strong> (the one we discussed) — single highest-leverage thing you could ship next month for IRL networking. Day or two of work, transforms every conference for you.</p>
 <ul>
 <li>ROI: VERY HIGH — every conference becomes 10x more connectable</li>
 <li>Feasibility: HIGH — small feature, you already have a Telegram presence</li>
 </ul>
 </li>
-<li><p><strong>Daily &quot;what did I learn today&quot; capture</strong> — voice memo at end of day → transcription → LLM summary → committed to a personal knowledge base in <code>claudes-world/journal/</code>. Compound interest on insights over months.</p>
+<li>
+<p><strong>Daily &quot;what did I learn today&quot; capture</strong> — voice memo at end of day → transcription → LLM summary → committed to a personal knowledge base in <code>claudes-world/journal/</code>. Compound interest on insights over months.</p>
 <ul>
 <li>ROI: HIGH if you actually use it</li>
 <li>Feasibility: HIGH — 2 hours, voice-hook already exists</li>
 </ul>
 </li>
-<li><p><strong>Dev-tunnel uptime monitor</strong> — ntfy hook pings cpc.claude.do/dev every 5 min, notifies if down for 2+ checks. Stops weird issues from going unnoticed.</p>
+<li>
+<p><strong>Dev-tunnel uptime monitor</strong> — ntfy hook pings cpc.claude.do/dev every 5 min, notifies if down for 2+ checks. Stops weird issues from going unnoticed.</p>
 <ul>
 <li>ROI: MEDIUM — prevents debugging-at-3am</li>
 <li>Feasibility: HIGH — 30 minutes</li>
 </ul>
 </li>
-<li><p><strong>Auto-tagging for shared docs</strong> — share-doc generates audio with rich ID3 metadata via topic detection. Turns your shared docs into a personal podcast feed.</p>
+<li>
+<p><strong>Auto-tagging for shared docs</strong> — share-doc generates audio with rich ID3 metadata via topic detection. Turns your shared docs into a personal podcast feed.</p>
 <ul>
 <li>ROI: MEDIUM-HIGH (turns reading queue into listening queue)</li>
 <li>Feasibility: HIGH — tag-mp3 binary already supports it</li>
 </ul>
 </li>
-<li><p><strong>Conference-mode auto-Calendly</strong> — when conference mode is on (the contact card idea), automatically open 15-min &quot;coffee chat&quot; availability.</p>
+<li>
+<p><strong>Conference-mode auto-Calendly</strong> — when conference mode is on (the contact card idea), automatically open 15-min &quot;coffee chat&quot; availability.</p>
 <ul>
 <li>ROI: HIGH during events, low otherwise</li>
 <li>Feasibility: MEDIUM — needs Calendly API</li>
 </ul>
 </li>
 </ol>
-<hr>
-<h2>Issues / things to know</h2>
-<h3>1. Dev tunnel 502 (worktree coordination)</h3>
+<hr/>
+<h2 id="issues--things-to-know">Issues / things to know</h2>
+<h3 id="1-dev-tunnel-502-worktree-coordination">1. Dev tunnel 502 (worktree coordination)</h3>
 <p><strong>Current state:</strong> <code>https://cpc.claude.do/dev/</code> returns 502.</p>
-<p><strong>Why:</strong> Multiple agents share <code>~/code/claude-pocket-console</code> worktree and check out different feature branches. The cpc-dev.service serves whatever branch is currently checked out. Currently it&#39;s on <code>feat/file-viewer-sort-control</code> (PR #23&#39;s branch), which doesn&#39;t have the IPv4 fix. Vite is bound to <code>[::1]:58830</code> (IPv6 only), Caddy can&#39;t proxy to <code>127.0.0.1:58830</code>.</p>
+<p><strong>Why:</strong> Multiple agents share <code>~/code/claude-pocket-console</code> worktree and check out different feature branches. The cpc-dev.service serves whatever branch is currently checked out. Currently it&#x27;s on <code>feat/file-viewer-sort-control</code> (PR #23&#x27;s branch), which doesn&#x27;t have the IPv4 fix. Vite is bound to <code>[::1]:58830</code> (IPv6 only), Caddy can&#x27;t proxy to <code>127.0.0.1:58830</code>.</p>
 <p><strong>Fix:</strong> Merge PR #21 to dev. Once IPv4 fix lands on dev, every feature branch will inherit it.</p>
-<p><strong>Lesson learned:</strong> This proves the worktree-aware port allocation idea (ADR 0003) — agents need their own worktrees. I&#39;ll avoid launching parallel CPC agents going forward until we have proper isolation.</p>
-<h3>2. Toolbox dirty state (pre-existing)</h3>
+<p><strong>Lesson learned:</strong> This proves the worktree-aware port allocation idea (ADR 0003) — agents need their own worktrees. I&#x27;ll avoid launching parallel CPC agents going forward until we have proper isolation.</p>
+<h3 id="2-toolbox-dirty-state-pre-existing">2. Toolbox dirty state (pre-existing)</h3>
 <p>The toolbox repo has uncommitted changes from before I arrived:</p>
 <ul>
 <li><code>hooks/agent-stop-hook</code> (small)</li>
@@ -647,70 +558,71 @@ exports[`MarkdownViewer (marked baseline) > renders 11-real-doc-overnight-summar
 <li><code>tg-sanitize/</code> (untracked directory)</li>
 </ul>
 <p>I left these alone. They look intentional but are not on any branch. Worth checking what they are and either committing or stashing properly.</p>
-<h3>3. send-md fix branch is currently checked out</h3>
-<p>Toolbox is currently on <code>feat/scrum-button-and-share-doc-fix</code> (toolbox PR #2&#39;s branch). This is intentional — that branch has the share-doc Mode 2 fix, which is what&#39;s powering the send-md skill right now via the symlink at <code>~/bin/share-doc</code>. If you switch toolbox branches, send-md will revert to the old broken behavior until you switch back or merge.</p>
+<h3 id="3-send-md-fix-branch-is-currently-checked-out">3. send-md fix branch is currently checked out</h3>
+<p>Toolbox is currently on <code>feat/scrum-button-and-share-doc-fix</code> (toolbox PR #2&#x27;s branch). This is intentional — that branch has the share-doc Mode 2 fix, which is what&#x27;s powering the send-md skill right now via the symlink at <code>~/bin/share-doc</code>. If you switch toolbox branches, send-md will revert to the old broken behavior until you switch back or merge.</p>
 <p><strong>Recommended:</strong> Merge toolbox PR #2 first thing in the morning to permanently land the share-doc fix.</p>
-<h3>4. Pre-existing isPathAllowed security issue</h3>
-<p>Gemini flagged this on PR #18 but it&#39;s NOT introduced by PR #18 — it&#39;s pre-existing in <code>apps/server/src/routes/files.ts</code>. The <code>isPathAllowed</code> function uses <code>startsWith</code> which is vulnerable to prefix-based path traversal. Affects <code>/list</code>, <code>/read</code>, <code>/search</code>, <code>/upload</code>, AND the new <code>/download</code>.</p>
+<h3 id="4-pre-existing-ispathallowed-security-issue">4. Pre-existing isPathAllowed security issue</h3>
+<p>Gemini flagged this on PR #18 but it&#x27;s NOT introduced by PR #18 — it&#x27;s pre-existing in <code>apps/server/src/routes/files.ts</code>. The <code>isPathAllowed</code> function uses <code>startsWith</code> which is vulnerable to prefix-based path traversal. Affects <code>/list</code>, <code>/read</code>, <code>/search</code>, <code>/upload</code>, AND the new <code>/download</code>.</p>
 <p><strong>My recommendation:</strong> File a separate hardening PR. Should not block PR #18 from merging (the vulnerability exists with or without #18).</p>
-<hr>
-<h2>Stats</h2>
+<hr/>
+<h2 id="stats">Stats</h2>
 <ul>
 <li><strong>PRs opened:</strong> 8 (5 CPC + 3 toolbox*) — *toolbox #1 was opened before this session</li>
 <li><strong>PRs reviewed by me:</strong> 7 (all CPC + toolbox #1)</li>
 <li><strong>Background agents launched:</strong> ~13</li>
-<li><strong>Devil&#39;s advocate reviews run:</strong> 6 (3 reading list, 2 portability, 1 theme)</li>
+<li><strong>Devil&#x27;s advocate reviews run:</strong> 6 (3 reading list, 2 portability, 1 theme)</li>
 <li><strong>ADRs written:</strong> 2 (0001, 0003)</li>
 <li><strong>Synthesis docs:</strong> 3 (reading list, portability, theme)</li>
 <li><strong>Skeleton stub files:</strong> 9 in <code>tmp/world-skeleton/</code></li>
 <li><strong>TODO items closed:</strong> 6 (the in-flight CPC features)</li>
 <li><strong>TODO items added:</strong> 8 (follow-up items + new ADRs to write)</li>
 </ul>
-<hr>
-<h2>What I plan for hour 2 (and beyond)</h2>
-<p>The next hour cron will fire at :13 (in ~25 minutes from this writing). When it does, I&#39;ll:</p>
+<hr/>
+<h2 id="what-i-plan-for-hour-2-and-beyond">What I plan for hour 2 (and beyond)</h2>
+<p>The next hour cron will fire at :13 (in ~25 minutes from this writing). When it does, I&#x27;ll:</p>
 <ol>
 <li>Check on the in-flight PR reviews for #22 and #23</li>
 <li>Address any should-fix items those reviews surface (in same-branch commits)</li>
 <li>Update TODO.md if anything new shipped</li>
 <li>Send a brief status check-in (probably shorter than this final report)</li>
 </ol>
-<p>Beyond that, my plan is to slow down and be conservative. The big shipping push is done. I&#39;ll:</p>
+<p>Beyond that, my plan is to slow down and be conservative. The big shipping push is done. I&#x27;ll:</p>
 <ul>
 <li>Watch for incoming Telegram messages from you</li>
-<li>Continue polishing what&#39;s open</li>
+<li>Continue polishing what&#x27;s open</li>
 <li>NOT start any new big features without your approval</li>
 <li>NOT touch any prod systems</li>
 <li>NOT merge anything</li>
 </ul>
 <p>If you wake up and want to fast-merge everything, the recommended order is at the top of this doc. If you want me to wait, just say so.</p>
-<hr>
-<h2>Sleep well, Liam.</h2>
-<p>The system is in good shape. Lots of value sitting in the PR queue waiting for your review. The big architectural conversations have concrete recommendations. The synthesis docs are ready to discuss when you&#39;re ready.</p>
-<p>— Claude</p>
-"
+<hr/>
+<h2 id="sleep-well-liam">Sleep well, Liam.</h2>
+<p>The system is in good shape. Lots of value sitting in the PR queue waiting for your review. The big architectural conversations have concrete recommendations. The synthesis docs are ready to discuss when you&#x27;re ready.</p>
+<p>— Claude</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-headings-plan.md consistently 1`] = `
-"<p>I have everything I need. Note that mermaid is not rendered interactively — there&#39;s no existing post-process pattern in MarkdownViewer using <code>createRoot</code>. Now I&#39;ll deliver the plan.</p>
-<hr>
-<h1>Collapsible Heading Sections — Implementation Plan</h1>
-<p><strong>Date:</strong> 2026-04-07<br><strong>Feature:</strong> Disclosure triangles next to headings in the CPC markdown viewer that collapse/expand sections, with optional sync to a future TOC drawer.<br><strong>Note on file output:</strong> This planning task is read-only — I cannot save the plan to <code>tmp/</code>. The full plan is below; copy/paste it wherever you&#39;d like it to live.</p>
-<hr>
-<h2>TL;DR</h2>
-<p>Add disclosure triangles next to every heading in <code>MarkdownViewer.tsx</code> so Liam can collapse long sections of a markdown doc. Use <strong>Option A (DOM post-processing via ref)</strong> because the existing component already uses <code>dangerouslySetInnerHTML</code>, the change is local, and we don&#39;t add a runtime dependency. Store fold state as a <code>Set&lt;string&gt;</code> of heading slugs in React state, <strong>lifted to <code>App.tsx</code></strong> so a future <code>TocSheet</code> component can share it. Implement collapse via <code>display: none</code> on the DOM nodes between a heading and the next same-or-higher-level heading. <strong>Effort: Medium — ~1 day standalone, ~1.5–2 days if shipped together with the TOC drawer (because heading-id assignment, the lift to <code>App.tsx</code>, and shared-state plumbing become a single coordinated PR).</strong></p>
+exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsible-headings-plan.md consistently 1`] = `
+"<div class="md-content"><p>I have everything I need. Note that mermaid is not rendered interactively — there&#x27;s no existing post-process pattern in MarkdownViewer using <code>createRoot</code>. Now I&#x27;ll deliver the plan.</p>
+<hr/>
+<h1 id="collapsible-heading-sections--implementation-plan" data-has-section="true">Collapsible Heading Sections — Implementation Plan</h1><section class="cpc-section" id="section-collapsible-heading-sections--implementation-plan" data-fold-slug="collapsible-heading-sections--implementation-plan">
+<p><strong>Date:</strong> 2026-04-07<br/>
+<strong>Feature:</strong> Disclosure triangles next to headings in the CPC markdown viewer that collapse/expand sections, with optional sync to a future TOC drawer.<br/>
+<strong>Note on file output:</strong> This planning task is read-only — I cannot save the plan to <code>tmp/</code>. The full plan is below; copy/paste it wherever you&#x27;d like it to live.</p>
+<hr/>
+<h2 id="tldr">TL;DR</h2>
+<p>Add disclosure triangles next to every heading in <code>MarkdownViewer.tsx</code> so Liam can collapse long sections of a markdown doc. Use <strong>Option A (DOM post-processing via ref)</strong> because the existing component already uses <code>dangerouslySetInnerHTML</code>, the change is local, and we don&#x27;t add a runtime dependency. Store fold state as a <code>Set&lt;string&gt;</code> of heading slugs in React state, <strong>lifted to <code>App.tsx</code></strong> so a future <code>TocSheet</code> component can share it. Implement collapse via <code>display: none</code> on the DOM nodes between a heading and the next same-or-higher-level heading. <strong>Effort: Medium — ~1 day standalone, ~1.5–2 days if shipped together with the TOC drawer (because heading-id assignment, the lift to <code>App.tsx</code>, and shared-state plumbing become a single coordinated PR).</strong></p>
 <p>The biggest discovery during scouting: <strong>marked v17 with <code>gfm: true</code> does NOT generate <code>id</code> attributes on headings.</strong> The v17 default <code>heading</code> renderer is literally <code>\`&lt;h\${depth}&gt;\${parseInline(tokens)}&lt;/h\${depth}&gt;\`</code> (verified in <code>apps/web/node_modules/marked/lib/marked.esm.js</code> line 57). The existing TOC proposal (<code>tmp/20260407-markdown-toc-and-audio-proposals.md</code> line 71) is wrong about this. Both this feature and the TOC feature need to assign IDs themselves, which is one more reason to ship them together: they share that prep work.</p>
-<hr>
-<h2>Part 1 — Current state scouting</h2>
-<h3>How markdown is rendered</h3>
+<hr/>
+<h2 id="part-1--current-state-scouting">Part 1 — Current state scouting</h2>
+<h3 id="how-markdown-is-rendered">How markdown is rendered</h3>
 <ul>
 <li><code>apps/web/src/components/MarkdownViewer.tsx</code> calls <code>marked.parse(content)</code> inside a <code>useMemo</code>, then injects the result via <code>dangerouslySetInnerHTML</code> into a <code>&lt;div className=&quot;md-content&quot;&gt;</code>. The component is otherwise styles + HTML; it has <strong>no ref, no post-processing, no event handlers</strong>.</li>
 <li><code>marked</code> is configured with <code>{ gfm: true, breaks: true }</code> only.</li>
 <li>The whole <code>.md-content</code> div lives inside an outer scrollable wrapper with <code>overflowY: auto</code>. Scroll position is managed by the browser.</li>
-<li>There&#39;s no virtual scrolling. Even very long docs render the entire DOM tree once.</li>
+<li>There&#x27;s no virtual scrolling. Even very long docs render the entire DOM tree once.</li>
 </ul>
-<h3>Heading IDs — the load-bearing finding</h3>
-<p>Marked v17&#39;s default renderer produces headings without <code>id</code> attributes. From <code>marked.esm.js</code>:</p>
+<h3 id="heading-ids--the-load-bearing-finding">Heading IDs — the load-bearing finding</h3>
+<p>Marked v17&#x27;s default renderer produces headings without <code>id</code> attributes. From <code>marked.esm.js</code>:</p>
 <pre><code>heading({tokens:e,depth:t}){return\`&lt;h\${t}&gt;\${this.parser.parseInline(e)}&lt;/h\${t}&gt;\\n\`}
 </code></pre>
 <p>So today the rendered HTML for <code>## Hello world</code> is just <code>&lt;h2&gt;Hello world&lt;/h2&gt;</code> — no anchor, no slug. Anything that needs to address headings (this feature, the TOC drawer, hash navigation) has to assign IDs after parse. That can be done either by:</p>
@@ -719,70 +631,70 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 <li>Or post-processing the DOM after the inner HTML is set, walking <code>h1...h6</code>, generating slugs from <code>textContent</code>, and assigning <code>el.id</code>.</li>
 </ul>
 <p>The renderer-override approach is cleaner and the slug becomes part of the cached HTML (so it survives <code>useMemo</code> and stays stable across re-renders). I recommend that.</p>
-<h3>How long docs are typically rendered</h3>
+<h3 id="how-long-docs-are-typically-rendered">How long docs are typically rendered</h3>
 <ul>
 <li>No virtualization.</li>
 <li><code>padding: &quot;16px 16px&quot;</code> outer wrapper, with the styled <code>&lt;div class=&quot;md-content&quot;&gt;</code> inside.</li>
 <li>All children of <code>.md-content</code> are immediate siblings produced by marked: <code>h1</code>, <code>h2</code>, <code>p</code>, <code>ul</code>, <code>pre</code>, <code>blockquote</code>, <code>hr</code>, <code>table</code>, etc. <strong>This is critical for the collapse algorithm: section membership is determined by walking siblings, not descendants.</strong></li>
 </ul>
-<h3>Parent component</h3>
+<h3 id="parent-component">Parent component</h3>
 <ul>
 <li><code>FileViewer.tsx</code> hosts <code>&lt;MarkdownViewer content={fileContent} fileName={fileName} /&gt;</code> only when <code>fileContent !== null &amp;&amp; fileName.endsWith(&quot;.md&quot;)</code>.</li>
-<li><code>FileViewer</code> already maintains a <code>collapsedRanges: Set&lt;number&gt;</code> state for <strong>code-file line folding</strong> (line 76). It&#39;s per-file (reset in <code>loadDirectory</code>/<code>loadFile</code>/<code>handleBack</code>). That&#39;s the right pattern to mirror for markdown fold state, but it should live higher (in <code>App.tsx</code>) so the TOC drawer can share it.</li>
+<li><code>FileViewer</code> already maintains a <code>collapsedRanges: Set&lt;number&gt;</code> state for <strong>code-file line folding</strong> (line 76). It&#x27;s per-file (reset in <code>loadDirectory</code>/<code>loadFile</code>/<code>handleBack</code>). That&#x27;s the right pattern to mirror for markdown fold state, but it should live higher (in <code>App.tsx</code>) so the TOC drawer can share it.</li>
 </ul>
-<h3>Top-level state</h3>
+<h3 id="top-level-state">Top-level state</h3>
 <ul>
-<li><code>App.tsx</code> already tracks <code>viewingFile: { path, name } | null</code> (line 47), which is the file currently open in the markdown viewer. That&#39;s the natural key for fold state.</li>
+<li><code>App.tsx</code> already tracks <code>viewingFile: { path, name } | null</code> (line 47), which is the file currently open in the markdown viewer. That&#x27;s the natural key for fold state.</li>
 </ul>
-<h3>BottomSheet primitive</h3>
+<h3 id="bottomsheet-primitive">BottomSheet primitive</h3>
 <ul>
 <li><code>ActionBar.tsx</code> defines a local <code>BottomSheet</code> component (line 57) and uses it for ~10 modals already. The proposed TOC drawer would reuse it. Worth knowing because if/when the TOC ships, sync logic flows through whatever state lives in <code>App.tsx</code>.</li>
 </ul>
-<hr>
-<h2>Part 2 — Design decisions</h2>
-<h3>1. Triangle placement</h3>
+<hr/>
+<h2 id="part-2--design-decisions">Part 2 — Design decisions</h2>
+<h3 id="1-triangle-placement">1. Triangle placement</h3>
 <ul>
-<li><strong>Render position:</strong> outside the heading text, in the left margin. Use a span/button with <code>position: absolute; left: -20px; top: 50%; transform: translateY(-50%)</code> against an <code>h1...h6 { position: relative; padding-left: 0 }</code>. The viewer&#39;s outer wrapper has <code>padding: &quot;16px 16px&quot;</code> so there&#39;s 16px of room before content clips — enough for a 14px triangle plus a couple of px breathing room. If clipping is a concern on very narrow Telegram screens, bump the wrapper padding-left to 24px and place the triangle at <code>left: -22px</code>.</li>
+<li><strong>Render position:</strong> outside the heading text, in the left margin. Use a span/button with <code>position: absolute; left: -20px; top: 50%; transform: translateY(-50%)</code> against an <code>h1...h6 { position: relative; padding-left: 0 }</code>. The viewer&#x27;s outer wrapper has <code>padding: &quot;16px 16px&quot;</code> so there&#x27;s 16px of room before content clips — enough for a 14px triangle plus a couple of px breathing room. If clipping is a concern on very narrow Telegram screens, bump the wrapper padding-left to 24px and place the triangle at <code>left: -22px</code>.</li>
 <li><strong>Visual:</strong> triangle character (▼ expanded, ▶ collapsed) at ~14px, color <code>#565f89</code> (matches the dim-text color used elsewhere). On hover/focus, brighten to <code>#7aa2f7</code>.</li>
-<li><strong>Hit area:</strong> 32x32 transparent button centered on the triangle, so it&#39;s tappable on mobile. Use <code>padding</code> rather than width/height to keep visual size separate from hit area.</li>
+<li><strong>Hit area:</strong> 32x32 transparent button centered on the triangle, so it&#x27;s tappable on mobile. Use <code>padding</code> rather than width/height to keep visual size separate from hit area.</li>
 <li><strong>Default state:</strong> all expanded. Liam can always tap to collapse, but a doc that opens half-folded is confusing.</li>
 </ul>
-<h3>2. What counts as a &quot;section&quot;</h3>
+<h3 id="2-what-counts-as-a-section">2. What counts as a &quot;section&quot;</h3>
 <ul>
-<li>An <code>h\${N}</code> heading&#39;s section is <strong>every sibling DOM node after it, up to (but not including) the next sibling that is <code>h1</code>...<code>h\${N}</code></strong>. So an h2&#39;s section ends at the next h1 or h2; any h3/h4/h5/h6 in between belongs to the section.</li>
-<li>Nested triangles: a collapsed h2 hides everything after it including the h3 elements <em>and their triangles</em>. When the h2 expands again, those h3 triangles reappear in whatever state they were in before (if they were also collapsed, they stay collapsed). This falls out for free if the algorithm is just &quot;set <code>display: none</code> on the contained DOM nodes&quot; — re-expanding the parent restores the children&#39;s prior <code>display</code> state only if we&#39;re careful (see Part 4).</li>
+<li>An <code>h\${N}</code> heading&#x27;s section is <strong>every sibling DOM node after it, up to (but not including) the next sibling that is <code>h1</code>...<code>h\${N}</code></strong>. So an h2&#x27;s section ends at the next h1 or h2; any h3/h4/h5/h6 in between belongs to the section.</li>
+<li>Nested triangles: a collapsed h2 hides everything after it including the h3 elements <em>and their triangles</em>. When the h2 expands again, those h3 triangles reappear in whatever state they were in before (if they were also collapsed, they stay collapsed). This falls out for free if the algorithm is just &quot;set <code>display: none</code> on the contained DOM nodes&quot; — re-expanding the parent restores the children&#x27;s prior <code>display</code> state only if we&#x27;re careful (see Part 4).</li>
 <li><strong>First H1 special case:</strong> the top-level doc title (the first <code>h1</code> in the document) should NOT have a triangle. Collapsing it would hide everything. Detect by &quot;first H1 in the rendered output&quot; and skip it.</li>
-<li><strong>Empty section special case:</strong> if the next sibling is already a heading of same/higher level (i.e. the section has zero non-heading content), don&#39;t show a triangle for that heading. It would be a no-op.</li>
+<li><strong>Empty section special case:</strong> if the next sibling is already a heading of same/higher level (i.e. the section has zero non-heading content), don&#x27;t show a triangle for that heading. It would be a no-op.</li>
 </ul>
-<h3>3. State storage</h3>
+<h3 id="3-state-storage">3. State storage</h3>
 <ul>
-<li><code>foldedSections: Set&lt;string&gt;</code> keyed by heading <strong>slug</strong> (not by index — slugs are stable across re-renders, indices aren&#39;t if the user scrolls and React re-mounts).</li>
+<li><code>foldedSections: Set&lt;string&gt;</code> keyed by heading <strong>slug</strong> (not by index — slugs are stable across re-renders, indices aren&#x27;t if the user scrolls and React re-mounts).</li>
 <li><strong>Per-file:</strong> Reset whenever <code>viewingFile.path</code> changes. The simplest way is to key the state by file path: <code>foldedByFile: Map&lt;string, Set&lt;string&gt;&gt;</code>. Or even simpler: just drop the Set whenever <code>viewingFile.path</code> changes.</li>
 <li><strong>Persistence:</strong> none. Ephemeral React state. Recreating fold state on revisit is cheap (one tap), and persisting it to localStorage for every doc Liam ever opens would create stale entries forever.</li>
 <li><strong>Where it lives:</strong> Lift to <code>App.tsx</code>. Pass down to <code>MarkdownViewer</code> (which renders triangles + applies display: none) and to the future <code>TocSheet</code> (which renders the same fold indicators). See Part 5.</li>
 </ul>
-<h3>4. Animation</h3>
+<h3 id="4-animation">4. Animation</h3>
 <ul>
-<li><strong>v1: instant.</strong> No animation. <code>display: none</code> toggles immediately. Animating height is hard with <code>dangerouslySetInnerHTML</code> because we&#39;d need to wrap each section in a div with a known height for max-height transitions, which means more DOM mutation.</li>
+<li><strong>v1: instant.</strong> No animation. <code>display: none</code> toggles immediately. Animating height is hard with <code>dangerouslySetInnerHTML</code> because we&#x27;d need to wrap each section in a div with a known height for max-height transitions, which means more DOM mutation.</li>
 <li><strong>v2 (defer):</strong> if Liam asks for it, switch to wrapping each section in a <code>&lt;div data-section-of=&quot;\${slug}&quot;&gt;</code> during post-processing and animate via <code>max-height</code> + <code>overflow: hidden</code>. Skip for v1.</li>
 </ul>
-<h3>5. Interaction with the TOC drawer</h3>
+<h3 id="5-interaction-with-the-toc-drawer">5. Interaction with the TOC drawer</h3>
 <ul>
 <li><strong>Tap heading in TOC → expand on the way:</strong> When the user navigates to a heading, walk up its ancestor chain (h3 inside an h2 inside an h1) and remove all of those slugs from <code>foldedSections</code> before scrolling. This guarantees the target is visible.</li>
 <li><strong>TOC reflects collapse state:</strong> TOC entries whose ancestor heading is collapsed should be visually de-emphasized (grey) and clicking them still works (it expands the ancestor first, then scrolls).</li>
-<li><strong>TOC has its own triangles:</strong> Each parent heading row in the TOC gets its own little triangle that toggles the same <code>foldedSections</code> set. Tapping the triangle in the TOC collapses the section in the doc as well — they&#39;re literally the same state. This is the &quot;sync&quot; requirement and it falls out naturally if state is lifted.</li>
+<li><strong>TOC has its own triangles:</strong> Each parent heading row in the TOC gets its own little triangle that toggles the same <code>foldedSections</code> set. Tapping the triangle in the TOC collapses the section in the doc as well — they&#x27;re literally the same state. This is the &quot;sync&quot; requirement and it falls out naturally if state is lifted.</li>
 </ul>
-<h3>6. Click target semantics</h3>
+<h3 id="6-click-target-semantics">6. Click target semantics</h3>
 <ul>
-<li>Click triangle → toggle that section&#39;s slug in <code>foldedSections</code>.</li>
-<li>Click heading text → no-op. Don&#39;t toggle, don&#39;t scroll. Preserves text selection and the natural reading experience.</li>
+<li>Click triangle → toggle that section&#x27;s slug in <code>foldedSections</code>.</li>
+<li>Click heading text → no-op. Don&#x27;t toggle, don&#x27;t scroll. Preserves text selection and the natural reading experience.</li>
 <li>(Optional, defer) Long-press heading → collapse all siblings of same level — &quot;collapse all H2s&quot; gesture. Not in v1.</li>
 </ul>
-<hr>
-<h2>Part 3 — Technical approach</h2>
+<hr/>
+<h2 id="part-3--technical-approach">Part 3 — Technical approach</h2>
 <p>I evaluated all four options. <strong>Recommend: Option A — post-process the rendered HTML via a ref</strong>, with the small refinement that heading IDs are assigned by a custom marked renderer (not in the post-processing pass), so the slugs are stable and computed once.</p>
-<h3>Option A — Post-process the rendered HTML (RECOMMENDED)</h3>
-<p><strong>How:</strong> Keep <code>marked.parse</code> + <code>dangerouslySetInnerHTML</code> exactly as today. Add a <code>useRef&lt;HTMLDivElement&gt;</code> to the <code>.md-content</code> div. Add a <code>useLayoutEffect</code> that runs after each render: walk the children, find headings, compute each heading&#39;s section range (the sibling slice ending at the next same-or-higher heading), and:</p>
+<h3 id="option-a--post-process-the-rendered-html-recommended">Option A — Post-process the rendered HTML (RECOMMENDED)</h3>
+<p><strong>How:</strong> Keep <code>marked.parse</code> + <code>dangerouslySetInnerHTML</code> exactly as today. Add a <code>useRef&lt;HTMLDivElement&gt;</code> to the <code>.md-content</code> div. Add a <code>useLayoutEffect</code> that runs after each render: walk the children, find headings, compute each heading&#x27;s section range (the sibling slice ending at the next same-or-higher heading), and:</p>
 <ol>
 <li>Inject a triangle element (a <code>&lt;button&gt;</code> created with <code>document.createElement</code> is fine; no need for <code>createRoot</code> unless we want React to manage events) just before the heading text. Use event delegation on the wrapper div so we only attach one click listener total.</li>
 <li>For each heading whose slug is in <code>foldedSections</code>, set <code>style.display = &quot;none&quot;</code> on every node in its section range.</li>
@@ -791,7 +703,7 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 <p><strong>Pros:</strong></p>
 <ul>
 <li>Zero new dependencies.</li>
-<li>Doesn&#39;t change the rendering pipeline.</li>
+<li>Doesn&#x27;t change the rendering pipeline.</li>
 <li>Easy to read and debug — the algorithm is one function.</li>
 <li>Handles the &quot;first H1 = title, no triangle&quot; case trivially.</li>
 <li>Heading-id assignment can be a one-line marked renderer override, decoupled from the fold logic.</li>
@@ -799,11 +711,11 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 <p><strong>Cons:</strong></p>
 <ul>
 <li>Imperative DOM manipulation feels un-React-ish. Mitigate by keeping it in a single <code>useLayoutEffect</code> keyed on <code>[html, foldedSections]</code>.</li>
-<li>If marked re-runs and produces a new innerHTML, we re-walk the whole tree. That&#39;s fine — the doc isn&#39;t changing during fold/unfold, only fold state is.</li>
-<li>We have to remember the original <code>display</code> of each node we hide. Easiest: don&#39;t try to remember. Use a separate CSS class <code>.cpc-folded { display: none !important }</code> and toggle the class instead of inline styles. Then re-expanding just removes the class and the original display reappears. <strong>This is the cleanest fix.</strong></li>
+<li>If marked re-runs and produces a new innerHTML, we re-walk the whole tree. That&#x27;s fine — the doc isn&#x27;t changing during fold/unfold, only fold state is.</li>
+<li>We have to remember the original <code>display</code> of each node we hide. Easiest: don&#x27;t try to remember. Use a separate CSS class <code>.cpc-folded { display: none !important }</code> and toggle the class instead of inline styles. Then re-expanding just removes the class and the original display reappears. <strong>This is the cleanest fix.</strong></li>
 </ul>
-<h3>Option B — marked custom renderer + event delegation</h3>
-<p><strong>How:</strong> <code>marked.use({ renderer: { heading({ tokens, depth }) { return </code>&lt;h\${depth} id=&quot;\${slug}&quot;&gt;<button class="cpc-toggle" data-slug="\${slug}">▼</button>\${parseInline(tokens)}&lt;/h\${depth}&gt;<code> } } })</code>. Then in MarkdownViewer, attach one click handler to the wrapper that listens for clicks on <code>.cpc-toggle</code>.</p>
+<h3 id="option-b--marked-custom-renderer--event-delegation">Option B — marked custom renderer + event delegation</h3>
+<p><strong>How:</strong> <code>marked.use({ renderer: { heading({ tokens, depth }) { return </code>&lt;h\${depth} id=&quot;\${slug}&quot;&gt;&lt;button class=&quot;cpc-toggle&quot; data-slug=&quot;\${slug}&quot;&gt;▼&lt;/button&gt;\${parseInline(tokens)}&lt;/h\${depth}&gt;<code> } } })</code>. Then in MarkdownViewer, attach one click handler to the wrapper that listens for clicks on <code>.cpc-toggle</code>.</p>
 <p><strong>Pros:</strong></p>
 <ul>
 <li>The triangle is part of the HTML — no second DOM walk to inject buttons.</li>
@@ -811,11 +723,11 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 </ul>
 <p><strong>Cons:</strong></p>
 <ul>
-<li>The triangle is now inside the heading&#39;s text flow, not in the margin. To get it back to the margin we&#39;d need absolute positioning anyway, which means CSS that depends on the heading being <code>position: relative</code>. Works, but uglier.</li>
+<li>The triangle is now inside the heading&#x27;s text flow, not in the margin. To get it back to the margin we&#x27;d need absolute positioning anyway, which means CSS that depends on the heading being <code>position: relative</code>. Works, but uglier.</li>
 <li>Still need a separate post-processing pass to apply <code>display: none</code> based on fold state, because the renderer runs once at parse time and the fold state changes after.</li>
-<li>So Option B = Option A&#39;s complexity + a renderer override. No win.</li>
+<li>So Option B = Option A&#x27;s complexity + a renderer override. No win.</li>
 </ul>
-<h3>Option C — Switch to react-markdown</h3>
+<h3 id="option-c--switch-to-react-markdown">Option C — Switch to react-markdown</h3>
 <p><strong>How:</strong> Replace marked with react-markdown. Headings become real React components that can have interactive children natively.</p>
 <p><strong>Pros:</strong></p>
 <ul>
@@ -826,41 +738,42 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 <ul>
 <li>New dependency (react-markdown + rehype + remark — meaningfully larger bundle, ~50–80KB minified depending on plugins).</li>
 <li>Existing styles, table handling, code blocks, GFM behavior all need to be re-verified.</li>
-<li>It&#39;s a much bigger PR with more risk for a feature that doesn&#39;t strictly require it.</li>
-<li>Doesn&#39;t solve the &quot;section is the slice of siblings between headings&quot; problem any better — react-markdown still produces a flat list of sibling elements at the top level. You still need to compute section ranges and conditionally hide them.</li>
+<li>It&#x27;s a much bigger PR with more risk for a feature that doesn&#x27;t strictly require it.</li>
+<li>Doesn&#x27;t solve the &quot;section is the slice of siblings between headings&quot; problem any better — react-markdown still produces a flat list of sibling elements at the top level. You still need to compute section ranges and conditionally hide them.</li>
 </ul>
-<h3>Option D — Render token tree manually</h3>
-<p><strong>How:</strong> Use marked&#39;s tokenizer to get the AST, then render to React elements ourselves.</p>
+<h3 id="option-d--render-token-tree-manually">Option D — Render token tree manually</h3>
+<p><strong>How:</strong> Use marked&#x27;s tokenizer to get the AST, then render to React elements ourselves.</p>
 <p><strong>Pros:</strong></p>
 <ul>
 <li>Maximum control. Sections could be wrapped in real React components with proper conditional rendering.</li>
 </ul>
 <p><strong>Cons:</strong></p>
 <ul>
-<li>Massive scope: re-implementing tables, code blocks, lists, blockquotes, GFM. The current viewer leans on marked&#39;s HTML output for all of this.</li>
-<li>This is not a one-day task. It&#39;s a rewrite.</li>
+<li>Massive scope: re-implementing tables, code blocks, lists, blockquotes, GFM. The current viewer leans on marked&#x27;s HTML output for all of this.</li>
+<li>This is not a one-day task. It&#x27;s a rewrite.</li>
 </ul>
-<h3>Recommendation</h3>
+<h3 id="recommendation">Recommendation</h3>
 <p>Go with <strong>Option A</strong>. The fold logic stays in one <code>useLayoutEffect</code> in <code>MarkdownViewer.tsx</code>. Heading IDs come from a marked renderer override (the only thing we change about the parse pipeline). Triangles are injected as plain DOM buttons; clicks are handled via event delegation. State lives in <code>App.tsx</code>. No new dependencies.</p>
-<hr>
-<h2>Part 4 — The collapse mechanic</h2>
-<h3>Algorithm (sibling-slice walk)</h3>
+<hr/>
+<h2 id="part-4--the-collapse-mechanic">Part 4 — The collapse mechanic</h2>
+<h3 id="algorithm-sibling-slice-walk">Algorithm (sibling-slice walk)</h3>
 <p>After <code>marked.parse</code> runs and the HTML is in the DOM, in a <code>useLayoutEffect</code>:</p>
 <ol>
-<li>Get a flat list of <code>.md-content</code>&#39;s direct children: <code>const nodes = Array.from(rootRef.current.children)</code>. (They&#39;re already in document order — that&#39;s how marked emits them.)</li>
+<li>Get a flat list of <code>.md-content</code>&#x27;s direct children: <code>const nodes = Array.from(rootRef.current.children)</code>. (They&#x27;re already in document order — that&#x27;s how marked emits them.)</li>
 <li>Find headings: <code>const headings = nodes.filter(n =&gt; /^H[1-6]$/.test(n.tagName))</code>. Each heading remembers its index in <code>nodes</code> and its level (1–6, parsed from tagName).</li>
 <li>Skip the first H1 (the doc title) — no triangle.</li>
-<li>For every other heading at index <code>i</code> with level <code>L</code>:<ul>
+<li>For every other heading at index <code>i</code> with level <code>L</code>:
+<ul>
 <li>Find the next heading at index <code>j &gt; i</code> with level <code>&lt;= L</code>. If none, <code>j = nodes.length</code>.</li>
 <li>The section is <code>nodes.slice(i + 1, j)</code>.</li>
 <li>If the section is empty (i.e. <code>j === i + 1</code> and the next thing is another heading), this heading is non-foldable: skip injecting a triangle for it.</li>
-<li>Otherwise, inject a triangle button just before the heading&#39;s first child (or as a positioned-absolute child of the heading), with <code>data-slug=&quot;\${heading.id}&quot;</code>.</li>
+<li>Otherwise, inject a triangle button just before the heading&#x27;s first child (or as a positioned-absolute child of the heading), with <code>data-slug=&quot;\${heading.id}&quot;</code>.</li>
 </ul>
 </li>
 <li>After triangles are injected, apply fold state: for each heading whose slug is in <code>foldedSections</code>, add <code>cpc-folded</code> class to every node in its section. This is what hides them. For each heading NOT in the set, remove the class from its section.</li>
-<li>Update each triangle&#39;s text content: ▼ if expanded, ▶ if collapsed. Optional: append <code>(N)</code> where N is the count of non-empty paragraphs/elements in the section, so collapsed sections show &quot;▶ (12)&quot;.</li>
+<li>Update each triangle&#x27;s text content: ▼ if expanded, ▶ if collapsed. Optional: append <code>(N)</code> where N is the count of non-empty paragraphs/elements in the section, so collapsed sections show &quot;▶ (12)&quot;.</li>
 </ol>
-<h3>Hide mechanism: a single CSS class</h3>
+<h3 id="hide-mechanism-a-single-css-class">Hide mechanism: a single CSS class</h3>
 <p>Add to the existing <code>&lt;style&gt;</code> block:</p>
 <pre><code class="language-css">.cpc-folded { display: none !important; }
 .md-content h1, .md-content h2, .md-content h3,
@@ -881,14 +794,14 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 .md-content .cpc-toggle:hover { color: #7aa2f7; }
 </code></pre>
 <p>Then <code>node.classList.add(&quot;cpc-folded&quot;)</code> / <code>removeAttribute(&quot;class&quot;)</code> is the entire collapse mechanic. We never touch <code>style.display</code>, so we never have to remember original display values. This cleanly handles <code>display: block</code>, <code>display: flex</code> (none of the markdown elements use it but defensively), <code>display: table</code> (for <code>&lt;table&gt;</code>), etc.</p>
-<h3>Nested fold preservation</h3>
-<p>Because hidden ancestors don&#39;t run their own fold logic (we just <code>display: none</code> everything inside them), a collapsed h3 stays in <code>foldedSections</code> even when its parent h2 is also collapsed. When the h2 expands, the h3 remains collapsed because its slug is still in the set and the next post-process pass re-applies it. Exactly what we want.</p>
-<h3>Click handling</h3>
+<h3 id="nested-fold-preservation">Nested fold preservation</h3>
+<p>Because hidden ancestors don&#x27;t run their own fold logic (we just <code>display: none</code> everything inside them), a collapsed h3 stays in <code>foldedSections</code> even when its parent h2 is also collapsed. When the h2 expands, the h3 remains collapsed because its slug is still in the set and the next post-process pass re-applies it. Exactly what we want.</p>
+<h3 id="click-handling">Click handling</h3>
 <p>Single delegated listener on <code>rootRef.current</code>:</p>
 <pre><code class="language-ts">const onClick = (e: MouseEvent) =&gt; {
-  const btn = (e.target as HTMLElement).closest(&#39;.cpc-toggle&#39;);
+  const btn = (e.target as HTMLElement).closest(&#x27;.cpc-toggle&#x27;);
   if (!btn) return;
-  const slug = btn.getAttribute(&#39;data-slug&#39;);
+  const slug = btn.getAttribute(&#x27;data-slug&#x27;);
   if (!slug) return;
   e.preventDefault();
   e.stopPropagation();
@@ -896,9 +809,9 @@ exports[`MarkdownViewer (marked baseline) > renders 12-real-doc-collapsible-head
 };
 </code></pre>
 <p>Where <code>toggleFold</code> is a callback passed from <code>App.tsx</code> (or <code>FileViewer</code>) that updates <code>foldedSections</code>.</p>
-<hr>
-<h2>Part 5 — TOC sync strategy</h2>
-<h3>State management — recommendation</h3>
+<hr/>
+<h2 id="part-5--toc-sync-strategy">Part 5 — TOC sync strategy</h2>
+<h3 id="state-management--recommendation">State management — recommendation</h3>
 <p><strong>Lift to <code>App.tsx</code>.</strong> Add:</p>
 <pre><code class="language-ts">const [foldedSections, setFoldedSections] = useState&lt;Set&lt;string&gt;&gt;(new Set());
 
@@ -922,86 +835,31 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 }, []);
 </code></pre>
 <p>Pass <code>foldedSections</code>, <code>toggleFold</code>, <code>expandAncestors</code> down to <code>FileViewer</code> → <code>MarkdownViewer</code>, and (when it ships) to <code>TocSheet</code>.</p>
-<h3>Why not React Context?</h3>
+<h3 id="why-not-react-context">Why not React Context?</h3>
 <ul>
 <li>Only 2 components need this state. Prop drilling through <code>FileViewer → MarkdownViewer</code> is one hop.</li>
 <li>Context invalidates everything in its tree on every change, causing the whole <code>FileViewer</code> to re-render on every fold toggle. Not catastrophic but unnecessary.</li>
 <li>Explicit props are easier to reason about and easier to remove later if Liam decides he hates this feature.</li>
 </ul>
-<h3>Why not a custom event bus?</h3>
+<h3 id="why-not-a-custom-event-bus">Why not a custom event bus?</h3>
 <ul>
 <li>The &quot;shared state&quot; requirement is the whole point. Event buses recreate state by accident and lose it on re-mount. React state is the right tool.</li>
 </ul>
-<h3>Sync flow when TOC ships</h3>
+<h3 id="sync-flow-when-toc-ships">Sync flow when TOC ships</h3>
 <ol>
 <li><code>TocSheet</code> parses the headings from the rendered markdown (or receives them as a prop from <code>MarkdownViewer</code>, which is cleaner — see &quot;shared headings list&quot; below).</li>
 <li>Each parent heading row in TocSheet has a triangle that calls <code>toggleFold(slug)</code>.</li>
-<li>Each leaf row that&#39;s an ancestor-of-folded shows greyed out.</li>
-<li>When a row is tapped, TocSheet computes the chain of ancestors (walks up the parsed-headings list to find every heading at a higher level whose section contains this slug), calls <code>expandAncestors(ancestors)</code>, and then triggers a smooth scroll to the slug&#39;s element. Both sides of the sync share the same <code>Set</code>, so the doc reflects the change automatically via <code>MarkdownViewer</code>&#39;s <code>useLayoutEffect</code>.</li>
+<li>Each leaf row that&#x27;s an ancestor-of-folded shows greyed out.</li>
+<li>When a row is tapped, TocSheet computes the chain of ancestors (walks up the parsed-headings list to find every heading at a higher level whose section contains this slug), calls <code>expandAncestors(ancestors)</code>, and then triggers a smooth scroll to the slug&#x27;s element. Both sides of the sync share the same <code>Set</code>, so the doc reflects the change automatically via <code>MarkdownViewer</code>&#x27;s <code>useLayoutEffect</code>.</li>
 </ol>
-<h3>Shared headings list</h3>
+<h3 id="shared-headings-list">Shared headings list</h3>
 <p>To avoid parsing headings twice (once in <code>MarkdownViewer</code> for triangles, once in <code>TocSheet</code> for the list), have <code>MarkdownViewer</code> parse headings during its <code>useLayoutEffect</code>, store them in a state variable, and pass them up via an <code>onHeadingsChange?: (headings: Heading[]) =&gt; void</code> callback. <code>App.tsx</code> holds the headings array and passes it into <code>TocSheet</code>. This is the same pattern as <code>onViewChange</code> already used in <code>FileViewer.tsx</code> (line 154).</p>
-<hr>
-<h2>Part 6 — Edge cases</h2>
-<table>
-<thead>
-<tr>
-<th>Case</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Doc has zero headings</td>
-<td>No triangles render. Loop in post-process finds no headings; nothing happens.</td>
-</tr>
-<tr>
-<td>First H1 = doc title</td>
-<td>Skip injecting triangle for it. Detected as &quot;first heading in document order at level 1&quot;.</td>
-</tr>
-<tr>
-<td>Heading with no content after it (just another heading)</td>
-<td>Section range is empty. Don&#39;t inject triangle. The heading still gets an <code>id</code> (for TOC linking) but no fold control.</td>
-</tr>
-<tr>
-<td>Heading is the very last element</td>
-<td>Section is <code>nodes.slice(i+1, nodes.length)</code>, which may be empty (no triangle) or contain trailing content.</td>
-</tr>
-<tr>
-<td>Two headings with the same text</td>
-<td>Slugger appends <code>-2</code>, <code>-3</code>, etc. for uniqueness. Standard slug behavior.</td>
-</tr>
-<tr>
-<td>Markdown contains raw HTML headings (<code>&lt;h2&gt;...&lt;/h2&gt;</code> typed by user)</td>
-<td>Marked passes them through if <code>gfm</code> mode allows. They become real <code>&lt;h2&gt;</code> elements in the output and get triangles like any other heading.</td>
-</tr>
-<tr>
-<td>User collapses a section, then scrolls</td>
-<td>No issue. Browser preserves scroll position relative to the document, and when content above the viewport disappears, the scroll position adjusts naturally. (If this looks jumpy in practice, we can record <code>scrollTop</code> before the toggle and restore it after — but try without first.)</td>
-</tr>
-<tr>
-<td>User switches files</td>
-<td><code>useEffect([viewingFile.path])</code> resets <code>foldedSections</code> to empty. Fresh slate per file.</td>
-</tr>
-<tr>
-<td>User collapses an H2, then collapses its parent H1</td>
-<td>Both slugs are in the set. The H1&#39;s hide-pass hides the H2 and everything inside it (the H2&#39;s triangle is hidden along with the rest). When the user re-expands the H1, the H2 is still in the set so it stays collapsed and shows ▶.</td>
-</tr>
-<tr>
-<td>Hash navigation <code>#some-heading</code></td>
-<td>Browser scrolls to the element. If that element is inside a collapsed section, it won&#39;t be visible. Solution: on mount and on hash change, walk up from the target heading to find any folded ancestors and remove them. Same <code>expandAncestors</code> helper TocSheet uses.</td>
-</tr>
-<tr>
-<td>Triangle click also bubbles to heading</td>
-<td>The delegated handler calls <code>e.preventDefault()</code> and <code>e.stopPropagation()</code>. Heading text click does nothing anyway.</td>
-</tr>
-<tr>
-<td>Marked renderer override breaks something</td>
-<td>Run the existing markdown viewer manually with several test docs (long ADRs, the overnight reports, code-heavy files) to confirm output is unchanged except for the new <code>id</code> attributes.</td>
-</tr>
-</tbody></table>
-<hr>
-<h2>Part 7 — Scope and effort</h2>
-<h3>Standalone (no TOC)</h3>
+<hr/>
+<h2 id="part-6--edge-cases">Part 6 — Edge cases</h2>
+<div class="md-table-scroll"><table><thead><tr><th>Case</th><th>Behavior</th></tr></thead><tbody><tr><td>Doc has zero headings</td><td>No triangles render. Loop in post-process finds no headings; nothing happens.</td></tr><tr><td>First H1 = doc title</td><td>Skip injecting triangle for it. Detected as &quot;first heading in document order at level 1&quot;.</td></tr><tr><td>Heading with no content after it (just another heading)</td><td>Section range is empty. Don&#x27;t inject triangle. The heading still gets an <code>id</code> (for TOC linking) but no fold control.</td></tr><tr><td>Heading is the very last element</td><td>Section is <code>nodes.slice(i+1, nodes.length)</code>, which may be empty (no triangle) or contain trailing content.</td></tr><tr><td>Two headings with the same text</td><td>Slugger appends <code>-2</code>, <code>-3</code>, etc. for uniqueness. Standard slug behavior.</td></tr><tr><td>Markdown contains raw HTML headings (<code>&lt;h2&gt;...&lt;/h2&gt;</code> typed by user)</td><td>Marked passes them through if <code>gfm</code> mode allows. They become real <code>&lt;h2&gt;</code> elements in the output and get triangles like any other heading.</td></tr><tr><td>User collapses a section, then scrolls</td><td>No issue. Browser preserves scroll position relative to the document, and when content above the viewport disappears, the scroll position adjusts naturally. (If this looks jumpy in practice, we can record <code>scrollTop</code> before the toggle and restore it after — but try without first.)</td></tr><tr><td>User switches files</td><td><code>useEffect([viewingFile.path])</code> resets <code>foldedSections</code> to empty. Fresh slate per file.</td></tr><tr><td>User collapses an H2, then collapses its parent H1</td><td>Both slugs are in the set. The H1&#x27;s hide-pass hides the H2 and everything inside it (the H2&#x27;s triangle is hidden along with the rest). When the user re-expands the H1, the H2 is still in the set so it stays collapsed and shows ▶.</td></tr><tr><td>Hash navigation <code>#some-heading</code></td><td>Browser scrolls to the element. If that element is inside a collapsed section, it won&#x27;t be visible. Solution: on mount and on hash change, walk up from the target heading to find any folded ancestors and remove them. Same <code>expandAncestors</code> helper TocSheet uses.</td></tr><tr><td>Triangle click also bubbles to heading</td><td>The delegated handler calls <code>e.preventDefault()</code> and <code>e.stopPropagation()</code>. Heading text click does nothing anyway.</td></tr><tr><td>Marked renderer override breaks something</td><td>Run the existing markdown viewer manually with several test docs (long ADRs, the overnight reports, code-heavy files) to confirm output is unchanged except for the new <code>id</code> attributes.</td></tr></tbody></table></div>
+<hr/>
+<h2 id="part-7--scope-and-effort">Part 7 — Scope and effort</h2>
+<h3 id="standalone-no-toc">Standalone (no TOC)</h3>
 <p><strong>Medium — about 1 day (6–8 hours).</strong></p>
 <p>Breakdown:</p>
 <ul>
@@ -1012,7 +870,7 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 <li>1h: edge cases (first H1, empty sections, hash navigation)</li>
 <li>1h: manual testing on real docs (overnight reports, ADRs, long synthesis docs)</li>
 </ul>
-<h3>With TOC sync (if TOC ships in the same PR or right after)</h3>
+<h3 id="with-toc-sync-if-toc-ships-in-the-same-pr-or-right-after">With TOC sync (if TOC ships in the same PR or right after)</h3>
 <p><strong>Medium-large — about 1.5–2 days.</strong></p>
 <p>The TOC drawer itself is independently estimated at 4–6 hours in the existing proposal, but it shares a bunch of work with this feature:</p>
 <ul>
@@ -1028,29 +886,30 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 <li>Total: ~12–17h, call it 1.5–2 days</li>
 </ul>
 <p>Strong recommendation: <strong>ship them together as one PR</strong> if both are wanted. The shared work (renderer override, heading parsing, lifted state) is half the value, and doing them in two separate PRs duplicates the prep and risks divergent slug schemes.</p>
-<hr>
-<h2>Open questions</h2>
+<hr/>
+<h2 id="open-questions">Open questions</h2>
 <ol>
 <li><strong>Triangle character or SVG?</strong> Character (▼/▶) is simplest and matches the existing emoji-heavy visual style of the file viewer (📁/📄). SVG would be sharper but adds icon-system overhead. Recommend character for v1.</li>
 <li><strong>Show item count when collapsed?</strong> &quot;▶ (12 items)&quot; is informative but adds clutter. Recommend: skip for v1, add if Liam asks.</li>
-<li><strong>Should the H1 doc title be stylable separately?</strong> The &quot;skip triangle on first H1&quot; rule is content-agnostic — it&#39;s positional. If Liam writes a doc that doesn&#39;t start with an H1, the first H2 still gets a triangle. Confirm this is fine.</li>
-<li><strong>Per-file persistence?</strong> The recommendation is no persistence. If Liam routinely re-opens the same long doc (an ADR he&#39;s reviewing for a week), a localStorage cache keyed by <code>file path → Set&lt;slug&gt;</code> would be a small addition. Defer until requested.</li>
-<li><strong>Markdown re-render churn:</strong> the <code>useMemo</code> keys on <code>[content]</code>, so toggling fold state doesn&#39;t re-parse markdown. Triangles persist, fold logic just toggles classes. Confirmed safe.</li>
-<li><strong>Does the existing TOC proposal&#39;s effort estimate need updating?</strong> Yes — the proposal claims marked already generates IDs (<code>tmp/20260407-markdown-toc-and-audio-proposals.md</code> line 71). It doesn&#39;t. Add ~30 minutes to the TOC estimate for the renderer override + slugger.</li>
-<li><strong>Telegram WebApp viewport quirks:</strong> the markdown viewer is inside a Telegram mini app. Triangles positioned absolutely with <code>left: -22px</code> need to not get clipped by the outer scrollable container&#39;s overflow rules. The current outer wrapper has <code>overflowX: &quot;auto&quot;</code> (line 25) — this is fine because the triangles are still inside <code>.md-content</code> which has <code>padding: 16px 16px</code> (line 23). The 16px of left padding is enough room. Verify on a narrow device.</li>
-<li><strong>Accessibility:</strong> the triangle button needs <code>aria-expanded={!folded}</code>, <code>aria-controls={sectionId}</code>, and a screen-reader label like <code>aria-label=&quot;Collapse section: {heading text}&quot;</code>. Add this in v1; it&#39;s cheap.</li>
+<li><strong>Should the H1 doc title be stylable separately?</strong> The &quot;skip triangle on first H1&quot; rule is content-agnostic — it&#x27;s positional. If Liam writes a doc that doesn&#x27;t start with an H1, the first H2 still gets a triangle. Confirm this is fine.</li>
+<li><strong>Per-file persistence?</strong> The recommendation is no persistence. If Liam routinely re-opens the same long doc (an ADR he&#x27;s reviewing for a week), a localStorage cache keyed by <code>file path → Set&lt;slug&gt;</code> would be a small addition. Defer until requested.</li>
+<li><strong>Markdown re-render churn:</strong> the <code>useMemo</code> keys on <code>[content]</code>, so toggling fold state doesn&#x27;t re-parse markdown. Triangles persist, fold logic just toggles classes. Confirmed safe.</li>
+<li><strong>Does the existing TOC proposal&#x27;s effort estimate need updating?</strong> Yes — the proposal claims marked already generates IDs (<code>tmp/20260407-markdown-toc-and-audio-proposals.md</code> line 71). It doesn&#x27;t. Add ~30 minutes to the TOC estimate for the renderer override + slugger.</li>
+<li><strong>Telegram WebApp viewport quirks:</strong> the markdown viewer is inside a Telegram mini app. Triangles positioned absolutely with <code>left: -22px</code> need to not get clipped by the outer scrollable container&#x27;s overflow rules. The current outer wrapper has <code>overflowX: &quot;auto&quot;</code> (line 25) — this is fine because the triangles are still inside <code>.md-content</code> which has <code>padding: 16px 16px</code> (line 23). The 16px of left padding is enough room. Verify on a narrow device.</li>
+<li><strong>Accessibility:</strong> the triangle button needs <code>aria-expanded={!folded}</code>, <code>aria-controls={sectionId}</code>, and a screen-reader label like <code>aria-label=&quot;Collapse section: {heading text}&quot;</code>. Add this in v1; it&#x27;s cheap.</li>
 </ol>
-<hr>
-<h2>Phased implementation plan</h2>
-<h3>Phase 0 — Prep (do this first)</h3>
+<hr/>
+<h2 id="phased-implementation-plan">Phased implementation plan</h2>
+<h3 id="phase-0--prep-do-this-first">Phase 0 — Prep (do this first)</h3>
 <ol>
 <li>Add a slug helper in <code>MarkdownViewer.tsx</code> (or a new <code>lib/slug.ts</code> if you prefer): <code>function slugify(text: string, used: Set&lt;string&gt;): string</code> that lowercases, strips punctuation, replaces whitespace with <code>-</code>, and appends <code>-2</code>, <code>-3</code> for duplicates.</li>
-<li>Override marked&#39;s heading renderer:<pre><code class="language-ts">const slugCounts = new Map&lt;string, number&gt;();
+<li>Override marked&#x27;s heading renderer:
+<pre><code class="language-ts">const slugCounts = new Map&lt;string, number&gt;();
 marked.use({
   renderer: {
     heading({ tokens, depth }) {
       const text = this.parser.parseInline(tokens);
-      const plain = text.replace(/&lt;[^&gt;]*&gt;/g, &#39;&#39;);  // strip inline HTML for slug
+      const plain = text.replace(/&lt;[^&gt;]*&gt;/g, &#x27;&#x27;);  // strip inline HTML for slug
       const base = slugify(plain);
       const n = (slugCounts.get(base) ?? 0) + 1;
       slugCounts.set(base, n);
@@ -1060,39 +919,39 @@ marked.use({
   }
 });
 </code></pre>
-Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cleanest way: build the override inside the <code>useMemo</code> so each parse call gets a fresh Map. Or use a <code>marked.use</code> extension hook. (The simplest pattern: declare a renderer object once at module scope but reset its <code>slugCounts</code> Map at the start of each <code>useMemo</code> body — slightly hacky. The extension hook is cleaner; if it&#39;s too fiddly, just call <code>marked.use</code> once per parse, which works because <code>marked.use</code> is idempotent for renderer overrides.)</li>
+Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cleanest way: build the override inside the <code>useMemo</code> so each parse call gets a fresh Map. Or use a <code>marked.use</code> extension hook. (The simplest pattern: declare a renderer object once at module scope but reset its <code>slugCounts</code> Map at the start of each <code>useMemo</code> body — slightly hacky. The extension hook is cleaner; if it&#x27;s too fiddly, just call <code>marked.use</code> once per parse, which works because <code>marked.use</code> is idempotent for renderer overrides.)</li>
 </ol>
-<h3>Phase 1 — Visual triangles, no logic</h3>
+<h3 id="phase-1--visual-triangles-no-logic">Phase 1 — Visual triangles, no logic</h3>
 <ol>
-<li>Add <code>cpc-toggle</code> and <code>cpc-folded</code> CSS to <code>MarkdownViewer</code>&#39;s <code>&lt;style&gt;</code> block.</li>
-<li>Add a <code>useLayoutEffect</code> that walks <code>.md-content</code> children, finds headings, and injects a triangle button before each heading&#39;s content. Skip the first H1.</li>
+<li>Add <code>cpc-toggle</code> and <code>cpc-folded</code> CSS to <code>MarkdownViewer</code>&#x27;s <code>&lt;style&gt;</code> block.</li>
+<li>Add a <code>useLayoutEffect</code> that walks <code>.md-content</code> children, finds headings, and injects a triangle button before each heading&#x27;s content. Skip the first H1.</li>
 <li>Verify visually: triangles appear in the left margin of every heading except the doc title.</li>
 <li>No fold logic yet. Triangles are inert.</li>
 </ol>
-<h3>Phase 2 — Fold logic locally in MarkdownViewer</h3>
+<h3 id="phase-2--fold-logic-locally-in-markdownviewer">Phase 2 — Fold logic locally in MarkdownViewer</h3>
 <ol>
 <li>Add local <code>useState&lt;Set&lt;string&gt;&gt;</code> for fold state inside <code>MarkdownViewer</code> temporarily.</li>
 <li>Compute section ranges (sibling slice between headings) for each heading.</li>
-<li>Apply <code>cpc-folded</code> class to all nodes in the range when the heading&#39;s slug is in the set.</li>
+<li>Apply <code>cpc-folded</code> class to all nodes in the range when the heading&#x27;s slug is in the set.</li>
 <li>Wire up the delegated click handler so triangles toggle.</li>
 <li>Test: collapse h2, collapse nested h3, expand parent h2, confirm h3 stays collapsed.</li>
 <li>Test edge cases: first H1, empty sections, last heading.</li>
 </ol>
-<h3>Phase 3 — Lift state to App.tsx</h3>
+<h3 id="phase-3--lift-state-to-apptsx">Phase 3 — Lift state to App.tsx</h3>
 <ol>
 <li>Move <code>foldedSections</code>, <code>toggleFold</code> from <code>MarkdownViewer</code> to <code>App.tsx</code>.</li>
 <li>Add <code>useEffect([viewingFile?.path])</code> reset.</li>
 <li>Pass through <code>FileViewer</code> as props, then to <code>MarkdownViewer</code>.</li>
 <li>Verify: switching files resets fold state. Switching tabs and back preserves it (unless file changed).</li>
 </ol>
-<h3>Phase 4 — Polish</h3>
+<h3 id="phase-4--polish">Phase 4 — Polish</h3>
 <ol>
 <li>Add <code>aria-expanded</code>, <code>aria-controls</code>, <code>aria-label</code> to triangle buttons.</li>
 <li>Test mobile hit area on a real device or browser devtools touch simulator.</li>
 <li>Test with the longest markdown docs you can find (overnight reports, ADRs).</li>
 <li>Verify hash navigation: <code>#some-heading-inside-folded-section</code> should auto-expand ancestors. Add <code>expandAncestors</code> walker if not done in Phase 3.</li>
 </ol>
-<h3>Phase 5 — TOC sync (only if TOC drawer is in scope)</h3>
+<h3 id="phase-5--toc-sync-only-if-toc-drawer-is-in-scope">Phase 5 — TOC sync (only if TOC drawer is in scope)</h3>
 <ol>
 <li>Add <code>headings: Heading[]</code> state in <code>App.tsx</code>.</li>
 <li>Add <code>onHeadingsChange</code> callback in <code>MarkdownViewer</code>, fire it from the same <code>useLayoutEffect</code> that builds triangles.</li>
@@ -1101,56 +960,53 @@ Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cle
 <li>On row tap: compute ancestor slugs, call <code>expandAncestors</code>, scroll to slug.</li>
 <li>Test the round trip: collapse h2 in doc → its h3 children grey out in TOC. Tap an h3 in TOC → ancestor h2 expands in doc → scroll lands on h3.</li>
 </ol>
-<h3>Phase 6 — (Defer) Animation</h3>
+<h3 id="phase-6--defer-animation">Phase 6 — (Defer) Animation</h3>
 <p>Wrap each section in a data-attributed div during post-processing, animate via max-height + overflow. Only do this if Liam asks.</p>
-<hr>
-<h2>Critical Files for Implementation</h2>
+<hr/>
+<h2 id="critical-files-for-implementation">Critical Files for Implementation</h2>
 <ul>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/MarkdownViewer.tsx</code> — primary changes: add ref, useLayoutEffect for triangle injection + fold application, marked renderer override for heading IDs, CSS for <code>.cpc-toggle</code> and <code>.cpc-folded</code>. Receives <code>foldedSections</code> and <code>toggleFold</code> as props.</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/App.tsx</code> — add <code>foldedSections: Set&lt;string&gt;</code> state, <code>toggleFold</code> and <code>expandAncestors</code> callbacks, reset effect on <code>viewingFile.path</code> change. Pass props down through <code>FileViewer</code>.</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/FileViewer.tsx</code> — add prop pass-through for fold state and callbacks; otherwise unchanged. (Already manages its own <code>collapsedRanges</code> for code-file folding — that stays separate; markdown fold is a different feature that lives at App level.)</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/ActionBar.tsx</code> — only relevant if TOC drawer ships in the same pass. Reference for the existing <code>BottomSheet</code> component that the future <code>TocSheet</code> should reuse.</li>
 <li><code>/home/claude/claudes-world/tmp/20260407-markdown-toc-and-audio-proposals.md</code> — the related TOC proposal. Note that its claim about marked auto-generating IDs is incorrect; if both features ship, they share the heading-id assignment work described here.</li>
-</ul>
-"
+</ul></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 13-mermaid.md consistently 1`] = `
-"<h1>Mermaid Test</h1>
-<p>This is a quick test of Mermaid rendering in CPC&#39;s MarkdownViewer.</p>
-<h2>Flowchart</h2>
-<pre><code class="language-mermaid">graph TD
-  A[Start] --&gt; B{Decision}
-  B --&gt;|Yes| C[Continue]
-  B --&gt;|No| D[Stop]
-</code></pre>
-<h2>Regular code block (should stay as code)</h2>
+exports[`MarkdownViewer (react-markdown baseline) > renders 13-mermaid.md consistently 1`] = `
+"<div class="md-content"><h1 id="mermaid-test" data-has-section="true">Mermaid Test</h1><section class="cpc-section" id="section-mermaid-test" data-fold-slug="mermaid-test">
+<p>This is a quick test of Mermaid rendering in CPC&#x27;s MarkdownViewer.</p>
+<h2 id="flowchart">Flowchart</h2>
+<div class="mermaid-mount"><div class="mermaid-loading">Loading diagram…</div></div>
+<h2 id="regular-code-block-should-stay-as-code">Regular code block (should stay as code)</h2>
 <pre><code class="language-js">const hello = &quot;world&quot;;
 console.log(hello);
 </code></pre>
-<p>Done.</p>
-"
+<p>Done.</p></section></div>"
 `;
 
-exports[`MarkdownViewer (marked baseline) > renders 14-empty.md consistently 1`] = `
-"<p>Just a single line of text and nothing else.</p>
-"
-`;
+exports[`MarkdownViewer (react-markdown baseline) > renders 14-empty.md consistently 1`] = `"<div class="md-content"><p>Just a single line of text and nothing else.</p></div>"`;
 
-exports[`MarkdownViewer (marked baseline) > renders 15-pathological.md consistently 1`] = `
-"<h1>Pathological shapes</h1>
+exports[`MarkdownViewer (react-markdown baseline) > renders 15-pathological.md consistently 1`] = `
+"<div class="md-content"><h1 id="pathological-shapes" data-has-section="true">Pathological shapes</h1><section class="cpc-section" id="section-pathological-shapes" data-fold-slug="pathological-shapes">
 <p>Raw HTML mixed in (marked passes through by default):</p>
-<div class="custom-box" style="padding: 8px;">
-  <p>Inline HTML paragraph with <strong>bold</strong> and a <a href="https://example.com">raw anchor</a>.</p>
-</div>
-
-<p>Single-newline-as-break (relies on <code>breaks: true</code>):<br>Line A<br>Line B<br>Line C</p>
+&lt;div class=&quot;custom-box&quot; style=&quot;padding: 8px;&quot;&gt;
+  &lt;p&gt;Inline HTML paragraph with &lt;strong&gt;bold&lt;/strong&gt; and a &lt;a href=&quot;https://example.com&quot;&gt;raw anchor&lt;/a&gt;.&lt;/p&gt;
+&lt;/div&gt;
+<p>Single-newline-as-break (relies on <code>breaks: true</code>):<br/>
+Line A<br/>
+Line B<br/>
+Line C</p>
 <p>Deeply nested list (5 levels):</p>
 <ul>
-<li>L1<ul>
-<li>L2<ul>
-<li>L3<ul>
-<li>L4<ul>
+<li>L1
+<ul>
+<li>L2
+<ul>
+<li>L3
+<ul>
+<li>L4
+<ul>
 <li>L5 leaf</li>
 </ul>
 </li>
@@ -1162,21 +1018,19 @@ exports[`MarkdownViewer (marked baseline) > renders 15-pathological.md consisten
 </li>
 </ul>
 <p>Unicode smorgasbord: café, naïve, façade, résumé, 日本語, 中文, العربية, עברית, emoji: hello duck, math: α + β = γ, ∑ x_i, ∫ f(x) dx.</p>
-<p>Inline HTML inside a paragraph: this is <span style="color: red;">red text</span> and <code>raw code</code> inside a normal paragraph.</p>
+<p>Inline HTML inside a paragraph: this is &lt;span style=&quot;color: red;&quot;&gt;red text&lt;/span&gt; and &lt;code&gt;raw code&lt;/code&gt; inside a normal paragraph.</p>
 <p>A horizontal rule:</p>
-<hr>
+<hr/>
 <p>A heading immediately after the hr:</p>
-<h2>Heading right after hr</h2>
+<h2 id="heading-right-after-hr">Heading right after hr</h2>
 <p>Backtick-heavy inline: <code>a\`b</code> and <code>\`\`nested\`\`</code> and <code>\`\`\`triple\`\`\`</code>.</p>
 <p>Escape sequences: *not italic*, \`not code\`, [not link](nope).</p>
 <p>Empty code block:</p>
-<pre><code>
-</code></pre>
+<pre><code></code></pre>
 <p>Code block with no language:</p>
 <pre><code>plain text
 multiple lines
   indented
 </code></pre>
-<p>A paragraph ending without a trailing newline and no more content after it.</p>
-"
+<p>A paragraph ending without a trailing newline and no more content after it.</p></section></div>"
 `;

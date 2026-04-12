@@ -7,6 +7,7 @@ import { Links } from "./components/Links";
 import { ActionBar } from "./components/action-bar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
+import { DebugOverlay } from "./debug/DebugOverlay";
 
 type Tab = "terminal" | "files" | "links" | "voice";
 const TABS: Tab[] = ["terminal", "files", "links", "voice"];
@@ -412,6 +413,9 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
+
+      {/* Dev-only debug overlay — renders nothing on production hostnames */}
+      <DebugOverlay />
     </div>
   );
 }

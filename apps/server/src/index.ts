@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import type { HttpBindings } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
 import { validateTelegramLoginWidget, createSession, getAllowedUsers } from "./auth.js";
+import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
 import { todoRoute } from "./routes/todo.js";
@@ -15,6 +19,7 @@ import { terminalWsRoute } from "./routes/terminal-ws.js";
 import { filesRoute } from "./routes/files.js";
 import { voiceRoute } from "./routes/voice.js";
 import { markdownRoute } from "./routes/markdown.js";
+import { readingListRoute } from "./routes/reading-list.js";
 
 // Load env from secrets file if not already set
 function loadEnv(path: string) {
@@ -38,10 +43,12 @@ function loadEnv(path: string) {
 
 loadEnv(`${process.env.HOME}/.secrets/cpc.env`);
 
-const app = new Hono();
+const app = new Hono<{ Bindings: HttpBindings }>();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
-app.use("*", cors());
+app.use("*", cors({
+  origin: [...ALLOWED_ORIGINS],
+}));
 
 // Public routes (no auth)
 app.get("/api/public/health", (c) => c.json({ status: "ok" }));
@@ -78,15 +85,42 @@ app.route("/api/telegram", telegramRoute);
 app.route("/api/files", filesRoute);
 app.route("/api/voice", voiceRoute);
 app.route("/api/markdown", markdownRoute);
+app.route("/api/reading-list", readingListRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)
 app.get("/ws/terminal", upgradeWebSocket(terminalWsRoute));
 
 // Serve static frontend in production
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const webDistRoot = join(__dirname, "../../web/dist");
+
+const earlyHintsLinks: string[] = [];
+try {
+  const indexHtml = readFileSync(join(webDistRoot, "index.html"), "utf-8");
+  const js = indexHtml.match(/<script[^>]+src="(\/assets\/index-[^"]+\.js)"/);
+  const css = indexHtml.match(/<link[^>]+href="(\/assets\/index-[^"]+\.css)"/);
+
+  if (js) earlyHintsLinks.push(`<${js[1]}>; rel=preload; as=script; crossorigin`);
+  if (css) earlyHintsLinks.push(`<${css[1]}>; rel=preload; as=style`);
+  earlyHintsLinks.push("<https://telegram.org>; rel=preconnect");
+} catch (e: any) {
+  console.warn(`[earlyHints] Unable to read ${join(webDistRoot, "index.html")}: ${e.message}`);
+}
+
+app.use("/*", async (c, next) => {
+  if (
+    process.env.EARLY_HINTS !== "0" &&
+    c.req.method === "GET" &&
+    (c.req.header("accept") ?? "").includes("text/html") &&
+    earlyHintsLinks.length > 0
+  ) {
+    try {
+      c.env.outgoing.writeEarlyHints({ link: earlyHintsLinks });
+    } catch {}
+  }
+  await next();
+});
+
 app.use("/*", serveStatic({ root: webDistRoot }));
 
 const port = parseInt(process.env.PORT || "38830");
