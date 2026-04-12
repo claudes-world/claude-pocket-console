@@ -22,6 +22,7 @@ const app = new Hono();
 const BASE_DIR = process.env.FILES_BASE_DIR || "/home/claude/claudes-world";
 const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
 const UPLOAD_BODY_LIMIT = 50 * 1024 * 1024;
+const UPLOAD_BODY_LIMIT_MB = UPLOAD_BODY_LIMIT / (1024 * 1024);
 const DOWNLOAD_TICKET_TTL_MS = 60 * 1000;
 
 type DownloadTicket = {
@@ -404,7 +405,7 @@ app.post(
     maxSize: UPLOAD_BODY_LIMIT,
     onError: (c) =>
       c.json(
-        { error: "Request body too large (max 50MB)" },
+        { error: `Request body too large (max ${UPLOAD_BODY_LIMIT_MB}MB)` },
         413,
       ),
   }),
@@ -423,17 +424,13 @@ app.post(
   }
 
   try {
-    // Strip any directory components from the user-supplied filename so a
-    // value like "../../etc/passwd" cannot escape the validated `resolved`
-    // directory via path.join. basename() returns just the trailing segment.
-    let fileName = basename((file as File).name || "uploaded-file");
-    // basename() returns `.`, `..`, or `""` unchanged, which path.join would
-    // then normalize into the parent/current directory. Reject those and
-    // fall back to the default name so the upload always writes a new file
-    // inside the validated root.
-    if (fileName === "" || fileName === "." || fileName === "..") {
-      fileName = "uploaded-file";
-    }
+    // Strip directory components then run through sanitizeFilename() which
+    // additionally rejects control characters, null bytes, reserved Windows
+    // names, and other dangerous patterns. basename() is applied first so
+    // sanitizeFilename() never sees a slash-separated path.
+    const rawName = basename((file as File).name || "uploaded-file");
+    const sanitized = sanitizeFilename(rawName);
+    let fileName = sanitized ?? "uploaded-file";
     const arrayBuffer = await (file as File).arrayBuffer();
     const data = Buffer.from(arrayBuffer);
 
@@ -444,6 +441,20 @@ app.post(
     //     outside the allowed root would trick the write into landing outside
     //     ALLOWED_ROOTS).
     //
+    // Verify the target directory exists before attempting writes. If it
+    // doesn't, open() would throw ENOENT which would surface as a generic 500.
+    try {
+      const dirStat = await stat(resolved);
+      if (!dirStat.isDirectory()) {
+        return c.json({ error: "Target path is not a directory" }, 400);
+      }
+    } catch (err: any) {
+      if (err && err.code === "ENOENT") {
+        return c.json({ error: "Target directory does not exist" }, 404);
+      }
+      throw err;
+    }
+
     // Try the chosen filename, then incrementing suffixes until O_EXCL
     // succeeds or we give up.
     const dotIdx = fileName.lastIndexOf(".");
