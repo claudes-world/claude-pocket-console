@@ -476,6 +476,9 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   // Wire Telegram's native BackButton when viewing a file. Show it on
   // file open, hide it when returning to the directory listing, and clean
   // up the handler on unmount so we don't leak listeners.
+  // Also restore BackButton after returning from an external link — the
+  // Telegram WebApp can lose the BackButton state when the webview is
+  // backgrounded (e.g. opening a link via tg.openLink).
   useEffect(() => {
     const bb = window.Telegram?.WebApp?.BackButton;
     if (!bb) return;
@@ -487,7 +490,15 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       bb.hide();
     }
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && fileContent !== null) {
+        bb.show();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       bb.offClick(handleBack);
       bb.hide();
     };

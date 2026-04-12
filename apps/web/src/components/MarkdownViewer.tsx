@@ -94,9 +94,7 @@ function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWitho
   return (
     <pre
       {...props}
-      onTouchStart={stopTouchPropagation}
       onTouchMove={stopTouchPropagation}
-      onTouchEnd={stopTouchPropagation}
     >
       {children}
     </pre>
@@ -329,7 +327,7 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           padding: 12px 16px;
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
-          touch-action: pan-y;
+          touch-action: pan-x pan-y;
           margin: 12px 0;
         }
         .md-content pre code {
@@ -446,8 +444,11 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           font-weight: 600;
         }
         .md-content img {
+          display: block;
           max-width: 100%;
-          border-radius: 4px;
+          height: auto;
+          border-radius: 8px;
+          margin: 0.5em 0;
         }
         .md-content .mermaid-mount {
           margin: 12px 0;
