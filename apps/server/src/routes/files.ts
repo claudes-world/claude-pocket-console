@@ -300,12 +300,12 @@ app.get("/download", async (c) => {
       return c.json({ error: "invalid or expired ticket" }, 403);
     }
 
-    record.used = true;
     const file = await getDownloadableFile(record.path);
     if (!file.ok) {
       return c.json({ error: file.error }, file.status);
     }
 
+    record.used = true;
     return createDownloadResponse(file);
   }
 
