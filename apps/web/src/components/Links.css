@@ -1,0 +1,7 @@
+.cpc-app-tile {
+  transition: transform 120ms ease-out;
+}
+
+.cpc-app-tile:active {
+  transform: scale(0.92);
+}

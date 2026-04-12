@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "./Links.css";
 
 interface LinkItem {
   title: string;
@@ -54,15 +55,6 @@ const APPS: AppItem[] = [
   },
 ];
 
-const TILE_STYLE = `
-  .cpc-app-tile {
-    transition: transform 120ms ease-out;
-  }
-  .cpc-app-tile:active {
-    transform: scale(0.92);
-  }
-`;
-
 interface LinksProps {
   onClose: () => void;
 }
@@ -70,7 +62,6 @@ interface LinksProps {
 export function Links({ onClose }: LinksProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <style>{TILE_STYLE}</style>
       <div
         style={{
           padding: "8px 12px",
