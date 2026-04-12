@@ -5,7 +5,9 @@ import { getAllowedUsers } from "../auth.js";
  * Re-reads env on each call (matches existing getAllowedUsers behavior).
  * Empty allowlist = all users allowed (dev convenience).
  */
-export function isAllowedUser(userId: string | number): boolean {
+export function isAllowedUser(userId: string | number | undefined | null): boolean {
   const allowed = getAllowedUsers();
-  return allowed.size === 0 || allowed.has(String(userId));
+  if (allowed.size === 0) return true; // dev convenience: empty allowlist = open
+  if (userId == null) return false;    // no identity → block when allowlist is active
+  return allowed.has(String(userId));
 }
