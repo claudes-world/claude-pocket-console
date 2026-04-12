@@ -33,16 +33,34 @@ app.get("/check", async (c) => {
     const filePath = c.req.query("path");
     if (!filePath) return c.json({ ok: false, error: "path required" }, 400);
 
+    // Require an explicit `.md` extension so a non-markdown path (e.g. note.txt)
+    // doesn't silently skip the .mp3 replacement and leak file existence of
+    // arbitrary paths. Mirrors the same gate in /generate.
+    const resolvedFilePath = resolve(filePath);
+    if (!resolvedFilePath.toLowerCase().endsWith(".md")) {
+      return c.json({ ok: false, error: "only .md files allowed" }, 400);
+    }
+
     // Allowlist-guard the SOURCE markdown path, not the derived .mp3 path.
     // The .mp3 may not exist yet (client is asking "does audio exist?"), and
     // isPathAllowed uses realpath() which fails on non-existent files,
     // returning a false 403. The source .md file is what the client has, so
     // validate that instead. (Fixes #170)
-    if (!(await isPathAllowed(resolve(filePath)))) {
+    if (!(await isPathAllowed(resolvedFilePath))) {
       return c.json({ ok: false, error: "path not allowed" }, 403);
     }
-    // Audio file is the same path but with .mp3 extension
-    const audioPath = filePath.replace(/\.md$/, ".mp3");
+
+    // Audio file is the same path but with .mp3 extension.
+    const audioPath = resolvedFilePath.replace(/\.md$/i, ".mp3");
+
+    // Guard the derived .mp3 path too: a symlink planted under an allowed root
+    // that points outside allowed roots would otherwise let existsSync() reveal
+    // whether an out-of-bounds file exists. If the check fails (symlink escape
+    // or the path resolves outside roots), treat the audio as non-existent.
+    if (!(await isPathAllowed(resolve(audioPath)))) {
+      return c.json({ ok: true, exists: false, path: null });
+    }
+
     const exists = existsSync(audioPath);
     return c.json({ ok: true, exists, path: exists ? audioPath : null });
   } catch (err: any) {
