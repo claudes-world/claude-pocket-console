@@ -159,7 +159,7 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
           position: "absolute",
           inset: 0,
           zIndex: 10,
-          pointerEvents: "none",
+          touchAction: "none",
         }}
       />
       <style>{`
