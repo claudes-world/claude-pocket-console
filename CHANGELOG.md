@@ -2,6 +2,59 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.11.1] — 2026-04-12
+
+### Highlights
+
+- 83 new unit tests across files.ts, markdown.ts, and React components
+- CSS design token migration — 325 inline hex colors replaced with custom properties
+- TL;DR cache cleanup and Links.tsx code quality
+
+### Infrastructure
+
+- files.ts route tests — 40 tests covering 7 endpoints: roots, list, read, download-ticket, download, search, paste (#182)
+- markdown.ts route tests — 21 tests covering /summarize endpoint with cache, CLI, and error paths (#183)
+- React component tests — 22 tests for ErrorBoundary, FileViewer, PrTicker using @testing-library/react (#184)
+- CSS custom properties — converted 325 inline hex colors to `var(--color-*)` tokens across 29 files (#49)
+- Links.tsx — migrated inline `<style>` to Links.css file (#58)
+
+### Fixes
+
+- TL;DR cache — 30-day TTL cleanup on server startup prevents unbounded table growth (#82)
+
+## [1.11.0] — 2026-04-12
+
+### Highlights
+
+- New PR Status Ticker tab — 5th tab showing live GitHub PR status across repos
+- Changelog infrastructure for standardized release workflows
+
+### Features
+
+- PR Status Ticker Phase 1 — polls `gh pr list` every 30s, color-coded status dots (green/yellow/red/purple), current-branch filter, feature-flagged behind `VITE_FEATURE_PR_TICKER` (#194)
+- Changelog infrastructure — `changelogs/unreleased/` fragment directory, `scripts/extract-release-section.sh` with semver validation + dot-escaping, README documenting the fragment workflow
+
+## [1.10.1] — 2026-04-12
+
+### Highlights
+
+- 7 quality and security fixes from the v1.10.0 review cycle
+- Centralized auth allowlist into a null-safe helper
+- Consolidated path allowlist to single source of truth
+
+### Fixes
+
+- FileViewer double-tap download race — ref-based in-flight lock prevents concurrent downloads (#173)
+- ErrorBoundary — handles non-Error throws (string, number, object) + `level` prop for tab-scoped fallback sizing (#29)
+- Reading list — `c.req.queries()` for multi-path params (fixes comma-in-filename bug) + reject relative paths (#174)
+- Early Hints — parse Vite `manifest.json` instead of regex on `index.html` for asset preload URLs (#142)
+
+### Infrastructure
+
+- Type safety — replaced `any` prop signatures with `ExtraProps` from react-markdown v10 in MarkdownViewer + CollapsibleHeading (#139)
+- Security — consolidated `ALLOWED_FILE_ROOTS` to single source in `path-allowed.ts`, removed 4 inline copies (#155)
+- Auth — centralized allowlist check into null-safe `isAllowedUser(userId)` helper across middleware + terminal-ws (#156)
+
 ## [1.10.0] — 2026-04-12
 
 ### Highlights

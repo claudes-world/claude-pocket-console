@@ -42,32 +42,32 @@ exports[`Markdown parity baseline (react-markdown) > renders code-blocks through
 "<div class="md-content"><h1 id="code-blocks-and-commands" data-has-section="true">Code Blocks And Commands</h1><section class="cpc-section" id="section-code-blocks-and-commands" data-fold-slug="code-blocks-and-commands">
 <p>Inline code such as <code>getAuthHeaders()</code> and <code>Telegram.WebApp.disableVerticalSwipes()</code><br/>
 appears beside fenced examples in CPC docs.</p>
-<pre><code class="language-ts">type SessionStatus = &quot;connected&quot; | &quot;paused&quot; | &quot;failed&quot;;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">type</span> <span class="hljs-title class_">SessionStatus</span> = <span class="hljs-string">&quot;connected&quot;</span> | <span class="hljs-string">&quot;paused&quot;</span> | <span class="hljs-string">&quot;failed&quot;</span>;
 
-export function labelForStatus(status: SessionStatus): string {
-  switch (status) {
-    case &quot;connected&quot;:
-      return &quot;Connected&quot;;
-    case &quot;paused&quot;:
-      return &quot;Paused&quot;;
-    case &quot;failed&quot;:
-      return &quot;Needs attention&quot;;
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">labelForStatus</span>(<span class="hljs-params"><span class="hljs-attr">status</span>: <span class="hljs-title class_">SessionStatus</span></span>): <span class="hljs-built_in">string</span> {
+  <span class="hljs-keyword">switch</span> (status) {
+    <span class="hljs-keyword">case</span> <span class="hljs-string">&quot;connected&quot;</span>:
+      <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Connected&quot;</span>;
+    <span class="hljs-keyword">case</span> <span class="hljs-string">&quot;paused&quot;</span>:
+      <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Paused&quot;</span>;
+    <span class="hljs-keyword">case</span> <span class="hljs-string">&quot;failed&quot;</span>:
+      <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Needs attention&quot;</span>;
   }
 }
 </code></pre>
-<pre><code class="language-bash">cd /home/claude/code/cpc-impl-react-markdown
+<pre><code class="hljs language-bash"><span class="hljs-built_in">cd</span> /home/claude/code/cpc-impl-react-markdown
 pnpm install --silent
-pnpm --filter @cpc/web exec tsc -b
-pnpm --filter @cpc/web test
+pnpm --filter @cpc/web <span class="hljs-built_in">exec</span> tsc -b
+pnpm --filter @cpc/web <span class="hljs-built_in">test</span>
 </code></pre>
-<pre><code class="language-json">{
-  &quot;server&quot;: {
-    &quot;port&quot;: 38830,
-    &quot;prodTunnel&quot;: &quot;https://cpc.claude.do&quot;,
-    &quot;devTunnel&quot;: &quot;https://cpc-dev.claude.do&quot;
-  },
-  &quot;features&quot;: [&quot;files&quot;, &quot;terminal&quot;, &quot;voice&quot;]
-}
+<pre><code class="hljs language-json"><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;server&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">&quot;port&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-number">38830</span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;prodTunnel&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;https://cpc.claude.do&quot;</span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;devTunnel&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;https://cpc-dev.claude.do&quot;</span>
+  <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;features&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">&quot;files&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;terminal&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;voice&quot;</span><span class="hljs-punctuation">]</span>
+<span class="hljs-punctuation">}</span>
 </code></pre>
 <p>An unlabelled block still matters:</p>
 <pre><code>Actions -&gt; Develop -&gt; Voice
@@ -77,9 +77,8 @@ pnpm --filter @cpc/web test
 
 exports[`Markdown parity baseline (react-markdown) > renders edge-cases through react-markdown 1`] = `
 "<div class="md-content"><h1 id="edge-cases" data-has-section="true">Edge Cases</h1><section class="cpc-section" id="section-edge-cases" data-fold-slug="edge-cases">
-<h2 id="consecutive-heading-a">Consecutive Heading A</h2>
-<h2 id="consecutive-heading-b">Consecutive Heading B</h2>
-<h3 id="consecutive-heading-c">Consecutive Heading C</h3>
+<h2 id="consecutive-heading-a">Consecutive Heading A</h2><h2 id="consecutive-heading-b" data-has-section="true">Consecutive Heading B</h2><section class="cpc-section" id="section-consecutive-heading-b" data-fold-slug="consecutive-heading-b">
+<h3 id="consecutive-heading-c" data-has-section="true">Consecutive Heading C</h3><section class="cpc-section" id="section-consecutive-heading-c" data-fold-slug="consecutive-heading-c">
 <p>The blank lines above and the consecutive headings below should not create<br/>
 unexpected empty paragraphs.</p>
 <ul>
@@ -105,7 +104,7 @@ unexpected empty paragraphs.</p>
 <li>Unordered child
 <blockquote>
 <p>Quote inside a list item.</p>
-<pre><code class="language-bash">pnpm --filter @cpc/web test
+<pre><code class="hljs language-bash">pnpm --filter @cpc/web <span class="hljs-built_in">test</span>
 </code></pre>
 </blockquote>
 </li>
@@ -118,11 +117,11 @@ unexpected empty paragraphs.</p>
 <li>A quoted list item</li>
 <li>Another quoted list item with <code>code</code></li>
 </ul>
-<pre><code class="language-ts">const source = &quot;quoted code&quot;;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> source = <span class="hljs-string">&quot;quoted code&quot;</span>;
 </code></pre>
 </blockquote>
 <hr/>
-<p>Text after a thematic break should remain visible and separated.</p></section></div>"
+<p>Text after a thematic break should remain visible and separated.</p></section></section></section></div>"
 `;
 
 exports[`Markdown parity baseline (react-markdown) > renders gfm-table through react-markdown 1`] = `
@@ -138,31 +137,31 @@ text without collapsing the surrounding content.</p></section></div>"
 
 exports[`Markdown parity baseline (react-markdown) > renders headings through react-markdown 1`] = `
 "<div class="md-content"><h1 id="cpc-plan-markdown-renderer" data-has-section="true">CPC Plan: Markdown Renderer</h1><section class="cpc-section" id="section-cpc-plan-markdown-renderer" data-fold-slug="cpc-plan-markdown-renderer">
-<h2 id="phase-0-baseline">Phase 0: Baseline</h2>
-<h3 id="fixture-corpus">Fixture Corpus</h3>
-<h4 id="headings-with-special-characters-filespathtabdocs">Headings With Special Characters: <code>/files/:path?tab=docs</code></h4>
-<h5 id="duplicate-heading">Duplicate Heading</h5>
-<h6 id="tiny-detail">Tiny Detail</h6>
+<h2 id="phase-0-baseline" data-has-section="true">Phase 0: Baseline</h2><section class="cpc-section" id="section-phase-0-baseline" data-fold-slug="phase-0-baseline">
+<h3 id="fixture-corpus" data-has-section="true">Fixture Corpus</h3><section class="cpc-section" id="section-fixture-corpus" data-fold-slug="fixture-corpus">
+<h4 id="headings-with-special-characters-filespathtabdocs" data-has-section="true">Headings With Special Characters: <code>/files/:path?tab=docs</code></h4><section class="cpc-section" id="section-headings-with-special-characters-filespathtabdocs" data-fold-slug="headings-with-special-characters-filespathtabdocs">
+<h5 id="duplicate-heading" data-has-section="true">Duplicate Heading</h5><section class="cpc-section" id="section-duplicate-heading" data-fold-slug="duplicate-heading">
+<h6 id="tiny-detail" data-has-section="true">Tiny Detail</h6><section class="cpc-section" id="section-tiny-detail" data-fold-slug="tiny-detail">
 <p>The smallest heading appears in some generated plans when a tool dumps nested<br/>
 subsections.</p>
-<h2 id="phase-0-baseline-1">Phase 0: Baseline</h2>
+</section></section></section></section></section><h2 id="phase-0-baseline-1" data-has-section="true">Phase 0: Baseline</h2><section class="cpc-section" id="section-phase-0-baseline-1" data-fold-slug="phase-0-baseline-1">
 <p>The duplicate <code>h2</code> is intentional. Future heading IDs should make the duplicate<br/>
 stable and reviewable rather than surprising.</p>
-<h3 id="fixture-corpus-1">Fixture Corpus</h3>
+<h3 id="fixture-corpus-1" data-has-section="true">Fixture Corpus</h3><section class="cpc-section" id="section-fixture-corpus-1" data-fold-slug="fixture-corpus-1">
 <p>Repeated <code>h3</code> content tests duplicate slug behavior once <code>rehype-slug</code> becomes<br/>
 part of the renderer.</p>
-<h2 id="phase-1-renderer-swap">Phase 1: Renderer Swap</h2>
-<h3 id="keep-breaks-true">Keep <code>breaks: true</code></h3>
+</section></section><h2 id="phase-1-renderer-swap" data-has-section="true">Phase 1: Renderer Swap</h2><section class="cpc-section" id="section-phase-1-renderer-swap" data-fold-slug="phase-1-renderer-swap">
+<h3 id="keep-breaks-true" data-has-section="true">Keep <code>breaks: true</code></h3><section class="cpc-section" id="section-keep-breaks-true" data-fold-slug="keep-breaks-true">
 <p>The current marked configuration treats single newlines as breaks. The migration<br/>
 must preserve that until a separate behavior-change PR says otherwise.</p>
-<h3 id="raw-html-decision">Raw HTML Decision</h3>
-<h4 id="details-blocks"><code>&lt;details&gt;</code> Blocks</h4>
+</section><h3 id="raw-html-decision" data-has-section="true">Raw HTML Decision</h3><section class="cpc-section" id="section-raw-html-decision" data-fold-slug="raw-html-decision">
+<h4 id="details-blocks" data-has-section="true"><code>&lt;details&gt;</code> Blocks</h4><section class="cpc-section" id="section-details-blocks" data-fold-slug="details-blocks">
 <p>Raw HTML occurs in docs copied from GitHub. This fixture keeps that input visible<br/>
 in the baseline snapshots.</p>
-<h2 id="phase-2-bundle-mitigation">Phase 2: Bundle Mitigation</h2>
-<h3 id="lazy-loading">Lazy Loading</h3>
+</section></section></section><h2 id="phase-2-bundle-mitigation" data-has-section="true">Phase 2: Bundle Mitigation</h2><section class="cpc-section" id="section-phase-2-bundle-mitigation" data-fold-slug="phase-2-bundle-mitigation">
+<h3 id="lazy-loading" data-has-section="true">Lazy Loading</h3><section class="cpc-section" id="section-lazy-loading" data-fold-slug="lazy-loading">
 <p>Bundle work belongs after correctness, so this fixture should not imply any<br/>
-chunking change.</p></section></div>"
+chunking change.</p></section></section></section></div>"
 `;
 
 exports[`Markdown parity baseline (react-markdown) > renders links-images through react-markdown 1`] = `
@@ -185,23 +184,23 @@ notes</a> when a workflow depends on <code>~/bin</code>.</p>
 
 exports[`Markdown parity baseline (react-markdown) > renders long-document through react-markdown 1`] = `
 "<div class="md-content"><h1 id="overnight-cpc-implementation-notes" data-has-section="true">Overnight CPC Implementation Notes</h1><section class="cpc-section" id="section-overnight-cpc-implementation-notes" data-fold-slug="overnight-cpc-implementation-notes">
-<h2 id="1-summary">1. Summary</h2>
+<h2 id="1-summary" data-has-section="true">1. Summary</h2><section class="cpc-section" id="section-1-summary" data-fold-slug="1-summary">
 <p>The mobile console stayed usable while the web process restarted twice. The<br/>
 highest value fix was keeping the file viewer readable in a narrow WebView.</p>
-<h2 id="2-current-topology">2. Current Topology</h2>
+</section><h2 id="2-current-topology" data-has-section="true">2. Current Topology</h2><section class="cpc-section" id="section-2-current-topology" data-fold-slug="2-current-topology">
 <ul>
 <li><code>apps/web</code> owns the React SPA.</li>
 <li><code>apps/server</code> owns Hono routes and WebSocket transport.</li>
 <li><code>~/bin/launcher-hook</code> owns Telegram keyboard buttons.</li>
 <li><code>~/bin/session-history</code> owns forensic session lookup.</li>
 </ul>
-<h2 id="3-important-constraints">3. Important Constraints</h2>
+</section><h2 id="3-important-constraints" data-has-section="true">3. Important Constraints</h2><section class="cpc-section" id="section-3-important-constraints" data-fold-slug="3-important-constraints">
 <p>Do not call <code>preventDefault()</code> on <code>touchstart</code>.<br/>
 Use <code>stopPropagation()</code> only on targeted interaction zones.<br/>
 Disable Telegram vertical swipes while a modal or sheet is open.<br/>
 Re-enable Telegram vertical swipes on cleanup.<br/>
 Do not edit the external Telegram plugin.</p>
-<h2 id="4-file-viewer-flow">4. File Viewer Flow</h2>
+</section><h2 id="4-file-viewer-flow" data-has-section="true">4. File Viewer Flow</h2><section class="cpc-section" id="section-4-file-viewer-flow" data-fold-slug="4-file-viewer-flow">
 <ol>
 <li>User taps the Files tab.</li>
 <li>The server returns a directory listing.</li>
@@ -210,24 +209,24 @@ Do not edit the external Telegram plugin.</p>
 <li>Wide code blocks must scroll horizontally.</li>
 <li>Tables must not push the viewport wider than the app.</li>
 </ol>
-<h2 id="5-manual-check-table">5. Manual Check Table</h2>
+</section><h2 id="5-manual-check-table" data-has-section="true">5. Manual Check Table</h2><section class="cpc-section" id="section-5-manual-check-table" data-fold-slug="5-manual-check-table">
 <div class="md-table-scroll"><table><thead><tr><th>Check</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td>TypeScript</td><td><code>pnpm --filter @cpc/web exec tsc -b</code></td><td>clean</td></tr><tr><td>Unit tests</td><td><code>pnpm --filter @cpc/web test</code></td><td>snapshots pass</td></tr><tr><td>Build</td><td><code>pnpm --filter @cpc/web build</code></td><td>Vite emits <code>dist/</code></td></tr><tr><td>Health</td><td><code>curl -fsS localhost:38830/health</code></td><td>ok</td></tr></tbody></table></div>
-<h2 id="6-example-route-notes">6. Example Route Notes</h2>
+</section><h2 id="6-example-route-notes" data-has-section="true">6. Example Route Notes</h2><section class="cpc-section" id="section-6-example-route-notes" data-fold-slug="6-example-route-notes">
 <p>The web app uses a base path from Vite. Static assets should keep working at<br/>
 both <code>https://cpc.claude.do</code> and <code>https://cpc-dev.claude.do</code>.</p>
-<pre><code class="language-ts">export function buildAssetPath(baseUrl: string, name: string): string {
-  const base = baseUrl.endsWith(&quot;/&quot;) ? baseUrl : \`\${baseUrl}/\`;
-  return new URL(name, base).toString();
+<pre><code class="hljs language-ts"><span class="hljs-keyword">export</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">buildAssetPath</span>(<span class="hljs-params"><span class="hljs-attr">baseUrl</span>: <span class="hljs-built_in">string</span>, <span class="hljs-attr">name</span>: <span class="hljs-built_in">string</span></span>): <span class="hljs-built_in">string</span> {
+  <span class="hljs-keyword">const</span> base = baseUrl.<span class="hljs-title function_">endsWith</span>(<span class="hljs-string">&quot;/&quot;</span>) ? baseUrl : <span class="hljs-string">\`<span class="hljs-subst">\${baseUrl}</span>/\`</span>;
+  <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> <span class="hljs-title function_">URL</span>(name, base).<span class="hljs-title function_">toString</span>();
 }
 </code></pre>
-<h2 id="7-shell-recipe">7. Shell Recipe</h2>
-<pre><code class="language-bash">set -euo pipefail
+</section><h2 id="7-shell-recipe" data-has-section="true">7. Shell Recipe</h2><section class="cpc-section" id="section-7-shell-recipe" data-fold-slug="7-shell-recipe">
+<pre><code class="hljs language-bash"><span class="hljs-built_in">set</span> -euo pipefail
 pnpm install --silent
-pnpm --filter @cpc/web exec tsc -b
-pnpm --filter @cpc/web test
+pnpm --filter @cpc/web <span class="hljs-built_in">exec</span> tsc -b
+pnpm --filter @cpc/web <span class="hljs-built_in">test</span>
 pnpm --filter @cpc/web build
 </code></pre>
-<h2 id="8-failure-modes">8. Failure Modes</h2>
+</section><h2 id="8-failure-modes" data-has-section="true">8. Failure Modes</h2><section class="cpc-section" id="section-8-failure-modes" data-fold-slug="8-failure-modes">
 <blockquote>
 <p>A sheet that forgets to re-enable vertical swipes makes Telegram feel broken.</p>
 </blockquote>
@@ -239,48 +238,48 @@ unreadable on mobile.</p>
 <p>A raw HTML block silently stripped by a markdown renderer can hide operational<br/>
 instructions from the person holding the phone.</p>
 </blockquote>
-<h2 id="9-task-list">9. Task List</h2>
+</section><h2 id="9-task-list" data-has-section="true">9. Task List</h2><section class="cpc-section" id="section-9-task-list" data-fold-slug="9-task-list">
 <ul class="contains-task-list">
 <li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Confirm branch before edits.</li>
 <li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Keep <code>marked</code> installed during the baseline setup.</li>
 <li class="task-list-item"><input type="checkbox" disabled=""/> Swap the renderer in Wave 2.</li>
 <li class="task-list-item"><input type="checkbox" disabled=""/> Document snapshot deltas in the migration PR.</li>
 </ul>
-<h2 id="10-deep-link-candidates">10. Deep Link Candidates</h2>
-<h3 id="session-selection">Session Selection</h3>
+</section><h2 id="10-deep-link-candidates" data-has-section="true">10. Deep Link Candidates</h2><section class="cpc-section" id="section-10-deep-link-candidates" data-fold-slug="10-deep-link-candidates">
+<h3 id="session-selection" data-has-section="true">Session Selection</h3><section class="cpc-section" id="section-session-selection" data-fold-slug="session-selection">
 <p>The future heading IDs may support direct links into long docs. Duplicate<br/>
 headings need stable suffixes.</p>
-<h3 id="session-selection-1">Session Selection</h3>
+</section><h3 id="session-selection-1" data-has-section="true">Session Selection</h3><section class="cpc-section" id="section-session-selection-1" data-fold-slug="session-selection-1">
 <p>This duplicate heading is intentional.</p>
-<h3 id="voice-recorder">Voice Recorder</h3>
+</section><h3 id="voice-recorder" data-has-section="true">Voice Recorder</h3><section class="cpc-section" id="section-voice-recorder" data-fold-slug="voice-recorder">
 <p>The voice recorder uses file capture rather than <code>getUserMedia</code> because Telegram<br/>
 WebView does not expose the browser media prompt consistently.</p>
-<h3 id="terminal">Terminal</h3>
+</section><h3 id="terminal" data-has-section="true">Terminal</h3><section class="cpc-section" id="section-terminal" data-fold-slug="terminal">
 <p>Terminal output can include long paths such as<br/>
 <code>/home/claude/code/cpc-impl-react-markdown/apps/web/src/components/MarkdownViewer.tsx</code>.</p>
-<h2 id="11-json-payload">11. JSON Payload</h2>
-<pre><code class="language-json">{
-  &quot;kind&quot;: &quot;SessionStart&quot;,
-  &quot;buttons&quot;: [&quot;Actions&quot;, &quot;Develop&quot;, &quot;Voice&quot;],
-  &quot;viewer&quot;: {
-    &quot;markdown&quot;: true,
-    &quot;mermaid&quot;: true,
-    &quot;rawHtml&quot;: &quot;baseline-only&quot;
-  }
-}
+</section></section><h2 id="11-json-payload" data-has-section="true">11. JSON Payload</h2><section class="cpc-section" id="section-11-json-payload" data-fold-slug="11-json-payload">
+<pre><code class="hljs language-json"><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;kind&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;SessionStart&quot;</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;buttons&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span><span class="hljs-string">&quot;Actions&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;Develop&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-string">&quot;Voice&quot;</span><span class="hljs-punctuation">]</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;viewer&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>
+    <span class="hljs-attr">&quot;markdown&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">true</span></span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;mermaid&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">true</span></span><span class="hljs-punctuation">,</span>
+    <span class="hljs-attr">&quot;rawHtml&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;baseline-only&quot;</span>
+  <span class="hljs-punctuation">}</span>
+<span class="hljs-punctuation">}</span>
 </code></pre>
-<h2 id="12-closing-notes">12. Closing Notes</h2>
+</section><h2 id="12-closing-notes" data-has-section="true">12. Closing Notes</h2><section class="cpc-section" id="section-12-closing-notes" data-fold-slug="12-closing-notes">
 <p>Soft breaks appear here<br/>
 as single newlines<br/>
 inside one paragraph.</p>
 <p>A blank line starts a new paragraph. The snapshot should make that distinction<br/>
 obvious.</p>
-<h2 id="13-appendix">13. Appendix</h2>
+</section><h2 id="13-appendix" data-has-section="true">13. Appendix</h2><section class="cpc-section" id="section-13-appendix" data-fold-slug="13-appendix">
 <p>The appendix exists mostly to make the fixture long enough to exercise file<br/>
 loading, snapshot readability, and parser behavior on realistic content.</p>
 <p>Keep the prose plain.<br/>
 Keep commands copyable.<br/>
-Keep the renderer honest.</p></section></div>"
+Keep the renderer honest.</p></section></section></div>"
 `;
 
 exports[`Markdown parity baseline (react-markdown) > renders mermaid through react-markdown 1`] = `

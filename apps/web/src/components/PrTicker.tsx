@@ -20,7 +20,17 @@ interface PrRow {
   lastChanged: number;
 }
 
-type FilterMode = "current" | "all";
+interface RepoSummary {
+  name: string;
+  dirName: string;
+  org: string;
+  fullName: string;
+  branch: string;
+  prCount: number;
+}
+
+// Grouped structure: org -> repo -> { branch, prs }
+type GroupedPrs = Record<string, Record<string, { branch: string; prs: PrRow[] }>>;
 
 // --- Color palette (reuses existing CPC theme) ---
 
@@ -94,60 +104,106 @@ function ciLabel(pr: PrRow): string {
   }
 }
 
+// --- Group PRs by org -> repo ---
+
+function groupPrs(prs: PrRow[], repos: RepoSummary[]): GroupedPrs {
+  // Use Object.create(null) to avoid prototype pollution from org/repo names
+  // that could shadow Object prototype properties (e.g. "constructor", "toString").
+  const grouped = Object.create(null) as GroupedPrs;
+
+  // Seed structure from repos (so repos with 0 PRs still show)
+  for (const repo of repos) {
+    if (!grouped[repo.org]) grouped[repo.org] = Object.create(null) as Record<string, { branch: string; prs: PrRow[] }>;
+    if (!grouped[repo.org][repo.fullName]) {
+      grouped[repo.org][repo.fullName] = { branch: repo.branch, prs: [] };
+    }
+  }
+
+  // Place PRs into groups
+  for (const pr of prs) {
+    const [org] = pr.repo.split("/");
+    if (!grouped[org]) grouped[org] = Object.create(null) as Record<string, { branch: string; prs: PrRow[] }>;
+    if (!grouped[org][pr.repo]) {
+      // Repo not in discovery (edge case: leftover from cache)
+      const repoInfo = repos.find((r) => r.fullName === pr.repo);
+      grouped[org][pr.repo] = { branch: repoInfo?.branch || "", prs: [] };
+    }
+    grouped[org][pr.repo].prs.push(pr);
+  }
+
+  return grouped;
+}
+
+// --- Collapse state persistence ---
+
+const COLLAPSE_KEY = "cpc-pr-collapsed-orgs";
+
+function loadCollapsedOrgs(): Set<string> {
+  try {
+    const saved = localStorage.getItem(COLLAPSE_KEY);
+    if (saved) return new Set(JSON.parse(saved));
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function saveCollapsedOrgs(collapsed: Set<string>) {
+  try {
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+  } catch { /* ignore */ }
+}
+
 // --- Main component ---
 
 const POLL_INTERVAL_MS = 10_000;
-const FILTER_KEY = "cpc-pr-filter-mode";
 
 export function PrTicker() {
   const [prs, setPrs] = useState<PrRow[]>([]);
-  const [branches, setBranches] = useState<string[]>([]);
-  const [filter, setFilter] = useState<FilterMode>(() => {
-    try {
-      const saved = localStorage.getItem(FILTER_KEY);
-      return saved === "all" ? "all" : "current";
-    } catch {
-      return "current";
-    }
-  });
+  const [repos, setRepos] = useState<RepoSummary[]>([]);
+  const [collapsedOrgs, setCollapsedOrgs] = useState<Set<string>>(loadCollapsedOrgs);
+  const [loading, setLoading] = useState(true);
   const [lastPollAt, setLastPollAt] = useState<number>(0);
   const [pollError, setPollError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [, setTick] = useState(0); // Force re-render for "last poll Xs ago"
   const mountedRef = useRef(true);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(FILTER_KEY, filter);
-    } catch { /* ignore */ }
-  }, [filter]);
+  const toggleOrg = useCallback((org: string) => {
+    setCollapsedOrgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(org)) {
+        next.delete(org);
+      } else {
+        next.add(org);
+      }
+      saveCollapsedOrgs(next);
+      return next;
+    });
+  }, []);
 
   const fetchPrs = useCallback(async () => {
     try {
       const res = await fetch("/api/prs", { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (mountedRef.current && data.ok) {
-        setPrs(data.prs ?? []);
-        setLastPollAt(data.lastPollOk || Date.now());
-        setPollError(data.lastPollErr ?? null);
+      if (mountedRef.current) {
+        if (data.ok) {
+          setPrs(data.prs ?? []);
+          setRepos(data.repos ?? []);
+          setLastPollAt(data.lastPollOk || Date.now());
+          setPollError(data.lastPollErr ?? null);
+        } else {
+          setPollError(data.error ?? "Unknown error");
+        }
       }
     } catch (err) {
       if (mountedRef.current) {
         setPollError(err instanceof Error ? err.message : String(err));
       }
-    }
-  }, []);
-
-  const fetchBranches = useCallback(async () => {
-    try {
-      const res = await fetch("/api/prs/current-branch-scope", { headers: getAuthHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (mountedRef.current && data.ok) {
-        setBranches(data.branches ?? []);
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
       }
-    } catch { /* silent */ }
+    }
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -161,6 +217,7 @@ export function PrTicker() {
       const data = await res.json();
       if (mountedRef.current && data.ok) {
         setPrs(data.prs ?? []);
+        setRepos(data.repos ?? []);
         setLastPollAt(data.lastPollOk || Date.now());
         setPollError(data.lastPollErr ?? null);
       }
@@ -177,23 +234,20 @@ export function PrTicker() {
   useEffect(() => {
     mountedRef.current = true;
     void fetchPrs();
-    void fetchBranches();
     const prInterval = setInterval(fetchPrs, POLL_INTERVAL_MS);
-    const branchInterval = setInterval(fetchBranches, 60_000);
     // Tick every 5s to update "last poll Xs ago"
     const tickInterval = setInterval(() => setTick((t) => t + 1), 5_000);
     return () => {
       mountedRef.current = false;
       clearInterval(prInterval);
-      clearInterval(branchInterval);
       clearInterval(tickInterval);
     };
-  }, [fetchPrs, fetchBranches]);
+  }, [fetchPrs]);
 
-  // Filter PRs
-  const filteredPrs = filter === "all"
-    ? prs
-    : prs.filter((pr) => branches.includes(pr.headRefName));
+  const grouped = groupPrs(prs, repos);
+  const orgNames = Object.keys(grouped).sort();
+  const totalPrs = prs.length;
+  const totalRepos = repos.length;
 
   const pollAgoSec = lastPollAt ? Math.floor((Date.now() - lastPollAt) / 1000) : 0;
 
@@ -218,7 +272,7 @@ export function PrTicker() {
       color: COLORS.text,
       fontSize: 13,
     }}>
-      {/* Filter bar */}
+      {/* Header bar */}
       <div style={{
         display: "flex",
         alignItems: "center",
@@ -227,16 +281,9 @@ export function PrTicker() {
         borderBottom: `1px solid ${COLORS.border}`,
         flexShrink: 0,
       }}>
-        <FilterChip
-          label="current branch"
-          active={filter === "current"}
-          onClick={() => setFilter("current")}
-        />
-        <FilterChip
-          label="all"
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-        />
+        <span style={{ fontSize: 12, color: COLORS.textMuted }}>
+          {totalRepos} repos
+        </span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <button
             onClick={() => void handleRefresh()}
@@ -271,13 +318,13 @@ export function PrTicker() {
         </div>
       )}
 
-      {/* PR list */}
+      {/* Grouped PR list */}
       <div style={{
         flex: 1,
         overflowY: "auto",
         WebkitOverflowScrolling: "touch",
       }}>
-        {filteredPrs.length === 0 ? (
+        {loading ? (
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -288,13 +335,31 @@ export function PrTicker() {
             padding: 20,
             textAlign: "center",
           }}>
-            {filter === "current" && prs.length > 0
-              ? "No PRs on current branch. Switch to All."
-              : "No open PRs"}
+            Loading PRs...
+          </div>
+        ) : orgNames.length === 0 ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: COLORS.textMuted,
+            fontSize: 14,
+            padding: 20,
+            textAlign: "center",
+          }}>
+            No repos discovered
           </div>
         ) : (
-          filteredPrs.map((pr) => (
-            <PrRowItem key={pr.key} pr={pr} onTap={openPr} />
+          orgNames.map((org) => (
+            <OrgSection
+              key={org}
+              org={org}
+              repoMap={grouped[org]}
+              collapsed={collapsedOrgs.has(org)}
+              onToggle={() => toggleOrg(org)}
+              onTapPr={openPr}
+            />
           ))
         )}
       </div>
@@ -310,7 +375,7 @@ export function PrTicker() {
         justifyContent: "space-between",
         flexShrink: 0,
       }}>
-        <span>{filteredPrs.length} open</span>
+        <span>{totalPrs} open</span>
         <span>
           last poll {pollAgoSec}s ago
           <span style={{
@@ -331,31 +396,109 @@ export function PrTicker() {
 
 // --- Sub-components ---
 
-function FilterChip({
-  label,
-  active,
-  onClick,
+function OrgSection({
+  org,
+  repoMap,
+  collapsed,
+  onToggle,
+  onTapPr,
 }: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  org: string;
+  repoMap: Record<string, { branch: string; prs: PrRow[] }>;
+  collapsed: boolean;
+  onToggle: () => void;
+  onTapPr: (url: string) => void;
 }) {
+  const repoNames = Object.keys(repoMap).sort();
+  const totalPrs = repoNames.reduce((sum, r) => sum + repoMap[r].prs.length, 0);
+
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "3px 10px",
-        borderRadius: 12,
-        fontSize: 12,
-        fontWeight: active ? 600 : 400,
-        background: active ? COLORS.blue : "transparent",
-        color: active ? "var(--color-bg)" : COLORS.textMuted,
-        border: active ? "none" : `1px solid ${COLORS.border}`,
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
+    <div>
+      {/* Org heading */}
+      <div
+        onClick={onToggle}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 12px",
+          background: COLORS.surface,
+          borderBottom: `1px solid ${COLORS.border}`,
+          cursor: "pointer",
+          userSelect: "none",
+        }}
+      >
+        <span style={{ fontSize: 11, color: COLORS.textMuted, width: 12, textAlign: "center" }}>
+          {collapsed ? "\u25b6" : "\u25bc"}
+        </span>
+        <span style={{ fontWeight: 700, fontSize: 13, color: COLORS.text }}>
+          {org}
+        </span>
+        <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+          {totalPrs} PR{totalPrs !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* Repos within org */}
+      {!collapsed && repoNames.map((repoFullName) => {
+        const { branch, prs } = repoMap[repoFullName];
+        const repoShort = repoFullName.split("/")[1] || repoFullName;
+
+        return (
+          <div key={repoFullName}>
+            {/* Repo subheading */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px 6px 24px",
+              borderBottom: `1px solid ${COLORS.border}`,
+              fontSize: 12,
+            }}>
+              <span style={{ fontWeight: 600, color: COLORS.text }}>
+                {repoShort}
+              </span>
+              {branch && (
+                <span style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 8,
+                  background: COLORS.blue,
+                  color: COLORS.bg,
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: 140,
+                }}>
+                  {branch}
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: COLORS.textMuted, marginLeft: "auto" }}>
+                {prs.length} open
+              </span>
+            </div>
+
+            {/* PR rows or empty state */}
+            {prs.length === 0 ? (
+              <div style={{
+                padding: "8px 12px 8px 36px",
+                fontSize: 12,
+                color: COLORS.textMuted,
+                fontStyle: "italic",
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}>
+                no open PRs
+              </div>
+            ) : (
+              prs.map((pr) => (
+                <PrRowItem key={pr.key} pr={pr} onTap={onTapPr} />
+              ))
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -374,13 +517,13 @@ function PrRowItem({
     <div
       onClick={() => onTap(pr.url)}
       style={{
-        padding: "10px 12px",
+        padding: "10px 12px 10px 36px",
         borderBottom: `1px solid ${COLORS.border}`,
         cursor: "pointer",
         position: "relative",
       }}
     >
-      {/* Line 1: status dot + repo label + PR number + branch */}
+      {/* Line 1: status dot + PR number + branch */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
         <span style={{
           width: 8,

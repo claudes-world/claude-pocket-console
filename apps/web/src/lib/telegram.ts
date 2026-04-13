@@ -25,6 +25,12 @@ interface TelegramWebApp {
     hide(): void;
     onClick(callback: () => void): void;
   };
+  BackButton?: {
+    show(): void;
+    hide(): void;
+    onClick(callback: () => void): void;
+    offClick(callback: () => void): void;
+  };
   themeParams: Record<string, string>;
   colorScheme: "light" | "dark";
   isExpanded: boolean;

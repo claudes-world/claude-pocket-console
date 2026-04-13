@@ -159,20 +159,6 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     if (!filePath || !fileName || downloadInFlightRef.current) return;
     downloadInFlightRef.current = true;
     setError(null);
-
-    const downloadWindow = window.open("about:blank", "_blank");
-    if (!downloadWindow) {
-      downloadInFlightRef.current = false;
-      setError("Download blocked by browser. Allow popups for this site.");
-      return;
-    }
-
-    try {
-      downloadWindow.opener = null;
-    } catch {
-      // Some WebViews make opener read-only. The ticket is still single-use.
-    }
-
     setDownloading(true);
     try {
       const res = await fetch("/api/files/download-ticket", {
@@ -184,7 +170,6 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         body: JSON.stringify({ path: filePath }),
       });
       if (!res.ok) {
-        downloadWindow.close();
         let msg = `Download failed (${res.status})`;
         try {
           const data = await res.json();
@@ -195,13 +180,21 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
       const data = await res.json() as { ticket?: string };
       if (!data.ticket) {
-        downloadWindow.close();
         throw new Error("Download failed: missing ticket");
       }
 
-      downloadWindow.location.href = `/api/files/download?ticket=${encodeURIComponent(data.ticket)}`;
+      // Use a hidden <a> element with download attribute to trigger the
+      // browser's native download. This works in Telegram WebView where
+      // window.open("about:blank") is blocked as a popup.
+      const url = `/api/files/download?ticket=${encodeURIComponent(data.ticket)}`;
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
     } catch (err) {
-      downloadWindow.close();
       setError(err instanceof Error ? err.message : "Download failed");
     } finally {
       downloadInFlightRef.current = false;
@@ -468,7 +461,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     }
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (fileContent !== null) {
       setFileContent(null);
       setFileName("");
@@ -478,7 +471,38 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     } else if (parentPath) {
       loadDirectory(parentPath);
     }
-  };
+  }, [fileContent, parentPath, loadDirectory, onViewChange]);
+
+  // Wire Telegram's native BackButton when viewing a file. Show it on
+  // file open, hide it when returning to the directory listing, and clean
+  // up the handler on unmount so we don't leak listeners.
+  // Also restore BackButton after returning from an external link — the
+  // Telegram WebApp can lose the BackButton state when the webview is
+  // backgrounded (e.g. opening a link via tg.openLink).
+  useEffect(() => {
+    const bb = window.Telegram?.WebApp?.BackButton;
+    if (!bb) return;
+
+    if (fileContent !== null) {
+      bb.onClick(handleBack);
+      bb.show();
+    } else {
+      bb.hide();
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && fileContent !== null) {
+        bb.show();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      bb.offClick(handleBack);
+      bb.hide();
+    };
+  }, [fileContent, handleBack]);
 
   // Simple line folding for code
   const toggleFold = (lineNum: number) => {

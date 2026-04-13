@@ -3,42 +3,42 @@
 exports[`MarkdownViewer (react-markdown baseline) > renders 01-headings.md consistently 1`] = `
 "<div class="md-content"><h1 id="heading-level-1" data-has-section="true">Heading Level 1</h1><section class="cpc-section" id="section-heading-level-1" data-fold-slug="heading-level-1">
 <p>Some content under an h1 with <strong>bold</strong> text.</p>
-<h2 id="heading-level-2">Heading Level 2</h2>
+<h2 id="heading-level-2" data-has-section="true">Heading Level 2</h2><section class="cpc-section" id="section-heading-level-2" data-fold-slug="heading-level-2">
 <p>A paragraph under h2 with <code>inline code</code> and a <a href="https://example.com">link</a>.</p>
-<h3 id="heading-level-3">Heading Level 3</h3>
+<h3 id="heading-level-3" data-has-section="true">Heading Level 3</h3><section class="cpc-section" id="section-heading-level-3" data-fold-slug="heading-level-3">
 <ul>
 <li>A bullet under h3</li>
 <li>Another bullet</li>
 </ul>
-<h4 id="heading-level-4">Heading Level 4</h4>
+<h4 id="heading-level-4" data-has-section="true">Heading Level 4</h4><section class="cpc-section" id="section-heading-level-4" data-fold-slug="heading-level-4">
 <p>Paragraph under h4.</p>
-<h5 id="heading-level-5">Heading Level 5</h5>
+<h5 id="heading-level-5" data-has-section="true">Heading Level 5</h5><section class="cpc-section" id="section-heading-level-5" data-fold-slug="heading-level-5">
 <blockquote>
 <p>A blockquote under h5.</p>
 </blockquote>
-<h6 id="heading-level-6">Heading Level 6</h6>
+<h6 id="heading-level-6" data-has-section="true">Heading Level 6</h6><section class="cpc-section" id="section-heading-level-6" data-fold-slug="heading-level-6">
 <p>Final paragraph under the smallest heading.</p>
-<h2 id="another-h2-after-h6">Another H2 After H6</h2>
+</section></section></section></section></section><h2 id="another-h2-after-h6" data-has-section="true">Another H2 After H6</h2><section class="cpc-section" id="section-another-h2-after-h6" data-fold-slug="another-h2-after-h6">
 <p>Content to test heading-reset behavior.</p>
-<h3 id="nested-h3">Nested h3</h3>
-<p>And some trailing content.</p></section></div>"
+<h3 id="nested-h3" data-has-section="true">Nested h3</h3><section class="cpc-section" id="section-nested-h3" data-fold-slug="nested-h3">
+<p>And some trailing content.</p></section></section></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consistently 1`] = `
 "<div class="md-content"><h1 id="lists" data-has-section="true">Lists</h1><section class="cpc-section" id="section-lists" data-fold-slug="lists">
-<h2 id="unordered">Unordered</h2>
+<h2 id="unordered" data-has-section="true">Unordered</h2><section class="cpc-section" id="section-unordered" data-fold-slug="unordered">
 <ul>
 <li>Apple</li>
 <li>Banana</li>
 <li>Cherry</li>
 </ul>
-<h2 id="ordered">Ordered</h2>
+</section><h2 id="ordered" data-has-section="true">Ordered</h2><section class="cpc-section" id="section-ordered" data-fold-slug="ordered">
 <ol>
 <li>First</li>
 <li>Second</li>
 <li>Third</li>
 </ol>
-<h2 id="nested-3-deep">Nested (3+ deep)</h2>
+</section><h2 id="nested-3-deep" data-has-section="true">Nested (3+ deep)</h2><section class="cpc-section" id="section-nested-3-deep" data-fold-slug="nested-3-deep">
 <ul>
 <li>Level 1 item A
 <ul>
@@ -57,7 +57,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consiste
 </li>
 <li>Level 1 item B</li>
 </ul>
-<h2 id="task-list">Task list</h2>
+</section><h2 id="task-list" data-has-section="true">Task list</h2><section class="cpc-section" id="section-task-list" data-fold-slug="task-list">
 <ul class="contains-task-list">
 <li class="task-list-item"><input type="checkbox" disabled=""/> Open task</li>
 <li class="task-list-item"><input type="checkbox" disabled="" checked=""/> Completed task</li>
@@ -68,7 +68,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consiste
 </ul>
 </li>
 </ul>
-<h2 id="mixed-ordered--unordered">Mixed ordered + unordered</h2>
+</section><h2 id="mixed-ordered--unordered" data-has-section="true">Mixed ordered + unordered</h2><section class="cpc-section" id="section-mixed-ordered--unordered" data-fold-slug="mixed-ordered--unordered">
 <ol>
 <li>
 <p>First ordered</p>
@@ -92,31 +92,31 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 02-lists.md consiste
 <li>
 <p>Fourth ordered</p>
 </li>
-</ol></section></div>"
+</ol></section></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 03-code-block-short.md consistently 1`] = `
 "<div class="md-content"><h1 id="short-code-block" data-has-section="true">Short code block</h1><section class="cpc-section" id="section-short-code-block" data-fold-slug="short-code-block">
 <p>Here is a small TypeScript snippet:</p>
-<pre><code class="language-ts">function greet(name: string): string {
-  return \`Hello, \${name}!\`;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">function</span> <span class="hljs-title function_">greet</span>(<span class="hljs-params"><span class="hljs-attr">name</span>: <span class="hljs-built_in">string</span></span>): <span class="hljs-built_in">string</span> {
+  <span class="hljs-keyword">return</span> <span class="hljs-string">\`Hello, <span class="hljs-subst">\${name}</span>!\`</span>;
 }
 
-greet(&quot;world&quot;);
+<span class="hljs-title function_">greet</span>(<span class="hljs-string">&quot;world&quot;</span>);
 </code></pre>
 <p>And a short bash example:</p>
-<pre><code class="language-bash">pnpm install
-pnpm test
+<pre><code class="hljs language-bash">pnpm install
+pnpm <span class="hljs-built_in">test</span>
 </code></pre></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 04-code-block-wide.md consistently 1`] = `
 "<div class="md-content"><h1 id="wide-code-block-horizontal-scroll-target" data-has-section="true">Wide code block (horizontal scroll target)</h1><section class="cpc-section" id="section-wide-code-block-horizontal-scroll-target" data-fold-slug="wide-code-block-horizontal-scroll-target">
 <p>This fixture exists to pin down the PR #20 regression around wide code blocks and horizontal scrolling.</p>
-<pre><code class="language-ts">// This single line is intentionally very long to force horizontal scrolling inside the rendered &lt;pre&gt;&lt;code&gt; container so we can diff how marked and react-markdown lay out the overflow behavior under the same CSS.
-const veryLongIdentifier = { alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8, iota: 9, kappa: 10, lambda: 11, mu: 12, nu: 13, xi: 14, omicron: 15, pi: 16, rho: 17, sigma: 18, tau: 19, upsilon: 20, phi: 21, chi: 22, psi: 23, omega: 24 };
-function doSomethingThatTakesAbsurdlyManyArgumentsAndReturnsAnAbsurdlyLongInlineTypeAnnotation(arg1: string, arg2: number, arg3: boolean, arg4: Record&lt;string, unknown&gt;, arg5: Array&lt;{ id: string; value: number; metadata: Record&lt;string, string&gt; }&gt;): Promise&lt;{ ok: true; data: Array&lt;{ id: string; value: number; metadata: Record&lt;string, string&gt; }&gt; } | { ok: false; error: string }&gt; {
-  return Promise.resolve({ ok: true, data: arg5 });
+<pre><code class="hljs language-ts"><span class="hljs-comment">// This single line is intentionally very long to force horizontal scrolling inside the rendered &lt;pre&gt;&lt;code&gt; container so we can diff how marked and react-markdown lay out the overflow behavior under the same CSS.</span>
+<span class="hljs-keyword">const</span> veryLongIdentifier = { <span class="hljs-attr">alpha</span>: <span class="hljs-number">1</span>, <span class="hljs-attr">beta</span>: <span class="hljs-number">2</span>, <span class="hljs-attr">gamma</span>: <span class="hljs-number">3</span>, <span class="hljs-attr">delta</span>: <span class="hljs-number">4</span>, <span class="hljs-attr">epsilon</span>: <span class="hljs-number">5</span>, <span class="hljs-attr">zeta</span>: <span class="hljs-number">6</span>, <span class="hljs-attr">eta</span>: <span class="hljs-number">7</span>, <span class="hljs-attr">theta</span>: <span class="hljs-number">8</span>, <span class="hljs-attr">iota</span>: <span class="hljs-number">9</span>, <span class="hljs-attr">kappa</span>: <span class="hljs-number">10</span>, <span class="hljs-attr">lambda</span>: <span class="hljs-number">11</span>, <span class="hljs-attr">mu</span>: <span class="hljs-number">12</span>, <span class="hljs-attr">nu</span>: <span class="hljs-number">13</span>, <span class="hljs-attr">xi</span>: <span class="hljs-number">14</span>, <span class="hljs-attr">omicron</span>: <span class="hljs-number">15</span>, <span class="hljs-attr">pi</span>: <span class="hljs-number">16</span>, <span class="hljs-attr">rho</span>: <span class="hljs-number">17</span>, <span class="hljs-attr">sigma</span>: <span class="hljs-number">18</span>, <span class="hljs-attr">tau</span>: <span class="hljs-number">19</span>, <span class="hljs-attr">upsilon</span>: <span class="hljs-number">20</span>, <span class="hljs-attr">phi</span>: <span class="hljs-number">21</span>, <span class="hljs-attr">chi</span>: <span class="hljs-number">22</span>, <span class="hljs-attr">psi</span>: <span class="hljs-number">23</span>, <span class="hljs-attr">omega</span>: <span class="hljs-number">24</span> };
+<span class="hljs-keyword">function</span> <span class="hljs-title function_">doSomethingThatTakesAbsurdlyManyArgumentsAndReturnsAnAbsurdlyLongInlineTypeAnnotation</span>(<span class="hljs-params"><span class="hljs-attr">arg1</span>: <span class="hljs-built_in">string</span>, <span class="hljs-attr">arg2</span>: <span class="hljs-built_in">number</span>, <span class="hljs-attr">arg3</span>: <span class="hljs-built_in">boolean</span>, <span class="hljs-attr">arg4</span>: <span class="hljs-title class_">Record</span>&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">unknown</span>&gt;, <span class="hljs-attr">arg5</span>: <span class="hljs-title class_">Array</span>&lt;{ id: <span class="hljs-built_in">string</span>; value: <span class="hljs-built_in">number</span>; metadata: Record&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">string</span>&gt; }&gt;</span>): <span class="hljs-title class_">Promise</span>&lt;{ <span class="hljs-attr">ok</span>: <span class="hljs-literal">true</span>; <span class="hljs-attr">data</span>: <span class="hljs-title class_">Array</span>&lt;{ <span class="hljs-attr">id</span>: <span class="hljs-built_in">string</span>; <span class="hljs-attr">value</span>: <span class="hljs-built_in">number</span>; <span class="hljs-attr">metadata</span>: <span class="hljs-title class_">Record</span>&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">string</span>&gt; }&gt; } | { <span class="hljs-attr">ok</span>: <span class="hljs-literal">false</span>; <span class="hljs-attr">error</span>: <span class="hljs-built_in">string</span> }&gt; {
+  <span class="hljs-keyword">return</span> <span class="hljs-title class_">Promise</span>.<span class="hljs-title function_">resolve</span>({ <span class="hljs-attr">ok</span>: <span class="hljs-literal">true</span>, <span class="hljs-attr">data</span>: arg5 });
 }
 </code></pre>
 <p>And a short line afterwards to verify the following paragraph wraps normally after a wide code block:</p>
@@ -174,7 +174,7 @@ It spans two lines of markdown source.</p>
 </blockquote>
 <p>Blockquote containing a code block:</p>
 <blockquote>
-<pre><code class="language-ts">const quoted = &quot;code inside blockquote&quot;;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> quoted = <span class="hljs-string">&quot;code inside blockquote&quot;</span>;
 </code></pre>
 </blockquote></section></div>"
 `;
@@ -216,7 +216,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <strong>Deciders:</strong> Liam (Chaintail), Claude<br/>
 <strong>Context:</strong> Hackathon friends asked for GitHub links to &quot;what we built.&quot; This forced the question of what artifact best represents Claude&#x27;s World as a sharable, runnable system.</p>
 <hr/>
-<h2 id="context">Context</h2>
+<h2 id="context" data-has-section="true">Context</h2><section class="cpc-section" id="section-context" data-fold-slug="context">
 <p>Claude&#x27;s World is currently spread across multiple repositories and directories with no single artifact a new user could clone to &quot;get the system&quot;:</p>
 <ul>
 <li><strong>CPC</strong> (<code>~/code/claude-pocket-console</code>) — the Telegram mini app, the most polished and visually impressive piece</li>
@@ -228,7 +228,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <p>When the user&#x27;s hackathon friends asked for GitHub links, there was no clean answer. Pointing them to CPC alone misses the supporting infrastructure. Pointing them to multiple repos requires explaining the relationships. A monolithic &quot;everything in one repo&quot; approach was considered but rejected (see Alternatives).</p>
 <p>The user proposed: <strong>what if CPC stays as the primary shareable artifact and toolbox is included as a dependency inside it?</strong> This ADR captures that decision.</p>
 <hr/>
-<h2 id="decision">Decision</h2>
+</section><h2 id="decision" data-has-section="true">Decision</h2><section class="cpc-section" id="section-decision" data-fold-slug="decision">
 <p><strong>CPC will be the primary shareable artifact for Claude&#x27;s World. Toolbox will be embedded as a git submodule.</strong></p>
 <p>The structure will be:</p>
 <pre><code>claude-pocket-console/             ← what new users clone
@@ -256,8 +256,8 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 </ol>
 <p>Toolbox keeps its own repository, its own commit history, and its own lifecycle. CPC pins to a specific toolbox commit via the submodule reference, and bumps that pin intentionally when toolbox ships changes.</p>
 <hr/>
-<h2 id="consequences">Consequences</h2>
-<h3 id="positive">Positive</h3>
+</section><h2 id="consequences" data-has-section="true">Consequences</h2><section class="cpc-section" id="section-consequences" data-fold-slug="consequences">
+<h3 id="positive" data-has-section="true">Positive</h3><section class="cpc-section" id="section-positive" data-fold-slug="positive">
 <ul>
 <li><strong>One link to share.</strong> &quot;Check out github.com/{user}/claude-pocket-console&quot; gives someone the whole system. The first impression is the polished mini app, not a wall of bash scripts.</li>
 <li><strong>Toolbox stays portable.</strong> Someone who wants only the scripts can clone toolbox alone without pulling CPC. The two repos serve different audiences (CPC for &quot;show me the system,&quot; toolbox for &quot;give me the tools&quot;).</li>
@@ -266,7 +266,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li><strong>Existing structure preserved.</strong> The toolbox repo doesn&#x27;t need restructuring. It just becomes a sub-tree inside CPC at <code>tools/</code>.</li>
 <li><strong>Matches how people discover the project.</strong> &quot;Claude Pocket Console&quot; is the recognizable name. Toolbox is invisible infrastructure. The submodule pattern reflects this asymmetry honestly.</li>
 </ul>
-<h3 id="negative">Negative</h3>
+</section><h3 id="negative" data-has-section="true">Negative</h3><section class="cpc-section" id="section-negative" data-fold-slug="negative">
 <ul>
 <li><strong>Submodule UX is clunky.</strong> New contributors will forget <code>--recursive</code> on clone. They&#x27;ll see an empty <code>tools/</code> directory and be confused. Mitigation: README has a &quot;first steps&quot; section that explicitly addresses this, and <code>pnpm install</code> could check for the submodule and warn if missing.</li>
 <li><strong>Submodule pin updates require explicit commits.</strong> When toolbox ships a fix, CPC needs a commit to pull it in. Not bad in practice (usually you want this control) but adds a step.</li>
@@ -274,14 +274,14 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li><strong>The &quot;host&quot; pieces still don&#x27;t have a home.</strong> This ADR doesn&#x27;t address where systemd/Caddy/cloudflared configs live. They&#x27;re VPS-specific and don&#x27;t belong in CPC. A separate decision is needed for the do-box replacement.</li>
 <li><strong>Skills location split.</strong> Skills currently live in <code>~/.claude/skills/</code> AND <code>~/claudes-world/.claude/skills/</code>. Deciding which is canonical and migrating to <code>claude-pocket-console/skills/</code> is a follow-up task.</li>
 </ul>
-<h3 id="neutral">Neutral</h3>
+</section><h3 id="neutral" data-has-section="true">Neutral</h3><section class="cpc-section" id="section-neutral" data-fold-slug="neutral">
 <ul>
 <li>The user&#x27;s <code>~/code/claude-pocket-console</code> working directory and the GitHub repo will share a name (already the case). Nothing changes locally.</li>
 <li>The <code>~/.world/</code> directory concept (per-project overrides) is orthogonal to this decision and can still be added.</li>
 </ul>
 <hr/>
-<h2 id="alternatives-considered">Alternatives Considered</h2>
-<h3 id="alternative-1-single-monorepo-containing-everything">Alternative 1: Single monorepo containing everything</h3>
+</section></section><h2 id="alternatives-considered" data-has-section="true">Alternatives Considered</h2><section class="cpc-section" id="section-alternatives-considered" data-fold-slug="alternatives-considered">
+<h3 id="alternative-1-single-monorepo-containing-everything" data-has-section="true">Alternative 1: Single monorepo containing everything</h3><section class="cpc-section" id="section-alternative-1-single-monorepo-containing-everything" data-fold-slug="alternative-1-single-monorepo-containing-everything">
 <p>Move CPC, toolbox, skills, host config, and apps into one new repo at <code>github.com/{user}/claudes-world</code>. Each becomes a top-level package.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
@@ -292,7 +292,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li>Doesn&#x27;t match how the user actually thinks about the system (CPC is the recognizable thing, everything else supports it)</li>
 </ul>
 <p>The original portability design doc proposed this approach. After discussing it with the user, the CPC-as-hub model is a better fit for the actual goal (a shareable artifact for hackathon friends) without the migration cost.</p>
-<h3 id="alternative-2-git-subtree-instead-of-submodule">Alternative 2: Git subtree instead of submodule</h3>
+</section><h3 id="alternative-2-git-subtree-instead-of-submodule" data-has-section="true">Alternative 2: Git subtree instead of submodule</h3><section class="cpc-section" id="section-alternative-2-git-subtree-instead-of-submodule" data-fold-slug="alternative-2-git-subtree-instead-of-submodule">
 <p>Same end state but using <code>git subtree</code> to merge toolbox&#x27;s history into CPC at <code>tools/</code>. Consumers don&#x27;t need <code>--recursive</code>.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
@@ -301,7 +301,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li>The &quot;no init step&quot; benefit is real but small — a one-line README note solves it.</li>
 <li>Could revisit if submodule pain proves worse than subtree pain in practice.</li>
 </ul>
-<h3 id="alternative-3-pnpm-workspace--npm-package">Alternative 3: pnpm workspace / npm package</h3>
+</section><h3 id="alternative-3-pnpm-workspace--npm-package" data-has-section="true">Alternative 3: pnpm workspace / npm package</h3><section class="cpc-section" id="section-alternative-3-pnpm-workspace--npm-package" data-fold-slug="alternative-3-pnpm-workspace--npm-package">
 <p>Publish toolbox to npm and have CPC depend on it via <code>package.json</code>. Cleanest from a JS perspective.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
@@ -310,7 +310,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li>Versioning becomes a release-management chore — every toolbox change needs a version bump and publish.</li>
 <li>Adds an external dependency (npm registry) for what should be a self-contained system.</li>
 </ul>
-<h3 id="alternative-4-symlinks-do-nothing">Alternative 4: Symlinks (do nothing)</h3>
+</section><h3 id="alternative-4-symlinks-do-nothing" data-has-section="true">Alternative 4: Symlinks (do nothing)</h3><section class="cpc-section" id="section-alternative-4-symlinks-do-nothing" data-fold-slug="alternative-4-symlinks-do-nothing">
 <p>The current state. <code>~/bin</code> symlinks into <code>~/code/toolbox</code>, CPC is a separate repo. No packaging.</p>
 <p><strong>Why rejected:</strong></p>
 <ul>
@@ -319,7 +319,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li>Doesn&#x27;t help hackathon friends at all.</li>
 </ul>
 <hr/>
-<h2 id="follow-up-actions">Follow-Up Actions</h2>
+</section></section><h2 id="follow-up-actions" data-has-section="true">Follow-Up Actions</h2><section class="cpc-section" id="section-follow-up-actions" data-fold-slug="follow-up-actions">
 <p>These are not part of this ADR but are needed to execute the decision:</p>
 <ol>
 <li><strong>Decide on the host config story</strong> — separate ADR. The do-box replacement (manifest-driven, deterministic rebuild) is its own design problem.</li>
@@ -330,14 +330,14 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 10-real-doc-adr.md c
 <li><strong>Plugin packaging (longer term)</strong> — if CPC grows into a Claude Code plugin, the plugin manifest can reference the same submodule structure. No conflict.</li>
 </ol>
 <hr/>
-<h2 id="references">References</h2>
+</section><h2 id="references" data-has-section="true">References</h2><section class="cpc-section" id="section-references" data-fold-slug="references">
 <ul>
 <li><code>~/claudes-world/knowledge/claudes-world-portability-design.md</code> — the broader design doc this ADR resolves</li>
 <li><code>~/code/omnipass-world/AGENTS.md</code> — the progressive disclosure pattern used as the docs model</li>
 <li><code>~/code/claude-pocket-console/</code> — the CPC repo to be restructured</li>
 <li><code>~/code/toolbox/</code> — the toolbox repo to become a submodule</li>
 <li><a href="https://git-scm.com/book/en/v2/Git-Tools-Submodules">Git submodule docs</a></li>
-</ul></section></div>"
+</ul></section></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnight-summary.md consistently 1`] = `
@@ -346,11 +346,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 <strong>Session end:</strong> ~9:30pm ET April 6 (this report)<br/>
 <strong>Format:</strong> Single document for morning review</p>
 <hr/>
-<h2 id="tldr">TL;DR</h2>
+<h2 id="tldr" data-has-section="true">TL;DR</h2><section class="cpc-section" id="section-tldr" data-fold-slug="tldr">
 <p><strong>8 PRs open and ready for your review.</strong> None merged. Foundational tools shipped (Scrum button, send-md fix). Three big-picture synthesis docs are ready for morning decisions (reading list, portability, theme). One known issue: the dev tunnel is currently 502 because of agent worktree coordination — fixes itself when you merge PR #21.</p>
 <hr/>
-<h2 id="whats-ready-for-you-to-merge-in-order">What&#x27;s ready for you to merge (in order)</h2>
-<h3 id="toolbox">Toolbox</h3>
+</section><h2 id="whats-ready-for-you-to-merge-in-order" data-has-section="true">What&#x27;s ready for you to merge (in order)</h2><section class="cpc-section" id="section-whats-ready-for-you-to-merge-in-order" data-fold-slug="whats-ready-for-you-to-merge-in-order">
+<h3 id="toolbox" data-has-section="true">Toolbox</h3><section class="cpc-section" id="section-toolbox" data-fold-slug="toolbox">
 <ol>
 <li>
 <p><strong>toolbox PR #1</strong> — <code>tune: reduce heading pauses, speed up body voice</code></p>
@@ -370,7 +370,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 </ul>
 </li>
 </ol>
-<h3 id="cpc-in-recommended-merge-order">CPC (in recommended merge order)</h3>
+</section><h3 id="cpc-in-recommended-merge-order" data-has-section="true">CPC (in recommended merge order)</h3><section class="cpc-section" id="section-cpc-in-recommended-merge-order" data-fold-slug="cpc-in-recommended-merge-order">
 <ol>
 <li>
 <p><strong>PR #21</strong> — <code>fix: allow cpc.claude.do host in Vite dev server</code></p>
@@ -428,9 +428,9 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 </li>
 </ol>
 <hr/>
-<h2 id="big-picture-decisions-waiting-for-your-input">Big-picture decisions waiting for your input</h2>
+</section></section><h2 id="big-picture-decisions-waiting-for-your-input" data-has-section="true">Big-picture decisions waiting for your input</h2><section class="cpc-section" id="section-big-picture-decisions-waiting-for-your-input" data-fold-slug="big-picture-decisions-waiting-for-your-input">
 <p>These are the three synthesis docs from the devil&#x27;s advocate sessions. Each has my recommended answers — if you agree with my recs, just say &quot;go&quot; and I&#x27;ll execute. If you disagree, tell me which.</p>
-<h3 id="reading-list-feature">Reading list feature</h3>
+<h3 id="reading-list-feature" data-has-section="true">Reading list feature</h3><section class="cpc-section" id="section-reading-list-feature" data-fold-slug="reading-list-feature">
 <ul>
 <li><strong>Doc:</strong> <code>tmp/20260406-reading-list-synthesis.md</code></li>
 <li><strong>3 reviewers:</strong> Gemini (RETHINK), Codex (NEEDS WORK), Sonnet (NEEDS WORK)</li>
@@ -445,14 +445,14 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 </ol>
 </li>
 </ul>
-<h3 id="claudes-world-portability--world-directory">Claude&#x27;s World portability / .world directory</h3>
+</section><h3 id="claudes-world-portability--world-directory" data-has-section="true">Claude&#x27;s World portability / .world directory</h3><section class="cpc-section" id="section-claudes-world-portability--world-directory" data-fold-slug="claudes-world-portability--world-directory">
 <ul>
 <li><strong>Doc:</strong> <code>tmp/20260406-portability-synthesis.md</code></li>
 <li><strong>2 reviewers:</strong> Gemini (RETHINK), Codex (NEEDS WORK)</li>
 <li><strong>Key takeaway:</strong> ADR 0001 (CPC + toolbox submodule) already addresses most critiques. The original maximalist monorepo doc has one factual contradiction to fix (don&#x27;t version live state in git). 5 follow-up ADRs identified.</li>
 <li><strong>My rec:</strong> Keep ADR 0001 as Proposed and continue. Update the original design doc to remove the monorepo-version-memory contradiction.</li>
 </ul>
-<h3 id="lightdark-mode">Light/dark mode</h3>
+</section><h3 id="lightdark-mode" data-has-section="true">Light/dark mode</h3><section class="cpc-section" id="section-lightdark-mode" data-fold-slug="lightdark-mode">
 <ul>
 <li><strong>Doc:</strong> <code>tmp/20260406-theme-synthesis.md</code></li>
 <li><strong>1 reviewer:</strong> Gemini (RETHINK)</li>
@@ -460,12 +460,12 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 <li><strong>My rec:</strong> Defer entirely until you have time for a proper week-long migration. The current plan is correct but not a sleep-time job.</li>
 </ul>
 <hr/>
-<h2 id="documents-shipped-to-your-telegram-tonight">Documents shipped to your Telegram tonight</h2>
+</section></section><h2 id="documents-shipped-to-your-telegram-tonight" data-has-section="true">Documents shipped to your Telegram tonight</h2><section class="cpc-section" id="section-documents-shipped-to-your-telegram-tonight" data-fold-slug="documents-shipped-to-your-telegram-tonight">
 <div class="md-table-scroll"><table><thead><tr><th>Doc</th><th>Type</th></tr></thead><tbody><tr><td>ADR 0001 — CPC + toolbox submodule packaging</td><td>Decision</td></tr><tr><td>ADR 0003 — Port allocation v2 / port-for</td><td>Decision</td></tr><tr><td>Reading list 3-way DA synthesis</td><td>Synthesis</td></tr><tr><td>Portability 2-way DA synthesis</td><td>Synthesis</td></tr><tr><td>Theme DA review</td><td>Synthesis</td></tr><tr><td>PR reviews summary (5 PRs)</td><td>Status</td></tr><tr><td>Overnight status hour 1</td><td>Status</td></tr><tr><td>.world skeleton README</td><td>Proposal</td></tr><tr><td>.world skeleton AGENTS.md</td><td>Proposal</td></tr><tr><td>USDX white paper (downloadable)</td><td>Re-shared</td></tr></tbody></table></div>
 <p>All are saved in <code>~/claudes-world/tmp/</code> or <code>~/claudes-world/knowledge/</code> and can be re-shared via the deep-link system.</p>
 <hr/>
-<h2 id="outside-the-box-ideas-ranked-by-roi--feasibility">Outside-the-box ideas (ranked by ROI × feasibility)</h2>
-<h3 id="for-claudes-world-infrastructure">For Claude&#x27;s World infrastructure</h3>
+</section><h2 id="outside-the-box-ideas-ranked-by-roi--feasibility" data-has-section="true">Outside-the-box ideas (ranked by ROI × feasibility)</h2><section class="cpc-section" id="section-outside-the-box-ideas-ranked-by-roi--feasibility" data-fold-slug="outside-the-box-ideas-ranked-by-roi--feasibility">
+<h3 id="for-claudes-world-infrastructure" data-has-section="true">For Claude&#x27;s World infrastructure</h3><section class="cpc-section" id="section-for-claudes-world-infrastructure" data-fold-slug="for-claudes-world-infrastructure">
 <ol>
 <li>
 <p><strong>Morning brief cron job</strong> — runs at 7am ET, sends a markdown doc with overnight git changes, open PRs needing review, weather, calendar (when OAuth wired), memory-based reminders.</p>
@@ -504,7 +504,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 </ul>
 </li>
 </ol>
-<h3 id="for-your-irl-life-liam">For your IRL life (Liam)</h3>
+</section><h3 id="for-your-irl-life-liam" data-has-section="true">For your IRL life (Liam)</h3><section class="cpc-section" id="section-for-your-irl-life-liam" data-fold-slug="for-your-irl-life-liam">
 <ol>
 <li>
 <p><strong>Conference contact card MVP</strong> (the one we discussed) — single highest-leverage thing you could ship next month for IRL networking. Day or two of work, transforms every conference for you.</p>
@@ -543,13 +543,13 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 </li>
 </ol>
 <hr/>
-<h2 id="issues--things-to-know">Issues / things to know</h2>
-<h3 id="1-dev-tunnel-502-worktree-coordination">1. Dev tunnel 502 (worktree coordination)</h3>
+</section></section><h2 id="issues--things-to-know" data-has-section="true">Issues / things to know</h2><section class="cpc-section" id="section-issues--things-to-know" data-fold-slug="issues--things-to-know">
+<h3 id="1-dev-tunnel-502-worktree-coordination" data-has-section="true">1. Dev tunnel 502 (worktree coordination)</h3><section class="cpc-section" id="section-1-dev-tunnel-502-worktree-coordination" data-fold-slug="1-dev-tunnel-502-worktree-coordination">
 <p><strong>Current state:</strong> <code>https://cpc.claude.do/dev/</code> returns 502.</p>
 <p><strong>Why:</strong> Multiple agents share <code>~/code/claude-pocket-console</code> worktree and check out different feature branches. The cpc-dev.service serves whatever branch is currently checked out. Currently it&#x27;s on <code>feat/file-viewer-sort-control</code> (PR #23&#x27;s branch), which doesn&#x27;t have the IPv4 fix. Vite is bound to <code>[::1]:58830</code> (IPv6 only), Caddy can&#x27;t proxy to <code>127.0.0.1:58830</code>.</p>
 <p><strong>Fix:</strong> Merge PR #21 to dev. Once IPv4 fix lands on dev, every feature branch will inherit it.</p>
 <p><strong>Lesson learned:</strong> This proves the worktree-aware port allocation idea (ADR 0003) — agents need their own worktrees. I&#x27;ll avoid launching parallel CPC agents going forward until we have proper isolation.</p>
-<h3 id="2-toolbox-dirty-state-pre-existing">2. Toolbox dirty state (pre-existing)</h3>
+</section><h3 id="2-toolbox-dirty-state-pre-existing" data-has-section="true">2. Toolbox dirty state (pre-existing)</h3><section class="cpc-section" id="section-2-toolbox-dirty-state-pre-existing" data-fold-slug="2-toolbox-dirty-state-pre-existing">
 <p>The toolbox repo has uncommitted changes from before I arrived:</p>
 <ul>
 <li><code>hooks/agent-stop-hook</code> (small)</li>
@@ -558,14 +558,14 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 <li><code>tg-sanitize/</code> (untracked directory)</li>
 </ul>
 <p>I left these alone. They look intentional but are not on any branch. Worth checking what they are and either committing or stashing properly.</p>
-<h3 id="3-send-md-fix-branch-is-currently-checked-out">3. send-md fix branch is currently checked out</h3>
+</section><h3 id="3-send-md-fix-branch-is-currently-checked-out" data-has-section="true">3. send-md fix branch is currently checked out</h3><section class="cpc-section" id="section-3-send-md-fix-branch-is-currently-checked-out" data-fold-slug="3-send-md-fix-branch-is-currently-checked-out">
 <p>Toolbox is currently on <code>feat/scrum-button-and-share-doc-fix</code> (toolbox PR #2&#x27;s branch). This is intentional — that branch has the share-doc Mode 2 fix, which is what&#x27;s powering the send-md skill right now via the symlink at <code>~/bin/share-doc</code>. If you switch toolbox branches, send-md will revert to the old broken behavior until you switch back or merge.</p>
 <p><strong>Recommended:</strong> Merge toolbox PR #2 first thing in the morning to permanently land the share-doc fix.</p>
-<h3 id="4-pre-existing-ispathallowed-security-issue">4. Pre-existing isPathAllowed security issue</h3>
+</section><h3 id="4-pre-existing-ispathallowed-security-issue" data-has-section="true">4. Pre-existing isPathAllowed security issue</h3><section class="cpc-section" id="section-4-pre-existing-ispathallowed-security-issue" data-fold-slug="4-pre-existing-ispathallowed-security-issue">
 <p>Gemini flagged this on PR #18 but it&#x27;s NOT introduced by PR #18 — it&#x27;s pre-existing in <code>apps/server/src/routes/files.ts</code>. The <code>isPathAllowed</code> function uses <code>startsWith</code> which is vulnerable to prefix-based path traversal. Affects <code>/list</code>, <code>/read</code>, <code>/search</code>, <code>/upload</code>, AND the new <code>/download</code>.</p>
 <p><strong>My recommendation:</strong> File a separate hardening PR. Should not block PR #18 from merging (the vulnerability exists with or without #18).</p>
 <hr/>
-<h2 id="stats">Stats</h2>
+</section></section><h2 id="stats" data-has-section="true">Stats</h2><section class="cpc-section" id="section-stats" data-fold-slug="stats">
 <ul>
 <li><strong>PRs opened:</strong> 8 (5 CPC + 3 toolbox*) — *toolbox #1 was opened before this session</li>
 <li><strong>PRs reviewed by me:</strong> 7 (all CPC + toolbox #1)</li>
@@ -578,7 +578,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 <li><strong>TODO items added:</strong> 8 (follow-up items + new ADRs to write)</li>
 </ul>
 <hr/>
-<h2 id="what-i-plan-for-hour-2-and-beyond">What I plan for hour 2 (and beyond)</h2>
+</section><h2 id="what-i-plan-for-hour-2-and-beyond" data-has-section="true">What I plan for hour 2 (and beyond)</h2><section class="cpc-section" id="section-what-i-plan-for-hour-2-and-beyond" data-fold-slug="what-i-plan-for-hour-2-and-beyond">
 <p>The next hour cron will fire at :13 (in ~25 minutes from this writing). When it does, I&#x27;ll:</p>
 <ol>
 <li>Check on the in-flight PR reviews for #22 and #23</li>
@@ -596,9 +596,9 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 11-real-doc-overnigh
 </ul>
 <p>If you wake up and want to fast-merge everything, the recommended order is at the top of this doc. If you want me to wait, just say so.</p>
 <hr/>
-<h2 id="sleep-well-liam">Sleep well, Liam.</h2>
+</section><h2 id="sleep-well-liam" data-has-section="true">Sleep well, Liam.</h2><section class="cpc-section" id="section-sleep-well-liam" data-fold-slug="sleep-well-liam">
 <p>The system is in good shape. Lots of value sitting in the PR queue waiting for your review. The big architectural conversations have concrete recommendations. The synthesis docs are ready to discuss when you&#x27;re ready.</p>
-<p>— Claude</p></section></div>"
+<p>— Claude</p></section></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsible-headings-plan.md consistently 1`] = `
@@ -609,19 +609,19 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <strong>Feature:</strong> Disclosure triangles next to headings in the CPC markdown viewer that collapse/expand sections, with optional sync to a future TOC drawer.<br/>
 <strong>Note on file output:</strong> This planning task is read-only — I cannot save the plan to <code>tmp/</code>. The full plan is below; copy/paste it wherever you&#x27;d like it to live.</p>
 <hr/>
-<h2 id="tldr">TL;DR</h2>
+<h2 id="tldr" data-has-section="true">TL;DR</h2><section class="cpc-section" id="section-tldr" data-fold-slug="tldr">
 <p>Add disclosure triangles next to every heading in <code>MarkdownViewer.tsx</code> so Liam can collapse long sections of a markdown doc. Use <strong>Option A (DOM post-processing via ref)</strong> because the existing component already uses <code>dangerouslySetInnerHTML</code>, the change is local, and we don&#x27;t add a runtime dependency. Store fold state as a <code>Set&lt;string&gt;</code> of heading slugs in React state, <strong>lifted to <code>App.tsx</code></strong> so a future <code>TocSheet</code> component can share it. Implement collapse via <code>display: none</code> on the DOM nodes between a heading and the next same-or-higher-level heading. <strong>Effort: Medium — ~1 day standalone, ~1.5–2 days if shipped together with the TOC drawer (because heading-id assignment, the lift to <code>App.tsx</code>, and shared-state plumbing become a single coordinated PR).</strong></p>
 <p>The biggest discovery during scouting: <strong>marked v17 with <code>gfm: true</code> does NOT generate <code>id</code> attributes on headings.</strong> The v17 default <code>heading</code> renderer is literally <code>\`&lt;h\${depth}&gt;\${parseInline(tokens)}&lt;/h\${depth}&gt;\`</code> (verified in <code>apps/web/node_modules/marked/lib/marked.esm.js</code> line 57). The existing TOC proposal (<code>tmp/20260407-markdown-toc-and-audio-proposals.md</code> line 71) is wrong about this. Both this feature and the TOC feature need to assign IDs themselves, which is one more reason to ship them together: they share that prep work.</p>
 <hr/>
-<h2 id="part-1--current-state-scouting">Part 1 — Current state scouting</h2>
-<h3 id="how-markdown-is-rendered">How markdown is rendered</h3>
+</section><h2 id="part-1--current-state-scouting" data-has-section="true">Part 1 — Current state scouting</h2><section class="cpc-section" id="section-part-1--current-state-scouting" data-fold-slug="part-1--current-state-scouting">
+<h3 id="how-markdown-is-rendered" data-has-section="true">How markdown is rendered</h3><section class="cpc-section" id="section-how-markdown-is-rendered" data-fold-slug="how-markdown-is-rendered">
 <ul>
 <li><code>apps/web/src/components/MarkdownViewer.tsx</code> calls <code>marked.parse(content)</code> inside a <code>useMemo</code>, then injects the result via <code>dangerouslySetInnerHTML</code> into a <code>&lt;div className=&quot;md-content&quot;&gt;</code>. The component is otherwise styles + HTML; it has <strong>no ref, no post-processing, no event handlers</strong>.</li>
 <li><code>marked</code> is configured with <code>{ gfm: true, breaks: true }</code> only.</li>
 <li>The whole <code>.md-content</code> div lives inside an outer scrollable wrapper with <code>overflowY: auto</code>. Scroll position is managed by the browser.</li>
 <li>There&#x27;s no virtual scrolling. Even very long docs render the entire DOM tree once.</li>
 </ul>
-<h3 id="heading-ids--the-load-bearing-finding">Heading IDs — the load-bearing finding</h3>
+</section><h3 id="heading-ids--the-load-bearing-finding" data-has-section="true">Heading IDs — the load-bearing finding</h3><section class="cpc-section" id="section-heading-ids--the-load-bearing-finding" data-fold-slug="heading-ids--the-load-bearing-finding">
 <p>Marked v17&#x27;s default renderer produces headings without <code>id</code> attributes. From <code>marked.esm.js</code>:</p>
 <pre><code>heading({tokens:e,depth:t}){return\`&lt;h\${t}&gt;\${this.parser.parseInline(e)}&lt;/h\${t}&gt;\\n\`}
 </code></pre>
@@ -631,69 +631,69 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <li>Or post-processing the DOM after the inner HTML is set, walking <code>h1...h6</code>, generating slugs from <code>textContent</code>, and assigning <code>el.id</code>.</li>
 </ul>
 <p>The renderer-override approach is cleaner and the slug becomes part of the cached HTML (so it survives <code>useMemo</code> and stays stable across re-renders). I recommend that.</p>
-<h3 id="how-long-docs-are-typically-rendered">How long docs are typically rendered</h3>
+</section><h3 id="how-long-docs-are-typically-rendered" data-has-section="true">How long docs are typically rendered</h3><section class="cpc-section" id="section-how-long-docs-are-typically-rendered" data-fold-slug="how-long-docs-are-typically-rendered">
 <ul>
 <li>No virtualization.</li>
 <li><code>padding: &quot;16px 16px&quot;</code> outer wrapper, with the styled <code>&lt;div class=&quot;md-content&quot;&gt;</code> inside.</li>
 <li>All children of <code>.md-content</code> are immediate siblings produced by marked: <code>h1</code>, <code>h2</code>, <code>p</code>, <code>ul</code>, <code>pre</code>, <code>blockquote</code>, <code>hr</code>, <code>table</code>, etc. <strong>This is critical for the collapse algorithm: section membership is determined by walking siblings, not descendants.</strong></li>
 </ul>
-<h3 id="parent-component">Parent component</h3>
+</section><h3 id="parent-component" data-has-section="true">Parent component</h3><section class="cpc-section" id="section-parent-component" data-fold-slug="parent-component">
 <ul>
 <li><code>FileViewer.tsx</code> hosts <code>&lt;MarkdownViewer content={fileContent} fileName={fileName} /&gt;</code> only when <code>fileContent !== null &amp;&amp; fileName.endsWith(&quot;.md&quot;)</code>.</li>
 <li><code>FileViewer</code> already maintains a <code>collapsedRanges: Set&lt;number&gt;</code> state for <strong>code-file line folding</strong> (line 76). It&#x27;s per-file (reset in <code>loadDirectory</code>/<code>loadFile</code>/<code>handleBack</code>). That&#x27;s the right pattern to mirror for markdown fold state, but it should live higher (in <code>App.tsx</code>) so the TOC drawer can share it.</li>
 </ul>
-<h3 id="top-level-state">Top-level state</h3>
+</section><h3 id="top-level-state" data-has-section="true">Top-level state</h3><section class="cpc-section" id="section-top-level-state" data-fold-slug="top-level-state">
 <ul>
 <li><code>App.tsx</code> already tracks <code>viewingFile: { path, name } | null</code> (line 47), which is the file currently open in the markdown viewer. That&#x27;s the natural key for fold state.</li>
 </ul>
-<h3 id="bottomsheet-primitive">BottomSheet primitive</h3>
+</section><h3 id="bottomsheet-primitive" data-has-section="true">BottomSheet primitive</h3><section class="cpc-section" id="section-bottomsheet-primitive" data-fold-slug="bottomsheet-primitive">
 <ul>
 <li><code>ActionBar.tsx</code> defines a local <code>BottomSheet</code> component (line 57) and uses it for ~10 modals already. The proposed TOC drawer would reuse it. Worth knowing because if/when the TOC ships, sync logic flows through whatever state lives in <code>App.tsx</code>.</li>
 </ul>
 <hr/>
-<h2 id="part-2--design-decisions">Part 2 — Design decisions</h2>
-<h3 id="1-triangle-placement">1. Triangle placement</h3>
+</section></section><h2 id="part-2--design-decisions" data-has-section="true">Part 2 — Design decisions</h2><section class="cpc-section" id="section-part-2--design-decisions" data-fold-slug="part-2--design-decisions">
+<h3 id="1-triangle-placement" data-has-section="true">1. Triangle placement</h3><section class="cpc-section" id="section-1-triangle-placement" data-fold-slug="1-triangle-placement">
 <ul>
 <li><strong>Render position:</strong> outside the heading text, in the left margin. Use a span/button with <code>position: absolute; left: -20px; top: 50%; transform: translateY(-50%)</code> against an <code>h1...h6 { position: relative; padding-left: 0 }</code>. The viewer&#x27;s outer wrapper has <code>padding: &quot;16px 16px&quot;</code> so there&#x27;s 16px of room before content clips — enough for a 14px triangle plus a couple of px breathing room. If clipping is a concern on very narrow Telegram screens, bump the wrapper padding-left to 24px and place the triangle at <code>left: -22px</code>.</li>
 <li><strong>Visual:</strong> triangle character (▼ expanded, ▶ collapsed) at ~14px, color <code>#565f89</code> (matches the dim-text color used elsewhere). On hover/focus, brighten to <code>#7aa2f7</code>.</li>
 <li><strong>Hit area:</strong> 32x32 transparent button centered on the triangle, so it&#x27;s tappable on mobile. Use <code>padding</code> rather than width/height to keep visual size separate from hit area.</li>
 <li><strong>Default state:</strong> all expanded. Liam can always tap to collapse, but a doc that opens half-folded is confusing.</li>
 </ul>
-<h3 id="2-what-counts-as-a-section">2. What counts as a &quot;section&quot;</h3>
+</section><h3 id="2-what-counts-as-a-section" data-has-section="true">2. What counts as a &quot;section&quot;</h3><section class="cpc-section" id="section-2-what-counts-as-a-section" data-fold-slug="2-what-counts-as-a-section">
 <ul>
 <li>An <code>h\${N}</code> heading&#x27;s section is <strong>every sibling DOM node after it, up to (but not including) the next sibling that is <code>h1</code>...<code>h\${N}</code></strong>. So an h2&#x27;s section ends at the next h1 or h2; any h3/h4/h5/h6 in between belongs to the section.</li>
 <li>Nested triangles: a collapsed h2 hides everything after it including the h3 elements <em>and their triangles</em>. When the h2 expands again, those h3 triangles reappear in whatever state they were in before (if they were also collapsed, they stay collapsed). This falls out for free if the algorithm is just &quot;set <code>display: none</code> on the contained DOM nodes&quot; — re-expanding the parent restores the children&#x27;s prior <code>display</code> state only if we&#x27;re careful (see Part 4).</li>
 <li><strong>First H1 special case:</strong> the top-level doc title (the first <code>h1</code> in the document) should NOT have a triangle. Collapsing it would hide everything. Detect by &quot;first H1 in the rendered output&quot; and skip it.</li>
 <li><strong>Empty section special case:</strong> if the next sibling is already a heading of same/higher level (i.e. the section has zero non-heading content), don&#x27;t show a triangle for that heading. It would be a no-op.</li>
 </ul>
-<h3 id="3-state-storage">3. State storage</h3>
+</section><h3 id="3-state-storage" data-has-section="true">3. State storage</h3><section class="cpc-section" id="section-3-state-storage" data-fold-slug="3-state-storage">
 <ul>
 <li><code>foldedSections: Set&lt;string&gt;</code> keyed by heading <strong>slug</strong> (not by index — slugs are stable across re-renders, indices aren&#x27;t if the user scrolls and React re-mounts).</li>
 <li><strong>Per-file:</strong> Reset whenever <code>viewingFile.path</code> changes. The simplest way is to key the state by file path: <code>foldedByFile: Map&lt;string, Set&lt;string&gt;&gt;</code>. Or even simpler: just drop the Set whenever <code>viewingFile.path</code> changes.</li>
 <li><strong>Persistence:</strong> none. Ephemeral React state. Recreating fold state on revisit is cheap (one tap), and persisting it to localStorage for every doc Liam ever opens would create stale entries forever.</li>
 <li><strong>Where it lives:</strong> Lift to <code>App.tsx</code>. Pass down to <code>MarkdownViewer</code> (which renders triangles + applies display: none) and to the future <code>TocSheet</code> (which renders the same fold indicators). See Part 5.</li>
 </ul>
-<h3 id="4-animation">4. Animation</h3>
+</section><h3 id="4-animation" data-has-section="true">4. Animation</h3><section class="cpc-section" id="section-4-animation" data-fold-slug="4-animation">
 <ul>
 <li><strong>v1: instant.</strong> No animation. <code>display: none</code> toggles immediately. Animating height is hard with <code>dangerouslySetInnerHTML</code> because we&#x27;d need to wrap each section in a div with a known height for max-height transitions, which means more DOM mutation.</li>
 <li><strong>v2 (defer):</strong> if Liam asks for it, switch to wrapping each section in a <code>&lt;div data-section-of=&quot;\${slug}&quot;&gt;</code> during post-processing and animate via <code>max-height</code> + <code>overflow: hidden</code>. Skip for v1.</li>
 </ul>
-<h3 id="5-interaction-with-the-toc-drawer">5. Interaction with the TOC drawer</h3>
+</section><h3 id="5-interaction-with-the-toc-drawer" data-has-section="true">5. Interaction with the TOC drawer</h3><section class="cpc-section" id="section-5-interaction-with-the-toc-drawer" data-fold-slug="5-interaction-with-the-toc-drawer">
 <ul>
 <li><strong>Tap heading in TOC → expand on the way:</strong> When the user navigates to a heading, walk up its ancestor chain (h3 inside an h2 inside an h1) and remove all of those slugs from <code>foldedSections</code> before scrolling. This guarantees the target is visible.</li>
 <li><strong>TOC reflects collapse state:</strong> TOC entries whose ancestor heading is collapsed should be visually de-emphasized (grey) and clicking them still works (it expands the ancestor first, then scrolls).</li>
 <li><strong>TOC has its own triangles:</strong> Each parent heading row in the TOC gets its own little triangle that toggles the same <code>foldedSections</code> set. Tapping the triangle in the TOC collapses the section in the doc as well — they&#x27;re literally the same state. This is the &quot;sync&quot; requirement and it falls out naturally if state is lifted.</li>
 </ul>
-<h3 id="6-click-target-semantics">6. Click target semantics</h3>
+</section><h3 id="6-click-target-semantics" data-has-section="true">6. Click target semantics</h3><section class="cpc-section" id="section-6-click-target-semantics" data-fold-slug="6-click-target-semantics">
 <ul>
 <li>Click triangle → toggle that section&#x27;s slug in <code>foldedSections</code>.</li>
 <li>Click heading text → no-op. Don&#x27;t toggle, don&#x27;t scroll. Preserves text selection and the natural reading experience.</li>
 <li>(Optional, defer) Long-press heading → collapse all siblings of same level — &quot;collapse all H2s&quot; gesture. Not in v1.</li>
 </ul>
 <hr/>
-<h2 id="part-3--technical-approach">Part 3 — Technical approach</h2>
+</section></section><h2 id="part-3--technical-approach" data-has-section="true">Part 3 — Technical approach</h2><section class="cpc-section" id="section-part-3--technical-approach" data-fold-slug="part-3--technical-approach">
 <p>I evaluated all four options. <strong>Recommend: Option A — post-process the rendered HTML via a ref</strong>, with the small refinement that heading IDs are assigned by a custom marked renderer (not in the post-processing pass), so the slugs are stable and computed once.</p>
-<h3 id="option-a--post-process-the-rendered-html-recommended">Option A — Post-process the rendered HTML (RECOMMENDED)</h3>
+<h3 id="option-a--post-process-the-rendered-html-recommended" data-has-section="true">Option A — Post-process the rendered HTML (RECOMMENDED)</h3><section class="cpc-section" id="section-option-a--post-process-the-rendered-html-recommended" data-fold-slug="option-a--post-process-the-rendered-html-recommended">
 <p><strong>How:</strong> Keep <code>marked.parse</code> + <code>dangerouslySetInnerHTML</code> exactly as today. Add a <code>useRef&lt;HTMLDivElement&gt;</code> to the <code>.md-content</code> div. Add a <code>useLayoutEffect</code> that runs after each render: walk the children, find headings, compute each heading&#x27;s section range (the sibling slice ending at the next same-or-higher heading), and:</p>
 <ol>
 <li>Inject a triangle element (a <code>&lt;button&gt;</code> created with <code>document.createElement</code> is fine; no need for <code>createRoot</code> unless we want React to manage events) just before the heading text. Use event delegation on the wrapper div so we only attach one click listener total.</li>
@@ -714,7 +714,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <li>If marked re-runs and produces a new innerHTML, we re-walk the whole tree. That&#x27;s fine — the doc isn&#x27;t changing during fold/unfold, only fold state is.</li>
 <li>We have to remember the original <code>display</code> of each node we hide. Easiest: don&#x27;t try to remember. Use a separate CSS class <code>.cpc-folded { display: none !important }</code> and toggle the class instead of inline styles. Then re-expanding just removes the class and the original display reappears. <strong>This is the cleanest fix.</strong></li>
 </ul>
-<h3 id="option-b--marked-custom-renderer--event-delegation">Option B — marked custom renderer + event delegation</h3>
+</section><h3 id="option-b--marked-custom-renderer--event-delegation" data-has-section="true">Option B — marked custom renderer + event delegation</h3><section class="cpc-section" id="section-option-b--marked-custom-renderer--event-delegation" data-fold-slug="option-b--marked-custom-renderer--event-delegation">
 <p><strong>How:</strong> <code>marked.use({ renderer: { heading({ tokens, depth }) { return </code>&lt;h\${depth} id=&quot;\${slug}&quot;&gt;&lt;button class=&quot;cpc-toggle&quot; data-slug=&quot;\${slug}&quot;&gt;▼&lt;/button&gt;\${parseInline(tokens)}&lt;/h\${depth}&gt;<code> } } })</code>. Then in MarkdownViewer, attach one click handler to the wrapper that listens for clicks on <code>.cpc-toggle</code>.</p>
 <p><strong>Pros:</strong></p>
 <ul>
@@ -727,7 +727,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <li>Still need a separate post-processing pass to apply <code>display: none</code> based on fold state, because the renderer runs once at parse time and the fold state changes after.</li>
 <li>So Option B = Option A&#x27;s complexity + a renderer override. No win.</li>
 </ul>
-<h3 id="option-c--switch-to-react-markdown">Option C — Switch to react-markdown</h3>
+</section><h3 id="option-c--switch-to-react-markdown" data-has-section="true">Option C — Switch to react-markdown</h3><section class="cpc-section" id="section-option-c--switch-to-react-markdown" data-fold-slug="option-c--switch-to-react-markdown">
 <p><strong>How:</strong> Replace marked with react-markdown. Headings become real React components that can have interactive children natively.</p>
 <p><strong>Pros:</strong></p>
 <ul>
@@ -741,7 +741,7 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <li>It&#x27;s a much bigger PR with more risk for a feature that doesn&#x27;t strictly require it.</li>
 <li>Doesn&#x27;t solve the &quot;section is the slice of siblings between headings&quot; problem any better — react-markdown still produces a flat list of sibling elements at the top level. You still need to compute section ranges and conditionally hide them.</li>
 </ul>
-<h3 id="option-d--render-token-tree-manually">Option D — Render token tree manually</h3>
+</section><h3 id="option-d--render-token-tree-manually" data-has-section="true">Option D — Render token tree manually</h3><section class="cpc-section" id="section-option-d--render-token-tree-manually" data-fold-slug="option-d--render-token-tree-manually">
 <p><strong>How:</strong> Use marked&#x27;s tokenizer to get the AST, then render to React elements ourselves.</p>
 <p><strong>Pros:</strong></p>
 <ul>
@@ -752,11 +752,11 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <li>Massive scope: re-implementing tables, code blocks, lists, blockquotes, GFM. The current viewer leans on marked&#x27;s HTML output for all of this.</li>
 <li>This is not a one-day task. It&#x27;s a rewrite.</li>
 </ul>
-<h3 id="recommendation">Recommendation</h3>
+</section><h3 id="recommendation" data-has-section="true">Recommendation</h3><section class="cpc-section" id="section-recommendation" data-fold-slug="recommendation">
 <p>Go with <strong>Option A</strong>. The fold logic stays in one <code>useLayoutEffect</code> in <code>MarkdownViewer.tsx</code>. Heading IDs come from a marked renderer override (the only thing we change about the parse pipeline). Triangles are injected as plain DOM buttons; clicks are handled via event delegation. State lives in <code>App.tsx</code>. No new dependencies.</p>
 <hr/>
-<h2 id="part-4--the-collapse-mechanic">Part 4 — The collapse mechanic</h2>
-<h3 id="algorithm-sibling-slice-walk">Algorithm (sibling-slice walk)</h3>
+</section></section><h2 id="part-4--the-collapse-mechanic" data-has-section="true">Part 4 — The collapse mechanic</h2><section class="cpc-section" id="section-part-4--the-collapse-mechanic" data-fold-slug="part-4--the-collapse-mechanic">
+<h3 id="algorithm-sibling-slice-walk" data-has-section="true">Algorithm (sibling-slice walk)</h3><section class="cpc-section" id="section-algorithm-sibling-slice-walk" data-fold-slug="algorithm-sibling-slice-walk">
 <p>After <code>marked.parse</code> runs and the HTML is in the DOM, in a <code>useLayoutEffect</code>:</p>
 <ol>
 <li>Get a flat list of <code>.md-content</code>&#x27;s direct children: <code>const nodes = Array.from(rootRef.current.children)</code>. (They&#x27;re already in document order — that&#x27;s how marked emits them.)</li>
@@ -773,93 +773,93 @@ exports[`MarkdownViewer (react-markdown baseline) > renders 12-real-doc-collapsi
 <li>After triangles are injected, apply fold state: for each heading whose slug is in <code>foldedSections</code>, add <code>cpc-folded</code> class to every node in its section. This is what hides them. For each heading NOT in the set, remove the class from its section.</li>
 <li>Update each triangle&#x27;s text content: ▼ if expanded, ▶ if collapsed. Optional: append <code>(N)</code> where N is the count of non-empty paragraphs/elements in the section, so collapsed sections show &quot;▶ (12)&quot;.</li>
 </ol>
-<h3 id="hide-mechanism-a-single-css-class">Hide mechanism: a single CSS class</h3>
+</section><h3 id="hide-mechanism-a-single-css-class" data-has-section="true">Hide mechanism: a single CSS class</h3><section class="cpc-section" id="section-hide-mechanism-a-single-css-class" data-fold-slug="hide-mechanism-a-single-css-class">
 <p>Add to the existing <code>&lt;style&gt;</code> block:</p>
-<pre><code class="language-css">.cpc-folded { display: none !important; }
-.md-content h1, .md-content h2, .md-content h3,
-.md-content h4, .md-content h5, .md-content h6 {
-  position: relative;
+<pre><code class="hljs language-css"><span class="hljs-selector-class">.cpc-folded</span> { <span class="hljs-attribute">display</span>: none <span class="hljs-meta">!important</span>; }
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h1</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h2</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h3</span>,
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h4</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h5</span>, <span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-tag">h6</span> {
+  <span class="hljs-attribute">position</span>: relative;
 }
-.md-content .cpc-toggle {
-  position: absolute;
-  left: -22px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 32px; height: 32px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; border: none; color: #565f89;
-  cursor: pointer; font-size: 14px;
-  /* hit area extends past the visible 14px triangle */
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-class">.cpc-toggle</span> {
+  <span class="hljs-attribute">position</span>: absolute;
+  <span class="hljs-attribute">left</span>: -<span class="hljs-number">22px</span>;
+  <span class="hljs-attribute">top</span>: <span class="hljs-number">50%</span>;
+  <span class="hljs-attribute">transform</span>: <span class="hljs-built_in">translateY</span>(-<span class="hljs-number">50%</span>);
+  <span class="hljs-attribute">width</span>: <span class="hljs-number">32px</span>; <span class="hljs-attribute">height</span>: <span class="hljs-number">32px</span>;
+  <span class="hljs-attribute">display</span>: flex; <span class="hljs-attribute">align-items</span>: center; <span class="hljs-attribute">justify-content</span>: center;
+  <span class="hljs-attribute">background</span>: transparent; <span class="hljs-attribute">border</span>: none; <span class="hljs-attribute">color</span>: <span class="hljs-number">#565f89</span>;
+  <span class="hljs-attribute">cursor</span>: pointer; <span class="hljs-attribute">font-size</span>: <span class="hljs-number">14px</span>;
+  <span class="hljs-comment">/* hit area extends past the visible 14px triangle */</span>
 }
-.md-content .cpc-toggle:hover { color: #7aa2f7; }
+<span class="hljs-selector-class">.md-content</span> <span class="hljs-selector-class">.cpc-toggle</span><span class="hljs-selector-pseudo">:hover</span> { <span class="hljs-attribute">color</span>: <span class="hljs-number">#7aa2f7</span>; }
 </code></pre>
 <p>Then <code>node.classList.add(&quot;cpc-folded&quot;)</code> / <code>removeAttribute(&quot;class&quot;)</code> is the entire collapse mechanic. We never touch <code>style.display</code>, so we never have to remember original display values. This cleanly handles <code>display: block</code>, <code>display: flex</code> (none of the markdown elements use it but defensively), <code>display: table</code> (for <code>&lt;table&gt;</code>), etc.</p>
-<h3 id="nested-fold-preservation">Nested fold preservation</h3>
+</section><h3 id="nested-fold-preservation" data-has-section="true">Nested fold preservation</h3><section class="cpc-section" id="section-nested-fold-preservation" data-fold-slug="nested-fold-preservation">
 <p>Because hidden ancestors don&#x27;t run their own fold logic (we just <code>display: none</code> everything inside them), a collapsed h3 stays in <code>foldedSections</code> even when its parent h2 is also collapsed. When the h2 expands, the h3 remains collapsed because its slug is still in the set and the next post-process pass re-applies it. Exactly what we want.</p>
-<h3 id="click-handling">Click handling</h3>
+</section><h3 id="click-handling" data-has-section="true">Click handling</h3><section class="cpc-section" id="section-click-handling" data-fold-slug="click-handling">
 <p>Single delegated listener on <code>rootRef.current</code>:</p>
-<pre><code class="language-ts">const onClick = (e: MouseEvent) =&gt; {
-  const btn = (e.target as HTMLElement).closest(&#x27;.cpc-toggle&#x27;);
-  if (!btn) return;
-  const slug = btn.getAttribute(&#x27;data-slug&#x27;);
-  if (!slug) return;
-  e.preventDefault();
-  e.stopPropagation();
-  toggleFold(slug);
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> <span class="hljs-title function_">onClick</span> = (<span class="hljs-params"><span class="hljs-attr">e</span>: <span class="hljs-title class_">MouseEvent</span></span>) =&gt; {
+  <span class="hljs-keyword">const</span> btn = (e.<span class="hljs-property">target</span> <span class="hljs-keyword">as</span> <span class="hljs-title class_">HTMLElement</span>).<span class="hljs-title function_">closest</span>(<span class="hljs-string">&#x27;.cpc-toggle&#x27;</span>);
+  <span class="hljs-keyword">if</span> (!btn) <span class="hljs-keyword">return</span>;
+  <span class="hljs-keyword">const</span> slug = btn.<span class="hljs-title function_">getAttribute</span>(<span class="hljs-string">&#x27;data-slug&#x27;</span>);
+  <span class="hljs-keyword">if</span> (!slug) <span class="hljs-keyword">return</span>;
+  e.<span class="hljs-title function_">preventDefault</span>();
+  e.<span class="hljs-title function_">stopPropagation</span>();
+  <span class="hljs-title function_">toggleFold</span>(slug);
 };
 </code></pre>
 <p>Where <code>toggleFold</code> is a callback passed from <code>App.tsx</code> (or <code>FileViewer</code>) that updates <code>foldedSections</code>.</p>
 <hr/>
-<h2 id="part-5--toc-sync-strategy">Part 5 — TOC sync strategy</h2>
-<h3 id="state-management--recommendation">State management — recommendation</h3>
+</section></section><h2 id="part-5--toc-sync-strategy" data-has-section="true">Part 5 — TOC sync strategy</h2><section class="cpc-section" id="section-part-5--toc-sync-strategy" data-fold-slug="part-5--toc-sync-strategy">
+<h3 id="state-management--recommendation" data-has-section="true">State management — recommendation</h3><section class="cpc-section" id="section-state-management--recommendation" data-fold-slug="state-management--recommendation">
 <p><strong>Lift to <code>App.tsx</code>.</strong> Add:</p>
-<pre><code class="language-ts">const [foldedSections, setFoldedSections] = useState&lt;Set&lt;string&gt;&gt;(new Set());
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> [foldedSections, setFoldedSections] = useState&lt;<span class="hljs-title class_">Set</span>&lt;<span class="hljs-built_in">string</span>&gt;&gt;(<span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>());
 
-// Reset whenever the viewing file changes
-useEffect(() =&gt; { setFoldedSections(new Set()); }, [viewingFile?.path]);
+<span class="hljs-comment">// Reset whenever the viewing file changes</span>
+<span class="hljs-title function_">useEffect</span>(<span class="hljs-function">() =&gt;</span> { <span class="hljs-title function_">setFoldedSections</span>(<span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>()); }, [viewingFile?.<span class="hljs-property">path</span>]);
 
-const toggleFold = useCallback((slug: string) =&gt; {
-  setFoldedSections(prev =&gt; {
-    const next = new Set(prev);
-    if (next.has(slug)) next.delete(slug); else next.add(slug);
-    return next;
+<span class="hljs-keyword">const</span> toggleFold = <span class="hljs-title function_">useCallback</span>(<span class="hljs-function">(<span class="hljs-params"><span class="hljs-attr">slug</span>: <span class="hljs-built_in">string</span></span>) =&gt;</span> {
+  <span class="hljs-title function_">setFoldedSections</span>(<span class="hljs-function"><span class="hljs-params">prev</span> =&gt;</span> {
+    <span class="hljs-keyword">const</span> next = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>(prev);
+    <span class="hljs-keyword">if</span> (next.<span class="hljs-title function_">has</span>(slug)) next.<span class="hljs-title function_">delete</span>(slug); <span class="hljs-keyword">else</span> next.<span class="hljs-title function_">add</span>(slug);
+    <span class="hljs-keyword">return</span> next;
   });
 }, []);
 
-const expandAncestors = useCallback((slugs: string[]) =&gt; {
-  setFoldedSections(prev =&gt; {
-    const next = new Set(prev);
-    for (const s of slugs) next.delete(s);
-    return next;
+<span class="hljs-keyword">const</span> expandAncestors = <span class="hljs-title function_">useCallback</span>(<span class="hljs-function">(<span class="hljs-params"><span class="hljs-attr">slugs</span>: <span class="hljs-built_in">string</span>[]</span>) =&gt;</span> {
+  <span class="hljs-title function_">setFoldedSections</span>(<span class="hljs-function"><span class="hljs-params">prev</span> =&gt;</span> {
+    <span class="hljs-keyword">const</span> next = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>(prev);
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">const</span> s <span class="hljs-keyword">of</span> slugs) next.<span class="hljs-title function_">delete</span>(s);
+    <span class="hljs-keyword">return</span> next;
   });
 }, []);
 </code></pre>
 <p>Pass <code>foldedSections</code>, <code>toggleFold</code>, <code>expandAncestors</code> down to <code>FileViewer</code> → <code>MarkdownViewer</code>, and (when it ships) to <code>TocSheet</code>.</p>
-<h3 id="why-not-react-context">Why not React Context?</h3>
+</section><h3 id="why-not-react-context" data-has-section="true">Why not React Context?</h3><section class="cpc-section" id="section-why-not-react-context" data-fold-slug="why-not-react-context">
 <ul>
 <li>Only 2 components need this state. Prop drilling through <code>FileViewer → MarkdownViewer</code> is one hop.</li>
 <li>Context invalidates everything in its tree on every change, causing the whole <code>FileViewer</code> to re-render on every fold toggle. Not catastrophic but unnecessary.</li>
 <li>Explicit props are easier to reason about and easier to remove later if Liam decides he hates this feature.</li>
 </ul>
-<h3 id="why-not-a-custom-event-bus">Why not a custom event bus?</h3>
+</section><h3 id="why-not-a-custom-event-bus" data-has-section="true">Why not a custom event bus?</h3><section class="cpc-section" id="section-why-not-a-custom-event-bus" data-fold-slug="why-not-a-custom-event-bus">
 <ul>
 <li>The &quot;shared state&quot; requirement is the whole point. Event buses recreate state by accident and lose it on re-mount. React state is the right tool.</li>
 </ul>
-<h3 id="sync-flow-when-toc-ships">Sync flow when TOC ships</h3>
+</section><h3 id="sync-flow-when-toc-ships" data-has-section="true">Sync flow when TOC ships</h3><section class="cpc-section" id="section-sync-flow-when-toc-ships" data-fold-slug="sync-flow-when-toc-ships">
 <ol>
 <li><code>TocSheet</code> parses the headings from the rendered markdown (or receives them as a prop from <code>MarkdownViewer</code>, which is cleaner — see &quot;shared headings list&quot; below).</li>
 <li>Each parent heading row in TocSheet has a triangle that calls <code>toggleFold(slug)</code>.</li>
 <li>Each leaf row that&#x27;s an ancestor-of-folded shows greyed out.</li>
 <li>When a row is tapped, TocSheet computes the chain of ancestors (walks up the parsed-headings list to find every heading at a higher level whose section contains this slug), calls <code>expandAncestors(ancestors)</code>, and then triggers a smooth scroll to the slug&#x27;s element. Both sides of the sync share the same <code>Set</code>, so the doc reflects the change automatically via <code>MarkdownViewer</code>&#x27;s <code>useLayoutEffect</code>.</li>
 </ol>
-<h3 id="shared-headings-list">Shared headings list</h3>
+</section><h3 id="shared-headings-list" data-has-section="true">Shared headings list</h3><section class="cpc-section" id="section-shared-headings-list" data-fold-slug="shared-headings-list">
 <p>To avoid parsing headings twice (once in <code>MarkdownViewer</code> for triangles, once in <code>TocSheet</code> for the list), have <code>MarkdownViewer</code> parse headings during its <code>useLayoutEffect</code>, store them in a state variable, and pass them up via an <code>onHeadingsChange?: (headings: Heading[]) =&gt; void</code> callback. <code>App.tsx</code> holds the headings array and passes it into <code>TocSheet</code>. This is the same pattern as <code>onViewChange</code> already used in <code>FileViewer.tsx</code> (line 154).</p>
 <hr/>
-<h2 id="part-6--edge-cases">Part 6 — Edge cases</h2>
+</section></section><h2 id="part-6--edge-cases" data-has-section="true">Part 6 — Edge cases</h2><section class="cpc-section" id="section-part-6--edge-cases" data-fold-slug="part-6--edge-cases">
 <div class="md-table-scroll"><table><thead><tr><th>Case</th><th>Behavior</th></tr></thead><tbody><tr><td>Doc has zero headings</td><td>No triangles render. Loop in post-process finds no headings; nothing happens.</td></tr><tr><td>First H1 = doc title</td><td>Skip injecting triangle for it. Detected as &quot;first heading in document order at level 1&quot;.</td></tr><tr><td>Heading with no content after it (just another heading)</td><td>Section range is empty. Don&#x27;t inject triangle. The heading still gets an <code>id</code> (for TOC linking) but no fold control.</td></tr><tr><td>Heading is the very last element</td><td>Section is <code>nodes.slice(i+1, nodes.length)</code>, which may be empty (no triangle) or contain trailing content.</td></tr><tr><td>Two headings with the same text</td><td>Slugger appends <code>-2</code>, <code>-3</code>, etc. for uniqueness. Standard slug behavior.</td></tr><tr><td>Markdown contains raw HTML headings (<code>&lt;h2&gt;...&lt;/h2&gt;</code> typed by user)</td><td>Marked passes them through if <code>gfm</code> mode allows. They become real <code>&lt;h2&gt;</code> elements in the output and get triangles like any other heading.</td></tr><tr><td>User collapses a section, then scrolls</td><td>No issue. Browser preserves scroll position relative to the document, and when content above the viewport disappears, the scroll position adjusts naturally. (If this looks jumpy in practice, we can record <code>scrollTop</code> before the toggle and restore it after — but try without first.)</td></tr><tr><td>User switches files</td><td><code>useEffect([viewingFile.path])</code> resets <code>foldedSections</code> to empty. Fresh slate per file.</td></tr><tr><td>User collapses an H2, then collapses its parent H1</td><td>Both slugs are in the set. The H1&#x27;s hide-pass hides the H2 and everything inside it (the H2&#x27;s triangle is hidden along with the rest). When the user re-expands the H1, the H2 is still in the set so it stays collapsed and shows ▶.</td></tr><tr><td>Hash navigation <code>#some-heading</code></td><td>Browser scrolls to the element. If that element is inside a collapsed section, it won&#x27;t be visible. Solution: on mount and on hash change, walk up from the target heading to find any folded ancestors and remove them. Same <code>expandAncestors</code> helper TocSheet uses.</td></tr><tr><td>Triangle click also bubbles to heading</td><td>The delegated handler calls <code>e.preventDefault()</code> and <code>e.stopPropagation()</code>. Heading text click does nothing anyway.</td></tr><tr><td>Marked renderer override breaks something</td><td>Run the existing markdown viewer manually with several test docs (long ADRs, the overnight reports, code-heavy files) to confirm output is unchanged except for the new <code>id</code> attributes.</td></tr></tbody></table></div>
 <hr/>
-<h2 id="part-7--scope-and-effort">Part 7 — Scope and effort</h2>
-<h3 id="standalone-no-toc">Standalone (no TOC)</h3>
+</section><h2 id="part-7--scope-and-effort" data-has-section="true">Part 7 — Scope and effort</h2><section class="cpc-section" id="section-part-7--scope-and-effort" data-fold-slug="part-7--scope-and-effort">
+<h3 id="standalone-no-toc" data-has-section="true">Standalone (no TOC)</h3><section class="cpc-section" id="section-standalone-no-toc" data-fold-slug="standalone-no-toc">
 <p><strong>Medium — about 1 day (6–8 hours).</strong></p>
 <p>Breakdown:</p>
 <ul>
@@ -870,7 +870,7 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 <li>1h: edge cases (first H1, empty sections, hash navigation)</li>
 <li>1h: manual testing on real docs (overnight reports, ADRs, long synthesis docs)</li>
 </ul>
-<h3 id="with-toc-sync-if-toc-ships-in-the-same-pr-or-right-after">With TOC sync (if TOC ships in the same PR or right after)</h3>
+</section><h3 id="with-toc-sync-if-toc-ships-in-the-same-pr-or-right-after" data-has-section="true">With TOC sync (if TOC ships in the same PR or right after)</h3><section class="cpc-section" id="section-with-toc-sync-if-toc-ships-in-the-same-pr-or-right-after" data-fold-slug="with-toc-sync-if-toc-ships-in-the-same-pr-or-right-after">
 <p><strong>Medium-large — about 1.5–2 days.</strong></p>
 <p>The TOC drawer itself is independently estimated at 4–6 hours in the existing proposal, but it shares a bunch of work with this feature:</p>
 <ul>
@@ -887,7 +887,7 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 </ul>
 <p>Strong recommendation: <strong>ship them together as one PR</strong> if both are wanted. The shared work (renderer override, heading parsing, lifted state) is half the value, and doing them in two separate PRs duplicates the prep and risks divergent slug schemes.</p>
 <hr/>
-<h2 id="open-questions">Open questions</h2>
+</section></section><h2 id="open-questions" data-has-section="true">Open questions</h2><section class="cpc-section" id="section-open-questions" data-fold-slug="open-questions">
 <ol>
 <li><strong>Triangle character or SVG?</strong> Character (▼/▶) is simplest and matches the existing emoji-heavy visual style of the file viewer (📁/📄). SVG would be sharper but adds icon-system overhead. Recommend character for v1.</li>
 <li><strong>Show item count when collapsed?</strong> &quot;▶ (12 items)&quot; is informative but adds clutter. Recommend: skip for v1, add if Liam asks.</li>
@@ -899,36 +899,36 @@ const expandAncestors = useCallback((slugs: string[]) =&gt; {
 <li><strong>Accessibility:</strong> the triangle button needs <code>aria-expanded={!folded}</code>, <code>aria-controls={sectionId}</code>, and a screen-reader label like <code>aria-label=&quot;Collapse section: {heading text}&quot;</code>. Add this in v1; it&#x27;s cheap.</li>
 </ol>
 <hr/>
-<h2 id="phased-implementation-plan">Phased implementation plan</h2>
-<h3 id="phase-0--prep-do-this-first">Phase 0 — Prep (do this first)</h3>
+</section><h2 id="phased-implementation-plan" data-has-section="true">Phased implementation plan</h2><section class="cpc-section" id="section-phased-implementation-plan" data-fold-slug="phased-implementation-plan">
+<h3 id="phase-0--prep-do-this-first" data-has-section="true">Phase 0 — Prep (do this first)</h3><section class="cpc-section" id="section-phase-0--prep-do-this-first" data-fold-slug="phase-0--prep-do-this-first">
 <ol>
 <li>Add a slug helper in <code>MarkdownViewer.tsx</code> (or a new <code>lib/slug.ts</code> if you prefer): <code>function slugify(text: string, used: Set&lt;string&gt;): string</code> that lowercases, strips punctuation, replaces whitespace with <code>-</code>, and appends <code>-2</code>, <code>-3</code> for duplicates.</li>
 <li>Override marked&#x27;s heading renderer:
-<pre><code class="language-ts">const slugCounts = new Map&lt;string, number&gt;();
-marked.use({
-  renderer: {
-    heading({ tokens, depth }) {
-      const text = this.parser.parseInline(tokens);
-      const plain = text.replace(/&lt;[^&gt;]*&gt;/g, &#x27;&#x27;);  // strip inline HTML for slug
-      const base = slugify(plain);
-      const n = (slugCounts.get(base) ?? 0) + 1;
-      slugCounts.set(base, n);
-      const slug = n === 1 ? base : \`\${base}-\${n}\`;
-      return \`&lt;h\${depth} id=&quot;\${slug}&quot;&gt;\${text}&lt;/h\${depth}&gt;\\n\`;
+<pre><code class="hljs language-ts"><span class="hljs-keyword">const</span> slugCounts = <span class="hljs-keyword">new</span> <span class="hljs-title class_">Map</span>&lt;<span class="hljs-built_in">string</span>, <span class="hljs-built_in">number</span>&gt;();
+marked.<span class="hljs-title function_">use</span>({
+  <span class="hljs-attr">renderer</span>: {
+    <span class="hljs-title function_">heading</span>(<span class="hljs-params">{ tokens, depth }</span>) {
+      <span class="hljs-keyword">const</span> text = <span class="hljs-variable language_">this</span>.<span class="hljs-property">parser</span>.<span class="hljs-title function_">parseInline</span>(tokens);
+      <span class="hljs-keyword">const</span> plain = text.<span class="hljs-title function_">replace</span>(<span class="hljs-regexp">/&lt;[^&gt;]*&gt;/g</span>, <span class="hljs-string">&#x27;&#x27;</span>);  <span class="hljs-comment">// strip inline HTML for slug</span>
+      <span class="hljs-keyword">const</span> base = <span class="hljs-title function_">slugify</span>(plain);
+      <span class="hljs-keyword">const</span> n = (slugCounts.<span class="hljs-title function_">get</span>(base) ?? <span class="hljs-number">0</span>) + <span class="hljs-number">1</span>;
+      slugCounts.<span class="hljs-title function_">set</span>(base, n);
+      <span class="hljs-keyword">const</span> slug = n === <span class="hljs-number">1</span> ? base : <span class="hljs-string">\`<span class="hljs-subst">\${base}</span>-<span class="hljs-subst">\${n}</span>\`</span>;
+      <span class="hljs-keyword">return</span> <span class="hljs-string">\`&lt;h<span class="hljs-subst">\${depth}</span> id=&quot;<span class="hljs-subst">\${slug}</span>&quot;&gt;<span class="hljs-subst">\${text}</span>&lt;/h<span class="hljs-subst">\${depth}</span>&gt;\\n\`</span>;
     }
   }
 });
 </code></pre>
 Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cleanest way: build the override inside the <code>useMemo</code> so each parse call gets a fresh Map. Or use a <code>marked.use</code> extension hook. (The simplest pattern: declare a renderer object once at module scope but reset its <code>slugCounts</code> Map at the start of each <code>useMemo</code> body — slightly hacky. The extension hook is cleaner; if it&#x27;s too fiddly, just call <code>marked.use</code> once per parse, which works because <code>marked.use</code> is idempotent for renderer overrides.)</li>
 </ol>
-<h3 id="phase-1--visual-triangles-no-logic">Phase 1 — Visual triangles, no logic</h3>
+</section><h3 id="phase-1--visual-triangles-no-logic" data-has-section="true">Phase 1 — Visual triangles, no logic</h3><section class="cpc-section" id="section-phase-1--visual-triangles-no-logic" data-fold-slug="phase-1--visual-triangles-no-logic">
 <ol>
 <li>Add <code>cpc-toggle</code> and <code>cpc-folded</code> CSS to <code>MarkdownViewer</code>&#x27;s <code>&lt;style&gt;</code> block.</li>
 <li>Add a <code>useLayoutEffect</code> that walks <code>.md-content</code> children, finds headings, and injects a triangle button before each heading&#x27;s content. Skip the first H1.</li>
 <li>Verify visually: triangles appear in the left margin of every heading except the doc title.</li>
 <li>No fold logic yet. Triangles are inert.</li>
 </ol>
-<h3 id="phase-2--fold-logic-locally-in-markdownviewer">Phase 2 — Fold logic locally in MarkdownViewer</h3>
+</section><h3 id="phase-2--fold-logic-locally-in-markdownviewer" data-has-section="true">Phase 2 — Fold logic locally in MarkdownViewer</h3><section class="cpc-section" id="section-phase-2--fold-logic-locally-in-markdownviewer" data-fold-slug="phase-2--fold-logic-locally-in-markdownviewer">
 <ol>
 <li>Add local <code>useState&lt;Set&lt;string&gt;&gt;</code> for fold state inside <code>MarkdownViewer</code> temporarily.</li>
 <li>Compute section ranges (sibling slice between headings) for each heading.</li>
@@ -937,21 +937,21 @@ Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cle
 <li>Test: collapse h2, collapse nested h3, expand parent h2, confirm h3 stays collapsed.</li>
 <li>Test edge cases: first H1, empty sections, last heading.</li>
 </ol>
-<h3 id="phase-3--lift-state-to-apptsx">Phase 3 — Lift state to App.tsx</h3>
+</section><h3 id="phase-3--lift-state-to-apptsx" data-has-section="true">Phase 3 — Lift state to App.tsx</h3><section class="cpc-section" id="section-phase-3--lift-state-to-apptsx" data-fold-slug="phase-3--lift-state-to-apptsx">
 <ol>
 <li>Move <code>foldedSections</code>, <code>toggleFold</code> from <code>MarkdownViewer</code> to <code>App.tsx</code>.</li>
 <li>Add <code>useEffect([viewingFile?.path])</code> reset.</li>
 <li>Pass through <code>FileViewer</code> as props, then to <code>MarkdownViewer</code>.</li>
 <li>Verify: switching files resets fold state. Switching tabs and back preserves it (unless file changed).</li>
 </ol>
-<h3 id="phase-4--polish">Phase 4 — Polish</h3>
+</section><h3 id="phase-4--polish" data-has-section="true">Phase 4 — Polish</h3><section class="cpc-section" id="section-phase-4--polish" data-fold-slug="phase-4--polish">
 <ol>
 <li>Add <code>aria-expanded</code>, <code>aria-controls</code>, <code>aria-label</code> to triangle buttons.</li>
 <li>Test mobile hit area on a real device or browser devtools touch simulator.</li>
 <li>Test with the longest markdown docs you can find (overnight reports, ADRs).</li>
 <li>Verify hash navigation: <code>#some-heading-inside-folded-section</code> should auto-expand ancestors. Add <code>expandAncestors</code> walker if not done in Phase 3.</li>
 </ol>
-<h3 id="phase-5--toc-sync-only-if-toc-drawer-is-in-scope">Phase 5 — TOC sync (only if TOC drawer is in scope)</h3>
+</section><h3 id="phase-5--toc-sync-only-if-toc-drawer-is-in-scope" data-has-section="true">Phase 5 — TOC sync (only if TOC drawer is in scope)</h3><section class="cpc-section" id="section-phase-5--toc-sync-only-if-toc-drawer-is-in-scope" data-fold-slug="phase-5--toc-sync-only-if-toc-drawer-is-in-scope">
 <ol>
 <li>Add <code>headings: Heading[]</code> state in <code>App.tsx</code>.</li>
 <li>Add <code>onHeadingsChange</code> callback in <code>MarkdownViewer</code>, fire it from the same <code>useLayoutEffect</code> that builds triangles.</li>
@@ -960,29 +960,29 @@ Important: reset <code>slugCounts</code> per <code>marked.parse</code> call. Cle
 <li>On row tap: compute ancestor slugs, call <code>expandAncestors</code>, scroll to slug.</li>
 <li>Test the round trip: collapse h2 in doc → its h3 children grey out in TOC. Tap an h3 in TOC → ancestor h2 expands in doc → scroll lands on h3.</li>
 </ol>
-<h3 id="phase-6--defer-animation">Phase 6 — (Defer) Animation</h3>
+</section><h3 id="phase-6--defer-animation" data-has-section="true">Phase 6 — (Defer) Animation</h3><section class="cpc-section" id="section-phase-6--defer-animation" data-fold-slug="phase-6--defer-animation">
 <p>Wrap each section in a data-attributed div during post-processing, animate via max-height + overflow. Only do this if Liam asks.</p>
 <hr/>
-<h2 id="critical-files-for-implementation">Critical Files for Implementation</h2>
+</section></section><h2 id="critical-files-for-implementation" data-has-section="true">Critical Files for Implementation</h2><section class="cpc-section" id="section-critical-files-for-implementation" data-fold-slug="critical-files-for-implementation">
 <ul>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/MarkdownViewer.tsx</code> — primary changes: add ref, useLayoutEffect for triangle injection + fold application, marked renderer override for heading IDs, CSS for <code>.cpc-toggle</code> and <code>.cpc-folded</code>. Receives <code>foldedSections</code> and <code>toggleFold</code> as props.</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/App.tsx</code> — add <code>foldedSections: Set&lt;string&gt;</code> state, <code>toggleFold</code> and <code>expandAncestors</code> callbacks, reset effect on <code>viewingFile.path</code> change. Pass props down through <code>FileViewer</code>.</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/FileViewer.tsx</code> — add prop pass-through for fold state and callbacks; otherwise unchanged. (Already manages its own <code>collapsedRanges</code> for code-file folding — that stays separate; markdown fold is a different feature that lives at App level.)</li>
 <li><code>/home/claude/code/claude-pocket-console/apps/web/src/components/ActionBar.tsx</code> — only relevant if TOC drawer ships in the same pass. Reference for the existing <code>BottomSheet</code> component that the future <code>TocSheet</code> should reuse.</li>
 <li><code>/home/claude/claudes-world/tmp/20260407-markdown-toc-and-audio-proposals.md</code> — the related TOC proposal. Note that its claim about marked auto-generating IDs is incorrect; if both features ship, they share the heading-id assignment work described here.</li>
-</ul></section></div>"
+</ul></section></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 13-mermaid.md consistently 1`] = `
 "<div class="md-content"><h1 id="mermaid-test" data-has-section="true">Mermaid Test</h1><section class="cpc-section" id="section-mermaid-test" data-fold-slug="mermaid-test">
 <p>This is a quick test of Mermaid rendering in CPC&#x27;s MarkdownViewer.</p>
-<h2 id="flowchart">Flowchart</h2>
+<h2 id="flowchart" data-has-section="true">Flowchart</h2><section class="cpc-section" id="section-flowchart" data-fold-slug="flowchart">
 <div class="mermaid-mount"><div class="mermaid-loading">Loading diagram…</div></div>
-<h2 id="regular-code-block-should-stay-as-code">Regular code block (should stay as code)</h2>
-<pre><code class="language-js">const hello = &quot;world&quot;;
-console.log(hello);
+</section><h2 id="regular-code-block-should-stay-as-code" data-has-section="true">Regular code block (should stay as code)</h2><section class="cpc-section" id="section-regular-code-block-should-stay-as-code" data-fold-slug="regular-code-block-should-stay-as-code">
+<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> hello = <span class="hljs-string">&quot;world&quot;</span>;
+<span class="hljs-variable language_">console</span>.<span class="hljs-title function_">log</span>(hello);
 </code></pre>
-<p>Done.</p></section></div>"
+<p>Done.</p></section></section></div>"
 `;
 
 exports[`MarkdownViewer (react-markdown baseline) > renders 14-empty.md consistently 1`] = `"<div class="md-content"><p>Just a single line of text and nothing else.</p></div>"`;
@@ -1022,7 +1022,7 @@ Line C</p>
 <p>A horizontal rule:</p>
 <hr/>
 <p>A heading immediately after the hr:</p>
-<h2 id="heading-right-after-hr">Heading right after hr</h2>
+<h2 id="heading-right-after-hr" data-has-section="true">Heading right after hr</h2><section class="cpc-section" id="section-heading-right-after-hr" data-fold-slug="heading-right-after-hr">
 <p>Backtick-heavy inline: <code>a\`b</code> and <code>\`\`nested\`\`</code> and <code>\`\`\`triple\`\`\`</code>.</p>
 <p>Escape sequences: *not italic*, \`not code\`, [not link](nope).</p>
 <p>Empty code block:</p>
@@ -1032,5 +1032,5 @@ Line C</p>
 multiple lines
   indented
 </code></pre>
-<p>A paragraph ending without a trailing newline and no more content after it.</p></section></div>"
+<p>A paragraph ending without a trailing newline and no more content after it.</p></section></section></div>"
 `;
