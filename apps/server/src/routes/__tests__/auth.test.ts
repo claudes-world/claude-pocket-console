@@ -310,5 +310,71 @@ describe("telegramAuth middleware", () => {
       });
       expect(res.status).toBe(200);
     });
+
+    it("rejects initData with auth_date=notanumber (NaN bypass)", async () => {
+      const initData = makeInitData(TEST_USER, {
+        extraParams: { auth_date: "notanumber" },
+      });
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Invalid Telegram auth");
+    });
+
+    it("rejects initData with auth_date absent (missing field)", async () => {
+      // Build initData manually without auth_date
+      const token = TEST_BOT_TOKEN;
+      const params = new URLSearchParams();
+      params.set("user", JSON.stringify(TEST_USER));
+      // auth_date intentionally omitted
+      const dataCheckString = Array.from(params.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, val]) => `${key}=${val}`)
+        .join("\n");
+      const { createHmac: hmac } = await import("node:crypto");
+      const secretKey = hmac("sha256", "WebAppData").update(token).digest();
+      const hash = hmac("sha256", secretKey).update(dataCheckString).digest("hex");
+      params.set("hash", hash);
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${params.toString()}` },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects initData with a far-future auth_date (year 2099)", async () => {
+      // 2099-01-01T00:00:00Z as unix timestamp
+      const futureAuthDate = String(4070908800);
+      const initData = makeInitData(TEST_USER, {
+        extraParams: { auth_date: futureAuthDate },
+      });
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("ticket newline bypass (security hardening)", () => {
+    it("rejects a ticket with a trailing newline (URL-encoded %0A)", async () => {
+      // ticket is 32 valid hex chars + a newline — middleware must reject it
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000%0A",
+      );
+      // Middleware does NOT bypass — requires auth → 401
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("ambiguous ticket+path requests", () => {
+    it("returns 400 when both ?ticket= and ?path= are present", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000&path=/some/file.txt",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/ambiguous/i);
+    });
   });
 });

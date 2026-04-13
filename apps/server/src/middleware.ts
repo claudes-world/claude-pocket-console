@@ -8,10 +8,22 @@ import { isAllowedUser } from "./lib/allowed-users.js";
  */
 export async function telegramAuth(c: Context, next: Next) {
   const ticket = c.req.query("ticket");
+  const filePath = c.req.query("path");
+
   if (
     c.req.method === "GET" &&
     c.req.path === "/api/files/download" &&
     ticket &&
+    filePath
+  ) {
+    return c.json({ error: "Ambiguous request: use ticket OR path, not both" }, 400);
+  }
+
+  if (
+    c.req.method === "GET" &&
+    c.req.path === "/api/files/download" &&
+    ticket &&
+    ticket.length === 32 &&
     /^[0-9a-f]{32}$/.test(ticket)
   ) {
     await next();

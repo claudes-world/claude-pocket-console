@@ -27,9 +27,12 @@ export function validateTelegramInitData(
 
   if (computedHash !== hash) return { valid: false };
 
-  // Check auth_date is within 24 hours
-  const authDate = parseInt(params.get("auth_date") || "0");
-  if (Date.now() / 1000 - authDate > 86400) return { valid: false };
+  // Check auth_date is within 24 hours (guard against NaN, future timestamps)
+  const rawAuthDate = params.get("auth_date");
+  if (!rawAuthDate) return { valid: false };
+  const authDate = parseInt(rawAuthDate, 10);
+  const nowSec = Date.now() / 1000;
+  if (!Number.isFinite(authDate) || authDate <= 0 || authDate > nowSec || nowSec - authDate > 86400) return { valid: false };
 
   // Parse user data
   const userStr = params.get("user");
@@ -80,9 +83,12 @@ export function validateTelegramLoginWidget(
 
   if (computedHash !== hash) return { valid: false };
 
-  // Check auth_date is within 24 hours
-  const authDate = parseInt(rest.auth_date || "0");
-  if (Date.now() / 1000 - authDate > 86400) return { valid: false };
+  // Check auth_date is within 24 hours (guard against NaN, future timestamps)
+  const rawAuthDateWidget = rest.auth_date;
+  if (!rawAuthDateWidget) return { valid: false };
+  const authDate = parseInt(rawAuthDateWidget, 10);
+  const nowSecWidget = Date.now() / 1000;
+  if (!Number.isFinite(authDate) || authDate <= 0 || authDate > nowSecWidget || nowSecWidget - authDate > 86400) return { valid: false };
 
   return {
     valid: true,
