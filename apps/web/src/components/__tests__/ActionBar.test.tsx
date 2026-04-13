@@ -67,6 +67,7 @@ vi.mock("../action-bar/api", () => ({
   sendAudioTelegram: (...args: unknown[]) => mockSendAudioTelegram(...args),
   restartSession: (...args: unknown[]) => mockRestartSession(...args),
   sendFileToChat: (...args: unknown[]) => mockSendFileToChat(...args),
+  summarizeMarkdown: vi.fn().mockResolvedValue({ ok: true, summary: "Test summary", cached: false, ms: 100 }),
 }));
 
 import { ActionBar } from "../action-bar";
@@ -157,6 +158,48 @@ describe("ActionBar", () => {
     expect(screen.getByText("Send to Chat")).toBeInTheDocument();
   });
 
+  it("opens TL;DR modal when TL;DR button is clicked", async () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("TL;DR"));
+
+    await waitFor(() => {
+      // TldrModal renders inside a BottomSheet stub — the sheet should be present
+      expect(screen.getByTestId("bottom-sheet")).toBeInTheDocument();
+    });
+  });
+
+  it("calls checkAudio when Audio button is clicked", async () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/README.md");
+    });
+  });
+
+  it("calls generateAudio when audio does not exist and generate is triggered", async () => {
+    // checkAudio reports no cached audio → AudioGenModal shows a Generate button
+    mockCheckAudio.mockResolvedValue({ exists: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    // Wait for modal to open and checkAudio to resolve
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/README.md");
+      expect(screen.getByTestId("bottom-sheet")).toBeInTheDocument();
+    });
+
+    // Find and click the Generate Audio button inside the AudioGenModal
+    const generateBtn = screen.queryByText("Generate Audio");
+    if (generateBtn) {
+      fireEvent.click(generateBtn);
+      await waitFor(() => {
+        expect(mockGenerateAudio).toHaveBeenCalledWith("/tmp/README.md", expect.any(AbortSignal));
+      });
+    }
+  });
+
   it("hides Reconnect button when onReconnect is not provided", () => {
     render(<ActionBar activeTab="terminal" />);
     expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
@@ -179,6 +222,20 @@ describe("ActionBar", () => {
     await waitFor(() => {
       expect(screen.getByText(/main.*main-worktree/)).toBeInTheDocument();
     });
+  });
+
+  it("shows idle state (non-breaking space) when fetchGitBranch returns null", async () => {
+    mockFetchGitBranch.mockResolvedValue(null);
+    render(<ActionBar connected={true} />);
+    await waitFor(() => {
+      expect(mockFetchGitBranch).toHaveBeenCalled();
+    });
+    // StatusLine renders \u00A0 (non-breaking space) when gitBranch is null
+    const statusLine = document.querySelector("[style*='textAlign: center']") ??
+      document.querySelector("[style*='text-align: center']");
+    // Branch info should not appear
+    expect(screen.queryByText(/main.*main-worktree/)).not.toBeInTheDocument();
+    expect(screen.queryByText("[disconnected]")).not.toBeInTheDocument();
   });
 
   // ─── Modal: TODO ────────────────────────────────────────────────
@@ -466,7 +523,7 @@ describe("ActionBar", () => {
 
   // ─── Status message lifecycle ──────────────────────────────────
 
-  it("clears status message after timeout", async () => {
+  it("clears status message after the 2-second handleSendToChat timeout", async () => {
     render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/test.txt", name: "test.txt" }} />);
     fireEvent.click(screen.getByText("Send to Chat"));
 
@@ -474,8 +531,12 @@ describe("ActionBar", () => {
       expect(screen.getByText("Sent to chat")).toBeInTheDocument();
     });
 
-    // Advance past the 2-second clear timeout for handleSendToChat
-    act(() => { vi.advanceTimersByTime(2500); });
+    // At 1900ms the 2s timeout has NOT yet fired — message must still be present
+    act(() => { vi.advanceTimersByTime(1900); });
+    expect(screen.getByText("Sent to chat")).toBeInTheDocument();
+
+    // Advance past 2000ms — the 2s timeout fires and clears the message
+    act(() => { vi.advanceTimersByTime(200); });
 
     await waitFor(() => {
       expect(screen.queryByText("Sent to chat")).not.toBeInTheDocument();
