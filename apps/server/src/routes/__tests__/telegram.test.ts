@@ -89,6 +89,7 @@ describe("POST /send-to-chat", () => {
 
   it("sends message via fetch and returns messageId on success", async () => {
     mockFetch.mockResolvedValueOnce({
+      ok: true,
       json: async () => ({ ok: true, result: { message_id: 42 } }),
     });
 
@@ -136,5 +137,22 @@ describe("POST /send-to-chat", () => {
     const body = (await res.json()) as { ok: boolean; error: string };
     expect(body.ok).toBe(false);
     expect(body.error).toBe("network failure");
+  });
+
+  it("returns 502 when Telegram returns ok:false", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: false, description: "Bad Request: chat not found" }),
+    });
+
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: "/home/claude/code/test-file.ts" }),
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("Bad Request: chat not found");
   });
 });

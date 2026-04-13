@@ -1,3 +1,4 @@
+import { resolve as resolvePath } from "node:path";
 import { Hono } from "hono";
 import { getTelegramCreds, tgRaw, tgSanitize } from "./utils.js";
 import { isPathAllowed, ALLOWED_FILE_ROOTS } from "../lib/path-allowed.js";
@@ -14,7 +15,8 @@ app.post("/send-to-chat", async (c) => {
 
   try {
     const { botToken, chatId } = await getTelegramCreds();
-    const shortPath = filePath.replace(/^\/home\/claude\//, "~/");
+    const normalizedPath = resolvePath(filePath);
+    const shortPath = normalizedPath.replace(/^\/home\/claude\//, "~/");
     const message = [
       `📄 *Shared from Pocket Console*`,
       ``,
@@ -30,6 +32,9 @@ app.post("/send-to-chat", async (c) => {
       body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "MarkdownV2" }),
     });
     const result = await response.json();
+    if (!response.ok || !result.ok) {
+      return c.json({ ok: false, error: result.description || "Telegram API error" }, 502);
+    }
     return c.json({ ok: true, messageId: result?.result?.message_id });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
