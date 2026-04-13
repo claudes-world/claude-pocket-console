@@ -149,6 +149,32 @@ describe("POST /send-to-chat", () => {
     expect(body.ok).toBe(false);
   });
 
+  it("returns 400 when request body is not valid JSON", async () => {
+    // Send a raw invalid-JSON body directly (bypasses postSendToChat helper).
+    // c.req.json() throws on invalid JSON; Hono's default error handler returns 500 for unhandled throws.
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "this is { not valid } json",
+    });
+    expect(res.status).toBe(500);
+  });
+
+  it("returns 200 with undefined messageId when Telegram API returns ok:false", async () => {
+    // Current source does not check result.ok — it returns ok:true regardless.
+    // This test documents the current behaviour. If the source is later hardened
+    // to return 500 on ok:false, update this test and the source together.
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: JSON.stringify({ ok: false, description: "Bad Request: chat not found" }),
+    });
+    const res = await postSendToChat({ filePath: "/home/claude/test.txt" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; messageId: number | undefined };
+    expect(body.ok).toBe(true);
+    // result.result is undefined when ok:false, so messageId is undefined
+    expect(body.messageId).toBeUndefined();
+  });
+
   it("handles paths not under /home/claude/ without error", async () => {
     const res = await postSendToChat({ filePath: "/tmp/shared/file.txt" });
     expect(res.status).toBe(200);

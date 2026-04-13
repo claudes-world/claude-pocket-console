@@ -75,13 +75,22 @@ const {
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
+let savedEnv: NodeJS.ProcessEnv;
+
 beforeEach(() => {
   execFileSpy.mockClear();
   readFileSyncSpy.mockClear();
+  // Snapshot env to prevent cross-test state bleed from loadOpenAIEnv / loadAnthropicEnv
+  savedEnv = { ...process.env };
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  // Restore full env snapshot
+  for (const key of Object.keys(process.env)) {
+    if (!(key in savedEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, savedEnv);
 });
 
 // ---------------------------------------------------------------------------
@@ -110,20 +119,35 @@ describe("exported constants", () => {
 // tgRaw
 // ---------------------------------------------------------------------------
 describe("tgRaw", () => {
-  it("escapes all Telegram MarkdownV2 special characters", () => {
-    const specials = "_*[]()~`>#+-=|{}.!\\";
-    const escaped = tgRaw(specials);
-    // Each character should be preceded by a backslash
-    for (const ch of specials) {
-      expect(escaped).toContain(`\\${ch}`);
-    }
+  it("escapes each Telegram MarkdownV2 special character individually", () => {
+    // Use exact toBe assertions on single chars to catch double-escape bugs.
+    // toContain on a full string would pass even if output is "\\__" etc.
+    expect(tgRaw("_")).toBe("\\_");
+    expect(tgRaw("*")).toBe("\\*");
+    expect(tgRaw("[")).toBe("\\[");
+    expect(tgRaw("]")).toBe("\\]");
+    expect(tgRaw("(")).toBe("\\(");
+    expect(tgRaw(")")).toBe("\\)");
+    expect(tgRaw("~")).toBe("\\~");
+    expect(tgRaw("`")).toBe("\\`");
+    expect(tgRaw(">")).toBe("\\>");
+    expect(tgRaw("#")).toBe("\\#");
+    expect(tgRaw("+")).toBe("\\+");
+    expect(tgRaw("-")).toBe("\\-");
+    expect(tgRaw("=")).toBe("\\=");
+    expect(tgRaw("|")).toBe("\\|");
+    expect(tgRaw("{")).toBe("\\{");
+    expect(tgRaw("}")).toBe("\\}");
+    expect(tgRaw(".")).toBe("\\.");
+    expect(tgRaw("!")).toBe("\\!");
+    expect(tgRaw("\\")).toBe("\\\\");
   });
 
   it("leaves plain alphanumeric text unchanged", () => {
     expect(tgRaw("hello123")).toBe("hello123");
   });
 
-  it("escapes dots, tildes, and exclamation marks", () => {
+  it("escapes dots, tildes, and exclamation marks in strings", () => {
     // ~ is a MarkdownV2 special character, so it gets escaped too
     expect(tgRaw("~/code/test.ts")).toBe("\\~/code/test\\.ts");
     expect(tgRaw("Done!")).toBe("Done\\!");
@@ -134,23 +158,43 @@ describe("tgRaw", () => {
 // tgSanitize
 // ---------------------------------------------------------------------------
 describe("tgSanitize", () => {
-  it("preserves *bold* markers while escaping inner content", () => {
-    const result = tgSanitize("Hello *world*");
-    // "Hello" should be unescaped (no special chars), *world* preserved
-    expect(result).toContain("*");
-    // The word "world" inside stars should have no leading backslash
-    expect(result).toMatch(/\*world\*/);
+  it("preserves *bold* markers while escaping outer text AND inner special chars", () => {
+    // Input has special chars both outside ("!") and inside ("." in "5.00") the
+    // bold markers. A no-op identity function would return the raw string — these
+    // assertions would fail because "!" and "." would be unescaped.
+    const result = tgSanitize("Price: *$5.00* today!");
+    // The asterisk markers must survive intact
+    expect(result).toMatch(/\*/);
+    // The dot inside bold must be escaped: *$5\.00*
+    expect(result).toContain("*$5\\.00*");
+    // The "!" outside bold must be escaped
+    expect(result).toContain("\\!");
+    // Identity function returns "Price: *$5.00* today!" — raw dot, unescaped "!"
+    expect(result).not.toBe("Price: *$5.00* today!");
   });
 
-  it("preserves _italic_ markers while escaping inner content", () => {
-    const result = tgSanitize("Hello _world_");
-    expect(result).toContain("_");
-    expect(result).toMatch(/_world_/);
+  it("preserves _italic_ markers while escaping inner special chars", () => {
+    // Dot inside italic must be escaped; dot after "details" (outside) also escaped.
+    const result = tgSanitize("See _v1.2_ for details.");
+    // Italic markers must survive
+    expect(result).toMatch(/_/);
+    // The dot inside italic must be escaped
+    expect(result).toContain("_v1\\.2_");
+    // The dot after "details" (outside italic) must also be escaped
+    expect(result).toContain("details\\.");
+    // Identity function would return raw input, which this test must reject
+    expect(result).not.toBe("See _v1.2_ for details.");
   });
 
-  it("preserves `code` markers", () => {
-    const result = tgSanitize("Use `npm install` here");
+  it("preserves `code` markers with inner content verbatim (no escaping inside code)", () => {
+    // tgSanitize holds code spans as placeholders, so raw content inside backticks
+    // survives unchanged. Special chars OUTSIDE backticks are still escaped.
+    const result = tgSanitize("Run `npm install` now!");
     expect(result).toContain("`npm install`");
+    // The "!" outside code must still be escaped
+    expect(result).toContain("\\!");
+    // Identity function fails because "!" is unescaped in the raw input
+    expect(result).not.toBe("Run `npm install` now!");
   });
 
   it("escapes special characters outside of format markers", () => {
@@ -305,41 +349,22 @@ describe("loadAnthropicEnv", () => {
 // ---------------------------------------------------------------------------
 // getTelegramCreds
 // ---------------------------------------------------------------------------
-describe("getTelegramCreds", () => {
-  it("parses botToken and chatId from common.sh output", async () => {
-    // getTelegramCreds uses execAsync (promisified exec), which we mocked
-    // at the module level. We need to re-mock exec for this specific test.
-    const { exec } = await import("node:child_process");
-    const mockExec = vi.mocked(exec);
-    mockExec.mockImplementationOnce((_cmd: any, _opts: any, cb: any) => {
-      cb(null, "bot123:ABC|||chat456", "");
-      return {} as any;
-    });
-
-    // execAsync wraps exec via promisify, but since we mocked exec,
-    // we need to test via the module's exported execAsync or getTelegramCreds.
-    // Since getTelegramCreds uses execAsync internally and execAsync uses
-    // the mocked exec, this should work. However, the promisify wrapper
-    // was created at import time with the original (mocked) exec reference.
-    // Let's verify the integration works.
-    const { getTelegramCreds: freshGetCreds } = await import("../utils.js");
-    // The exec mock needs the right callback signature for promisify
-    mockExec.mockImplementationOnce((_cmd: any, _opts: any, cb: any) => {
-      if (cb) cb(null, "mybot:TOKEN|||-100999", "");
-      return {} as any;
-    });
-
-    try {
-      const creds = await freshGetCreds();
-      expect(creds.botToken).toBe("mybot:TOKEN");
-      expect(creds.chatId).toBe("-100999");
-    } catch {
-      // If promisify doesn't pick up the mock (due to binding at import time),
-      // that's expected in the test environment. The unit behavior is validated
-      // by the telegram.test.ts integration tests.
-    }
-  });
-});
+// getTelegramCreds is intentionally NOT unit-tested here.
+//
+// The function uses `execAsync = promisify(exec)`. The `promisify` call
+// happens at module import time and captures the `exec` reference in a
+// closure that is NOT re-evaluated when we later call
+// `vi.mocked(exec).mockImplementationOnce(...)`. As a result, any try-catch
+// wrapper that swallowed assertion failures would be a false-green test —
+// the assertions would silently not run. Removing the try-catch surfaces
+// a test that is either genuinely broken (wrong) or genuinely passing.
+//
+// The actual parsing logic ("botToken|||chatId" split) is exercised end-to-end
+// in telegram.test.ts, which mocks `../utils.js` at the module level and
+// drives the real HTTP route. That is the correct seam for this test.
+//
+// If a future refactor decouples the `exec` call from `promisify`
+// (e.g. by accepting an injected executor), add a unit test here then.
 
 // ---------------------------------------------------------------------------
 // execAsync

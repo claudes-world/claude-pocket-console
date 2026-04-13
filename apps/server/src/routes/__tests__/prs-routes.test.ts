@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFile, execFileSync } from "node:child_process";
 import type { PrRow, RepoInfo } from "../prs.js";
 
 /**
@@ -42,12 +43,15 @@ function makePr(overrides: Partial<PrRow> = {}): PrRow {
 }
 
 function makeRepoInfo(overrides: Partial<RepoInfo> = {}): RepoInfo {
+  // Use DISTINCT values for `name` (filesystem dir name) vs `repoName`
+  // (GitHub repo name) so the repo-shape test can assert the field mapping
+  // is correct and not passing by coincidence (same value in both fields).
   return {
-    path: "/home/claude/code/claude-pocket-console",
-    name: "claude-pocket-console",
+    path: "/home/claude/code/tryinbox-sh",
+    name: "tryinbox-sh",          // filesystem dir name
     owner: "claudes-world",
-    repoName: "claude-pocket-console",
-    fullName: "claudes-world/claude-pocket-console",
+    repoName: "inbox",            // GitHub repo name — intentionally different
+    fullName: "claudes-world/inbox",
     branch: "dev",
     ...overrides,
   };
@@ -134,8 +138,11 @@ describe("GET /", () => {
     expect(body.prs[1].number).toBe(10);
   });
 
-  it("includes repos summary with prCount", async () => {
-    const pr = makePr({ number: 42 });
+  it("includes repos summary with correct field mapping and prCount", async () => {
+    // makeRepoInfo() uses DISTINCT name ("tryinbox-sh") vs repoName ("inbox")
+    // so we can prove the route maps them to the right response fields.
+    // The PR's repo must match the RepoInfo fullName so prCount === 1.
+    const pr = makePr({ number: 42, repo: "claudes-world/inbox", key: "claudes-world/inbox#42" });
     mockPoller.snapshot.set(pr.key, pr);
     mockPoller.discoveredRepos = [makeRepoInfo()];
 
@@ -151,18 +158,20 @@ describe("GET /", () => {
       }>;
     };
     expect(body.repos).toHaveLength(1);
-    expect(body.repos[0].name).toBe("claude-pocket-console");
-    expect(body.repos[0].dirName).toBe("claude-pocket-console");
+    // name in the response = repoName (GitHub name), NOT the filesystem dir name
+    expect(body.repos[0].name).toBe("inbox");
+    // dirName = the filesystem directory name, different from name
+    expect(body.repos[0].dirName).toBe("tryinbox-sh");
     expect(body.repos[0].org).toBe("claudes-world");
-    expect(body.repos[0].fullName).toBe("claudes-world/claude-pocket-console");
+    expect(body.repos[0].fullName).toBe("claudes-world/inbox");
     expect(body.repos[0].branch).toBe("dev");
+    // PR.repo matches fullName → prCount must be 1
     expect(body.repos[0].prCount).toBe(1);
   });
 
   it("shows prCount=0 for repos with no open PRs", async () => {
-    mockPoller.discoveredRepos = [
-      makeRepoInfo({ fullName: "claudes-world/inbox", repoName: "inbox", name: "tryinbox-sh" }),
-    ];
+    // No PRs in snapshot — prCount must be 0 regardless of repo identity
+    mockPoller.discoveredRepos = [makeRepoInfo()];
 
     const res = await prsRoute.request("/");
     const body = (await res.json()) as { repos: Array<{ prCount: number }> };
@@ -231,13 +240,59 @@ describe("POST /refresh", () => {
 // GET /current-branch-scope
 // ---------------------------------------------------------------------------
 describe("GET /current-branch-scope", () => {
-  it("returns ok:true with branches array", async () => {
-    // With child_process mocked, discoverRepos returns [] (no repos found),
-    // so branches will be empty
+  it("returns ok:true with branches array (empty when all git calls fail)", async () => {
+    // With child_process mocked to fail, discoverRepos returns [] (no repos found),
+    // so branches will be empty — the route must still return ok:true.
     const res = await prsRoute.request("/current-branch-scope");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; branches: string[] };
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.branches)).toBe(true);
+  });
+
+  it("returns branch names when discoverRepos and git worktree list succeed", async () => {
+    // Override execFileSync for the two discoverRepos git calls:
+    //   1st call: git remote get-url origin → GitHub SSH URL
+    //   2nd call: git rev-parse --abbrev-ref HEAD → branch name
+    // Override execFile for the currentBranchScope worktree list call.
+    // The real readdirSync will iterate ~/code/* — the first directory with
+    // a .git dir will trigger both execFileSync calls.
+    const mockExecFileSync = vi.mocked(execFileSync);
+    // remote URL call
+    mockExecFileSync.mockImplementationOnce(() => "git@github.com:claudes-world/claude-pocket-console.git" as any);
+    // branch call
+    mockExecFileSync.mockImplementationOnce(() => "feat/server-route-tests\n" as any);
+
+    const mockExecFile = vi.mocked(execFile);
+    // worktree list call — return a porcelain block with two worktrees
+    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, _opts: any, cb?: any) => {
+      const worktreeOutput = [
+        "worktree /home/claude/code/claude-pocket-console",
+        "HEAD abc123",
+        "branch refs/heads/feat/server-route-tests",
+        "",
+        "worktree /home/claude/code/claude-pocket-console-feat-test",
+        "HEAD def456",
+        "branch refs/heads/feat/another-branch",
+        "",
+      ].join("\n");
+      if (cb) cb(null, worktreeOutput, "");
+      return { on: vi.fn() } as any;
+    });
+
+    const res = await prsRoute.request("/current-branch-scope");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; branches: string[] };
+    expect(body.ok).toBe(true);
+    expect(Array.isArray(body.branches)).toBe(true);
+    // Must include the branch names returned by the mocked git calls
+    expect(body.branches).toContain("feat/server-route-tests");
+    expect(body.branches).toContain("feat/another-branch");
+    // Must not have duplicates for the same branch seen in both HEAD and worktree
+    const seen = new Set<string>();
+    for (const b of body.branches) {
+      expect(seen.has(b)).toBe(false);
+      seen.add(b);
+    }
   });
 });
