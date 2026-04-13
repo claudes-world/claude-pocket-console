@@ -7,10 +7,12 @@ import { isAllowedUser } from "./lib/allowed-users.js";
  * Expects initData in the Authorization header as: tma <initData>
  */
 export async function telegramAuth(c: Context, next: Next) {
+  const ticket = c.req.query("ticket");
   if (
     c.req.method === "GET" &&
     c.req.path === "/api/files/download" &&
-    c.req.query("ticket")
+    ticket &&
+    /^[0-9a-f]{32}$/.test(ticket)
   ) {
     await next();
     return;

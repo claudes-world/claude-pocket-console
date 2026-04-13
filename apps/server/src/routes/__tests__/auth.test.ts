@@ -42,6 +42,8 @@ function buildApp(): Hono {
   app.use("/api/*", telegramAuth);
   // Protected test endpoint
   app.get("/api/test", (c) => c.json({ ok: true }));
+  // Download endpoint — ticket bypass tested here
+  app.get("/api/files/download", (c) => c.json({ download: true }));
   return app;
 }
 
@@ -241,6 +243,72 @@ describe("telegramAuth middleware", () => {
       } finally {
         process.env.TELEGRAM_BOT_TOKEN = original;
       }
+    });
+  });
+
+  describe("ticket format bypass (issue #225)", () => {
+    it("bypasses auth for a valid hex-32 ticket on /api/files/download", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000",
+      );
+      // Middleware lets it through — route responds 200
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects non-hex-32 ticket values (too short)", async () => {
+      const res = await app.request("/api/files/download?ticket=abc123");
+      // Middleware does NOT bypass — requires auth → 401
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-hex-32 ticket values (uppercase hex)", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=DEADBEEF00000000DEADBEEF00000000",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-hex-32 ticket values (contains non-hex chars)", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=zzzzzzzz00000000zzzzzzzz00000000",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-hex-32 ticket values (too long)", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000extra",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects empty ticket parameter", async () => {
+      const res = await app.request("/api/files/download?ticket=");
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("initData auth_date expiry (issue #227)", () => {
+    it("rejects initData with auth_date older than 24 hours", async () => {
+      const staleAuthDate = String(Math.floor(Date.now() / 1000) - 86401);
+      const initData = makeInitData(TEST_USER, {
+        extraParams: { auth_date: staleAuthDate },
+      });
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Invalid Telegram auth");
+    });
+
+    it("accepts initData with auth_date within 24 hours", async () => {
+      // makeInitData already sets auth_date to now — just verify it works
+      const initData = makeInitData(TEST_USER);
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(200);
     });
   });
 });

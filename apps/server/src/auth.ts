@@ -27,6 +27,10 @@ export function validateTelegramInitData(
 
   if (computedHash !== hash) return { valid: false };
 
+  // Check auth_date is within 24 hours
+  const authDate = parseInt(params.get("auth_date") || "0");
+  if (Date.now() / 1000 - authDate > 86400) return { valid: false };
+
   // Parse user data
   const userStr = params.get("user");
   if (!userStr) return { valid: true };
