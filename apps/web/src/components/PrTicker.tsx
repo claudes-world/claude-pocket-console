@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthHeaders } from "../lib/telegram";
+import { usePrCache } from "../hooks/usePrCache";
 
 // --- Types matching server PrRow ---
 
@@ -157,15 +158,17 @@ function saveCollapsedOrgs(collapsed: Set<string>) {
 const POLL_INTERVAL_MS = 10_000;
 
 export function PrTicker() {
-  const [prs, setPrs] = useState<PrRow[]>([]);
-  const [repos, setRepos] = useState<RepoSummary[]>([]);
+  const { cache, saveCache } = usePrCache();
+  const [prs, setPrs] = useState<PrRow[]>(cache?.prs ?? []);
+  const [repos, setRepos] = useState<RepoSummary[]>(cache?.repos ?? []);
   const [collapsedOrgs, setCollapsedOrgs] = useState<Set<string>>(loadCollapsedOrgs);
-  const [loading, setLoading] = useState(true);
-  const [lastPollAt, setLastPollAt] = useState<number>(0);
+  const [loading, setLoading] = useState(cache === null); // skip spinner if cache available
+  const [lastPollAt, setLastPollAt] = useState<number>(cache?.cachedAt ?? 0);
   const [pollError, setPollError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [, setTick] = useState(0); // Force re-render for "last poll Xs ago"
   const mountedRef = useRef(true);
+  const hasLiveDataRef = useRef(false); // true once first live fetch succeeds
 
   const toggleOrg = useCallback((org: string) => {
     setCollapsedOrgs((prev) => {
@@ -187,10 +190,12 @@ export function PrTicker() {
       const data = await res.json();
       if (mountedRef.current) {
         if (data.ok) {
+          saveCache(data.prs ?? [], data.repos ?? []);
           setPrs(data.prs ?? []);
           setRepos(data.repos ?? []);
           setLastPollAt(data.lastPollOk || Date.now());
           setPollError(data.lastPollErr ?? null);
+          hasLiveDataRef.current = true;
         } else {
           setPollError(data.error ?? "Unknown error");
         }
@@ -377,7 +382,11 @@ export function PrTicker() {
       }}>
         <span>{totalPrs} open</span>
         <span>
-          last poll {pollAgoSec}s ago
+          {hasLiveDataRef.current
+            ? `last poll ${pollAgoSec}s ago`
+            : cache
+              ? `cached ${Math.floor((Date.now() - cache.cachedAt) / 60_000)}m ago`
+              : "loading..."}
           <span style={{
             display: "inline-block",
             width: 6,
