@@ -34,6 +34,13 @@ interface TelegramWebApp {
   themeParams: Record<string, string>;
   colorScheme: "light" | "dark";
   isExpanded: boolean;
+  checkHomeScreenStatus?(callback: (status: "added" | "missed" | "unknown") => void): void;
+  addToHomeScreen?(): void;
+  HapticFeedback?: {
+    impactOccurred(style: "light" | "medium" | "heavy" | "rigid" | "soft"): void;
+    notificationOccurred(type: "error" | "success" | "warning"): void;
+    selectionChanged(): void;
+  };
 }
 
 export function getTelegramWebApp(): TelegramWebApp | null {

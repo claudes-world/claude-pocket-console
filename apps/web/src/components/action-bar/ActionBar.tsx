@@ -15,6 +15,7 @@ import { AudioGenModal } from "./AudioGenModal";
 import { StatusLine } from "./StatusLine";
 import { btnStyle, type ActionBarProps, type AudioStatus, type GitBranch, type Modal, type SearchResult, type SessionName } from "./types";
 import { checkAudio, deleteSessionName, fetchGitBranch, fetchGitStatus, fetchSessionNames, fetchTodo, generateAudio, postAction, renameSession, restartSession, runGitCommand, searchFiles, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux } from "./api";
+import { haptic } from "../../lib/haptic";
 
 const SEARCH_SCOPE_KEY = "cpc:search:currentFolderOnly";
 
@@ -105,14 +106,15 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setStatus(`Running ${label}...`);
     try {
       const data = await postAction(endpoint);
-      setStatus(!data.ok ? `Failed: ${data.error || "unknown error"}` : data.output || `${label}: OK`);
-    } catch (err) { setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+      if (!data.ok) { haptic.error(); setStatus(`Failed: ${data.error || "unknown error"}`); }
+      else { haptic.success(); setStatus(data.output || `${label}: OK`); }
+    } catch (err) { haptic.error(); setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`); }
   };
   const loadGitStatus = async () => { try { setGitOutput(await fetchGitStatus()); } catch { setGitOutput("Failed to fetch"); } };
   const loadTodo = async () => { try { setTodoContent(await fetchTodo()); } catch { setTodoContent("Failed to fetch"); } };
   const loadSessionNames = async () => { try { setSessionNames(await fetchSessionNames()); } catch { setSessionNames([]); } };
   const removeSessionName = async (ts: number) => { try { await deleteSessionName(ts); setSessionNames((prev) => prev.filter((s) => s.ts !== ts)); } catch {} setDeleteTarget(null); setModal("resume"); };
-  const handleCompact = async (message: string, label = "Compact") => { setModal(null); setStatus(`${label}...`); try { const data = await sendCompactCommand(message); setStatus(data.ok ? `${label} sent` : `Failed: ${data.error}`); } catch (err) { setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`); } };
+  const handleCompact = async (message: string, label = "Compact") => { setModal(null); setStatus(`${label}...`); try { const data = await sendCompactCommand(message); if (data.ok) { haptic.success(); setStatus(`${label} sent`); } else { haptic.error(); setStatus(`Failed: ${data.error}`); } } catch (err) { haptic.error(); setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`); } };
   const handleRename = async () => {
     if (!renameName.trim()) return;
     setModal(null);
@@ -120,7 +122,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     void sendToTmux(`/rename ${renameName.trim()}`);
     try {
       const data = await renameSession(renameName.trim());
-      setStatus(data.ok ? `Renamed to "${renameName.trim()}"` : `Failed: ${data.error}`);
+      if (data.ok) { haptic.success(); setStatus(`Renamed to "${renameName.trim()}"`); } else { haptic.error(); setStatus(`Failed: ${data.error}`); }
     } catch (err) {
       // Previously this catch swallowed the error and optimistically reported
       // success because the in-tmux /rename side-effect had already happened.
@@ -128,7 +130,7 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       // server-side rejections (400/409) land here too, and a false success
       // would hide real failures. Report the error instead. (Codex round-4
       // review re-pass.)
-      setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      haptic.error(); setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     setTimeout(() => setStatus(null), 2000);
   };
@@ -233,15 +235,15 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       const timeout = setTimeout(() => controller.abort(), 60000);
       try {
         const data = await generateAudio(filePath, controller.signal);
-        if (data.ok) { setAudioStatus({ exists: true, path: data.path }); setStatus("Audio generated"); }
-        else setStatus(`Failed: ${data.error}`);
+        if (data.ok) { haptic.success(); setAudioStatus({ exists: true, path: data.path }); setStatus("Audio generated"); }
+        else { haptic.error(); setStatus(`Failed: ${data.error}`); }
       } finally {
         // clearTimeout in finally so a thrown fetch doesn't leave the
         // 60s timeout dangling and accumulating. (Copilot round-3 review.)
         clearTimeout(timeout);
       }
     } catch (err) {
-      setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+      haptic.error(); setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       audioInFlightRef.current = false;
       setAudioOp("idle");
@@ -259,14 +261,14 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const data = await sendAudioTelegram(audioPath, controller.signal);
-        setStatus(data.ok ? "Sent to Telegram" : `Failed: ${data.error}`);
+        if (data.ok) { haptic.success(); setStatus("Sent to Telegram"); } else { haptic.error(); setStatus(`Failed: ${data.error}`); }
       } finally {
         // clearTimeout in finally so a thrown fetch doesn't leave the
         // 30s timeout dangling and accumulating. (Copilot round-3 review.)
         clearTimeout(timeout);
       }
     } catch (err) {
-      setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
+      haptic.error(); setStatus(err instanceof DOMException && err.name === "AbortError" ? "Timed out" : `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       audioInFlightRef.current = false;
       setAudioOp("idle");
@@ -278,16 +280,16 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
     setStatus("Restarting session...");
     try {
       const data = await restartSession();
-      setStatus(data.ok ? "Session restarted" : `Failed: ${data.error}`);
+      if (data.ok) { haptic.success(); setStatus("Session restarted"); } else { haptic.error(); setStatus(`Failed: ${data.error}`); }
     } catch (err) {
       // Surface the server error text (now extracted by jsonFetch from a
       // { error } body on non-2xx responses) instead of a generic message.
       // (Codex round-4 review re-pass.)
-      setStatus(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
+      haptic.error(); setStatus(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     setTimeout(() => setStatus(null), 3000);
   };
-  const handleSendToChat = async () => { if (!viewingFile) return; setStatus("Sharing..."); try { const data = await sendFileToChat(viewingFile.path); setStatus(data.ok ? "Sent to chat" : "Failed"); } catch { setStatus("Failed"); } setTimeout(() => setStatus(null), 2000); };
+  const handleSendToChat = async () => { if (!viewingFile) return; setStatus("Sharing..."); try { const data = await sendFileToChat(viewingFile.path); if (data.ok) { haptic.success(); setStatus("Sent to chat"); } else { haptic.error(); setStatus("Failed"); } } catch { haptic.error(); setStatus("Failed"); } setTimeout(() => setStatus(null), 2000); };
 
   let modalNode: ReactNode = null;
   switch (modal) {
@@ -315,14 +317,14 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       {modalNode}
       <div style={{ padding: "10px 12px 8px", borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: "8px", overflowX: "auto" }}>
-          <button onClick={() => { setModal("todo"); void loadTodo(); }} style={{ ...btnStyle, background: "#3a3520", color: "var(--color-accent-yellow)", border: "1px solid #5a4a30" }}>TODO</button>
+          <button onClick={() => { haptic.impact("light"); setModal("todo"); void loadTodo(); }} style={{ ...btnStyle, background: "#3a3520", color: "var(--color-accent-yellow)", border: "1px solid #5a4a30" }}>TODO</button>
           {activeTab === "terminal" && <>
-            {onReconnect && <div style={{ display: "flex", flexShrink: 0 }}><button onClick={onReconnect} style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>Reconnect</button><button onClick={() => setModal("reconnect-menu")} aria-label="Open reconnect menu" title="Open reconnect menu" style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>}
-            <div style={{ display: "flex", flexShrink: 0 }}><button onClick={() => { setModal("git-status"); void loadGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>Git</button><button onClick={() => setModal("git-menu")} aria-label="Open git menu" title="Open git menu" style={{ ...btnStyle, borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>
-            <button onClick={() => setModal("commands")} style={{ ...btnStyle, background: "#2d2a3a", color: "var(--color-accent-purple)", border: "1px solid #4a3d6a" }}>/commands</button>
+            {onReconnect && <div style={{ display: "flex", flexShrink: 0 }}><button onClick={() => { haptic.impact("light"); onReconnect(); }} style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d", borderRadius: "6px 0 0 6px", borderRight: "none" }}>Reconnect</button><button onClick={() => setModal("reconnect-menu")} aria-label="Open reconnect menu" title="Open reconnect menu" style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d", borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>}
+            <div style={{ display: "flex", flexShrink: 0 }}><button onClick={() => { haptic.impact("light"); setModal("git-status"); void loadGitStatus(); }} style={{ ...btnStyle, borderRadius: "6px 0 0 6px", borderRight: "none" }}>Git</button><button onClick={() => setModal("git-menu")} aria-label="Open git menu" title="Open git menu" style={{ ...btnStyle, borderRadius: "0 6px 6px 0", padding: "6px 8px", fontSize: 14 }}>&#9652;</button></div>
+            <button onClick={() => { haptic.impact("light"); setModal("commands"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "var(--color-accent-purple)", border: "1px solid #4a3d6a" }}>/commands</button>
           </>}
           {activeTab === "files" && !viewingFile && <><button onClick={() => { resetFileSearch(); setModal("file-search"); }} style={{ ...btnStyle, background: "#2d3a5a", color: "var(--color-accent-blue)", border: "1px solid #3d4a6a" }}>Search</button><button onClick={() => setModal("file-options")} style={btnStyle}>Options</button></>}
-          {activeTab === "files" && viewingFile && <button onClick={() => void handleSendToChat()} style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}>Send to Chat</button>}
+          {activeTab === "files" && viewingFile && <button onClick={() => { haptic.impact("light"); void handleSendToChat(); }} style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}>Send to Chat</button>}
           {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => setModal("tldr")} style={{ ...btnStyle, background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}>TL;DR</button>}
           {activeTab === "files" && viewingFile?.name.toLowerCase().endsWith(".md") && <button onClick={() => { void handleCheckAudio(viewingFile.path); setModal("audio-gen"); }} style={{ ...btnStyle, background: "#2d2a3a", color: "var(--color-accent-purple)", border: "1px solid #4a3d6a" }}>Audio</button>}
         </div>
