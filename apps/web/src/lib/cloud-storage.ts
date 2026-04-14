@@ -82,14 +82,12 @@ function getCloudStorage(): TelegramCloudStorage | null {
   if (!cs) return null;
   // isSupported is a Telegram-level capability probe; when absent we assume
   // "not supported" rather than "assume yes" so old polyfills don't false-
-  // positive. Guarded call because some older clients expose CloudStorage
-  // but no isSupported().
-  if (typeof cs.isSupported === "function") {
-    try {
-      if (!cs.isSupported()) return null;
-    } catch {
-      return null;
-    }
+  // positive. We require the function to be present AND return true — if it's
+  // missing the client hasn't declared Bot API 8.0 support so we reject.
+  try {
+    if (typeof cs.isSupported !== "function" || !cs.isSupported()) return null;
+  } catch {
+    return null;
   }
   return cs;
 }
@@ -209,6 +207,13 @@ export async function getPref<T>(key: string, defaultValue: T): Promise<T> {
 /**
  * Write a preference by key. Serializes against other writes so the read-
  * modify-write sequence can't be interleaved by a concurrent caller.
+ *
+ * On write failure (e.g., quota exceeded, network error), the rejection
+ * propagates to the caller but the in-memory snapshot remains at the
+ * pre-failure state — the failed key's new value is NOT reflected. A
+ * subsequent successful write will NOT include the failed key's value unless
+ * the caller retries. Callers must retry failed writes explicitly if
+ * persistence is critical.
  */
 export function setPref<T>(key: string, value: T): Promise<void> {
   const next = writeQueue.then(async () => {

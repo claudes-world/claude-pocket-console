@@ -31,6 +31,24 @@ describe("usePreferences", () => {
     expect(result.current[0]).toBe(true);
   });
 
+  it("isLoading is true on first render and false after the initial load resolves", async () => {
+    localStorage.setItem(
+      "cpc_dashboard_prefs",
+      JSON.stringify({ loading_test: "stored" }),
+    );
+    const { result } = renderHook(() =>
+      usePreferences<string>("loading_test", "default"),
+    );
+    // Third element is isLoading.
+    expect(result.current[2]).toBe(true);
+    // After the async load resolves, isLoading must be false and the value
+    // must be the stored value, not the default placeholder.
+    await waitFor(() => {
+      expect(result.current[2]).toBe(false);
+      expect(result.current[0]).toBe("stored");
+    });
+  });
+
   it("hydrates from storage after mount", async () => {
     // Seed localStorage with an existing blob.
     localStorage.setItem(

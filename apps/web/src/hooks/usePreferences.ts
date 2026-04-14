@@ -3,9 +3,11 @@ import { getPref, setPref } from "../lib/cloud-storage";
 
 /**
  * React hook binding a single preference key to the unified cloud-storage
- * wrapper. API mirrors useState — returns [value, setValue] — so existing
- * components using useState + useEffect(localStorage) can swap in with a
- * minimal diff.
+ * wrapper. Returns a three-element tuple [value, setValue, isLoading].
+ * `isLoading` is true until the initial storage load resolves; callers can
+ * use it to distinguish the default placeholder from the actual stored value.
+ * The API is otherwise modeled on useState — so existing components using
+ * useState + useEffect(localStorage) can swap in with a minimal diff.
  *
  * Semantics:
  *
@@ -35,11 +37,15 @@ import { getPref, setPref } from "../lib/cloud-storage";
 export function usePreferences<T>(
   key: string,
   defaultValue: T,
-): [T, (value: T) => void] {
+): [T, (value: T) => void, boolean] {
   // Capture the default on first render — see JSDoc note above. Using a ref
   // rather than a useState so we don't burn an extra slot.
   const defaultRef = useRef<T>(defaultValue);
   const [value, setValueState] = useState<T>(defaultValue);
+  // isLoading is true until the initial storage load resolves. Callers can
+  // use this to distinguish "default placeholder" from "actual stored value",
+  // e.g. to defer rendering a controlled input until the true value is known.
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Track mount state so async resolution after unmount doesn't warn /
   // mutate. React 18+ tolerates setState-after-unmount but still logs, and
@@ -57,9 +63,11 @@ export function usePreferences<T>(
   // dynamically switches keys (rare but not impossible) stays in sync.
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
     void getPref<T>(key, defaultRef.current).then((stored) => {
       if (cancelled || !mountedRef.current) return;
       setValueState(stored);
+      setIsLoading(false);
     });
     return () => {
       cancelled = true;
@@ -77,5 +85,5 @@ export function usePreferences<T>(
     [key],
   );
 
-  return [value, setValue];
+  return [value, setValue, isLoading];
 }

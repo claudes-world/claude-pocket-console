@@ -117,6 +117,14 @@ describe("isAvailable()", () => {
     window.Telegram = { WebApp: {} };
     expect(isAvailable()).toBe(false);
   });
+
+  it("returns false when CloudStorage has no isSupported function (absent = not supported)", () => {
+    // An old polyfill might expose the CloudStorage object but omit isSupported.
+    // We must treat absence as "not supported", NOT "assume yes".
+    // @ts-expect-error — test harness: intentionally omitting isSupported
+    window.Telegram = { WebApp: { CloudStorage: { getItem: () => {}, setItem: () => {} } } };
+    expect(isAvailable()).toBe(false);
+  });
 });
 
 describe("localStorage fallback", () => {
@@ -219,7 +227,7 @@ describe("CloudStorage backend", () => {
     expect(cs.setItem).toHaveBeenCalledTimes(2);
   });
 
-  it("concurrent writes to DIFFERENT keys all land in the final blob", async () => {
+  it("serialized writes to different keys all land in the final blob", async () => {
     const cs = makeFakeCloudStorage();
     installTelegram(cs);
     await Promise.all([
