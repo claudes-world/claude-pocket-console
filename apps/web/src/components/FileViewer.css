@@ -1,0 +1,55 @@
+/*
+ * FileViewer scrollbar styling.
+ *
+ * The default OS/dark-theme scrollbars disappear against the Tokyo Night
+ * background, making it hard to tell that long files / directory listings
+ * are scrollable at all. These rules paint the thumb in the existing
+ * cyan accent (--color-accent-cyan, #7dcfff) so it reads clearly without
+ * clashing with the rest of the palette.
+ *
+ * Scope: every selector is prefixed with .cpc-file-viewer so this only
+ * affects scrollable regions inside the FileViewer component — MarkdownViewer
+ * body, code <pre> blocks, directory listing, root-shortcut bar, etc. The
+ * rest of the app keeps its native scrollbars.
+ */
+
+.cpc-file-viewer {
+  /* Firefox */
+  scrollbar-color: var(--color-accent-cyan) var(--color-bg-alt);
+  scrollbar-width: thin;
+}
+
+.cpc-file-viewer *,
+.cpc-file-viewer *::before,
+.cpc-file-viewer *::after {
+  scrollbar-color: var(--color-accent-cyan) var(--color-bg-alt);
+  scrollbar-width: thin;
+}
+
+/* WebKit (Safari/Chrome/iOS) */
+.cpc-file-viewer ::-webkit-scrollbar,
+.cpc-file-viewer::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cpc-file-viewer ::-webkit-scrollbar-track,
+.cpc-file-viewer::-webkit-scrollbar-track {
+  background: var(--color-bg-alt);
+}
+
+.cpc-file-viewer ::-webkit-scrollbar-thumb,
+.cpc-file-viewer::-webkit-scrollbar-thumb {
+  background: var(--color-accent-cyan);
+  border-radius: 4px;
+}
+
+.cpc-file-viewer ::-webkit-scrollbar-thumb:hover,
+.cpc-file-viewer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-blue);
+}
+
+.cpc-file-viewer ::-webkit-scrollbar-corner,
+.cpc-file-viewer::-webkit-scrollbar-corner {
+  background: var(--color-bg-alt);
+}
