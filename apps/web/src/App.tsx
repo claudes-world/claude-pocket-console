@@ -242,24 +242,35 @@ export function App() {
   // Home screen prompt — show once if not already added (Bot API 8.0+)
   useEffect(() => {
     const PROMPT_KEY = "cpc:home-screen-prompted";
-    if (localStorage.getItem(PROMPT_KEY)) return;
+    try {
+      if (localStorage.getItem(PROMPT_KEY)) return;
+    } catch {
+      return; // storage blocked (private browsing, etc.) — skip silently
+    }
 
-    const twa = getTelegramWebApp();
-    if (!twa?.checkHomeScreenStatus) return; // older client — skip silently
-
+    let active = true;
     const timer = setTimeout(() => {
-      twa.checkHomeScreenStatus!((status) => {
-        if (status !== "added") {
+      const twa = getTelegramWebApp();
+      if (!twa?.checkHomeScreenStatus) return; // older client — skip silently
+      twa.checkHomeScreenStatus((status) => {
+        if (active && status !== "added") {
           setShowHomeScreenPrompt(true);
         }
       });
     }, 3000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   const handleHomeScreenDismiss = () => {
-    localStorage.setItem("cpc:home-screen-prompted", "1");
+    try {
+      localStorage.setItem("cpc:home-screen-prompted", "1");
+    } catch {
+      // storage blocked — suppress silently, prompt won't re-appear this session
+    }
     setShowHomeScreenPrompt(false);
   };
 
