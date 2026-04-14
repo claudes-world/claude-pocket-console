@@ -19,9 +19,7 @@
   scrollbar-width: thin;
 }
 
-.cpc-file-viewer *,
-.cpc-file-viewer *::before,
-.cpc-file-viewer *::after {
+.cpc-file-viewer * {
   scrollbar-color: var(--color-accent-cyan) var(--color-bg-alt);
   scrollbar-width: thin;
 }
