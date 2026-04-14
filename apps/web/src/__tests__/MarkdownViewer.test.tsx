@@ -287,9 +287,11 @@ describe("MarkdownViewer — external links", () => {
   it("external link click prevents default navigation", () => {
     renderMd("[Visit](https://example.com)");
     const link = screen.getByRole("link", { name: "Visit" });
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
-    link.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
+    // Observable proof that default was prevented: Telegram's openLink fires
+    // instead of the browser navigating. fireEvent routes through React's
+    // synthetic event system correctly.
+    fireEvent.click(link);
+    expect(mockOpenLink).toHaveBeenCalledWith("https://example.com");
   });
 
   it("falls back to window.open when Telegram is unavailable", () => {
@@ -326,19 +328,17 @@ describe("MarkdownViewer — external links", () => {
 // ---------------------------------------------------------------------------
 
 describe("MarkdownViewer — pre block touch handling", () => {
-  it("<pre> element has an onTouchMove handler that stops propagation", () => {
-    const { container } = renderMd("```\nsome code here\n```");
+  it("<pre> element stops touchmove propagation (parent handler not called)", () => {
+    const parentHandler = vi.fn();
+    const { container } = render(
+      // eslint-disable-next-line react/no-unknown-property
+      <div onTouchMove={parentHandler}>
+        <MarkdownViewer content={"```\nsome code here\n```"} fileName="test.md" />
+      </div>,
+    );
     const pre = container.querySelector("pre") as HTMLElement;
     expect(pre).toBeTruthy();
-
-    const stopPropSpy = vi.fn();
-    const touchEvent = new TouchEvent("touchmove", { bubbles: true, cancelable: true });
-    Object.defineProperty(touchEvent, "stopPropagation", {
-      value: stopPropSpy,
-      writable: false,
-    });
-
-    pre.dispatchEvent(touchEvent);
-    expect(stopPropSpy).toHaveBeenCalled();
+    fireEvent.touchMove(pre);
+    expect(parentHandler).not.toHaveBeenCalled();
   });
 });
