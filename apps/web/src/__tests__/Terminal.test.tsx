@@ -299,7 +299,15 @@ describe("message handling", () => {
     getWs().simulateMessage({ type: "dimensions", cols: 200, rows: 50 });
     // Math.min(200, 80) = 80, Math.min(50, 24) = 24 — same as viewport, no resize call
     // The component only calls resize when the result differs from current dims
+    expect(mockFitFit).toHaveBeenCalled();
     expect(mockTermResize).not.toHaveBeenCalled();
+  });
+
+  it("dimensions message calls term.resize with clipped values when pane is smaller than viewport", () => {
+    renderTerminal();
+    // Terminal mock: cols=80, rows=24. Send smaller dims → resize should be called.
+    getWs().simulateMessage({ type: "dimensions", cols: 60, rows: 20 });
+    expect(mockTermResize).toHaveBeenCalledWith(60, 20);
   });
 
   it("pane message writes screen-clear sequence followed by content", () => {
