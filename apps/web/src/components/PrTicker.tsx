@@ -221,6 +221,8 @@ export function PrTicker() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (mountedRef.current && data.ok) {
+        saveCache(data.prs ?? [], data.repos ?? []);
+        hasLiveDataRef.current = true;
         setPrs(data.prs ?? []);
         setRepos(data.repos ?? []);
         setLastPollAt(data.lastPollOk || Date.now());
@@ -392,11 +394,11 @@ export function PrTicker() {
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: pollError ? COLORS.red : COLORS.green,
+            background: pollError ? COLORS.red : hasLiveDataRef.current ? COLORS.green : COLORS.yellow,
             marginLeft: 6,
             verticalAlign: "middle",
           }} />
-          {" "}{pollError ? "degraded" : "live"}
+          {" "}{pollError ? "degraded" : hasLiveDataRef.current ? "live" : "connecting..."}
         </span>
       </div>
     </div>
