@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFile, execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import type { PrRow, RepoInfo } from "../prs.js";
 
 /**
@@ -59,6 +60,15 @@ function makeRepoInfo(overrides: Partial<RepoInfo> = {}): RepoInfo {
 
 // We need to mock discoverRepos and currentBranchScope to avoid real git calls
 // from the /current-branch-scope route. Mock the module-level functions.
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    existsSync: vi.fn(actual.existsSync),
+    readdirSync: vi.fn(actual.readdirSync),
+  };
+});
+
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>(
     "node:child_process",
@@ -251,6 +261,14 @@ describe("GET /current-branch-scope", () => {
   });
 
   it("returns branch names when discoverRepos and git worktree list succeed", async () => {
+    const mockExistsSync = vi.mocked(existsSync);
+    const mockReaddirSync = vi.mocked(readdirSync);
+    // Make codeDir exist and contain one repo dir
+    mockExistsSync.mockReturnValueOnce(true);  // existsSync(codeDir)
+    mockReaddirSync.mockReturnValueOnce(["claude-pocket-console"] as any);
+    // Make .git check pass for that repo
+    mockExistsSync.mockReturnValueOnce(true);  // existsSync(join(repoPath, '.git'))
+
     // Override execFileSync for the two discoverRepos git calls:
     //   1st call: git remote get-url origin → GitHub SSH URL
     //   2nd call: git rev-parse --abbrev-ref HEAD → branch name
