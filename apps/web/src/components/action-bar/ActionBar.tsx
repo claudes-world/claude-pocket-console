@@ -15,8 +15,16 @@ import { AudioGenModal } from "./AudioGenModal";
 import { StatusLine } from "./StatusLine";
 import { btnStyle, type ActionBarProps, type AudioStatus, type GitBranch, type Modal, type SearchResult, type SessionName } from "./types";
 import { checkAudio, deleteSessionName, fetchGitBranch, fetchGitStatus, fetchSessionNames, fetchTodo, generateAudio, postAction, renameSession, restartSession, runGitCommand, searchFiles, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux } from "./api";
+import { usePreferences } from "../../hooks/usePreferences";
 
-const SEARCH_SCOPE_KEY = "cpc:search:currentFolderOnly";
+// Preference key for the "current folder only" search toggle. Stored under
+// the unified cpc_dashboard_prefs aggregate via CloudStorage (Bot API 8.0+)
+// with a localStorage fallback — see apps/web/src/lib/cloud-storage.ts.
+// Renamed from the old localStorage-direct key "cpc:search:currentFolderOnly"
+// when we migrated to the aggregate store; the old key is left behind on
+// upgraded clients (one-time loss of this single toggle), which is acceptable
+// for a boolean with a sensible default of ON.
+const SEARCH_SCOPE_PREF = "searchCurrentFolderOnly";
 
 export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
@@ -32,21 +40,11 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   // "Current folder only" search toggle — default ON, persisted per-user via
-  // localStorage. When ON we pass the folder the user is browsing as a
-  // `scope` query param; when OFF the server falls back to the old global
-  // search across all allowed roots. (Search UX C3.)
-  const [searchCurrentFolderOnly, setSearchCurrentFolderOnly] = useState<boolean>(() => {
-    try {
-      // Default to true unless explicitly set to "false" — so a fresh user
-      // gets the scoped behavior we actually want as the default.
-      return localStorage.getItem(SEARCH_SCOPE_KEY) !== "false";
-    } catch {
-      return true;
-    }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(SEARCH_SCOPE_KEY, String(searchCurrentFolderOnly)); } catch { /* ignore */ }
-  }, [searchCurrentFolderOnly]);
+  // Telegram CloudStorage (syncs across devices) with a localStorage fallback.
+  // When ON we pass the folder the user is browsing as a `scope` query param;
+  // when OFF the server falls back to the old global search across all allowed
+  // roots. (Search UX C3; migrated to unified prefs in feat/cloud-storage-prefs.)
+  const [searchCurrentFolderOnly, setSearchCurrentFolderOnly] = usePreferences<boolean>(SEARCH_SCOPE_PREF, true);
   // Keep the latest scope value in a ref so the debounced search callback
   // (which is a useCallback with a stable identity) can read the freshest
   // toggle + folder without needing to rebuild on every change.
