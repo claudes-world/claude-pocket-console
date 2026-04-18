@@ -92,6 +92,7 @@ function TabUnderline({
 
 const SORT_KEY = "cpc-file-sort-mode";
 const HIDDEN_KEY = "cpc-file-show-hidden";
+const HOME_SCREEN_PROMPT_KEY = "cpc:home-screen-prompted";
 const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc"];
 
 export function App() {
@@ -241,9 +242,8 @@ export function App() {
 
   // Home screen prompt — show once if not already added (Bot API 8.0+)
   useEffect(() => {
-    const PROMPT_KEY = "cpc:home-screen-prompted";
     try {
-      if (localStorage.getItem(PROMPT_KEY)) return;
+      if (localStorage.getItem(HOME_SCREEN_PROMPT_KEY)) return;
     } catch {
       return; // storage blocked (private browsing, etc.) — skip silently
     }
@@ -265,14 +265,14 @@ export function App() {
     };
   }, []);
 
-  const handleHomeScreenDismiss = () => {
+  const handleHomeScreenDismiss = useCallback(() => {
     try {
-      localStorage.setItem("cpc:home-screen-prompted", "1");
+      localStorage.setItem(HOME_SCREEN_PROMPT_KEY, "1");
     } catch {
       // storage blocked — suppress silently, prompt won't re-appear this session
     }
     setShowHomeScreenPrompt(false);
-  };
+  }, []);
 
   // The strip is (TABS.length * 100vw) wide. To show tab N we shift by -(N * 100vw).
   // Expressed as % of the strip: -(N * 100% / TABS.length).

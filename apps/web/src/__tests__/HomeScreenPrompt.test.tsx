@@ -82,7 +82,7 @@ describe("home screen prompt localStorage gate", () => {
     // Pre-set the flag — the useEffect in App.tsx would bail early
     localStorageMock.getItem.mockImplementation((key: string) => {
       if (key === "cpc:home-screen-prompted") return "1";
-      return null;
+      return "";
     });
 
     // Verify the gate condition directly: if getItem returns truthy, skip
