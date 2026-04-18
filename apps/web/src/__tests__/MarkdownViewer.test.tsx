@@ -6,7 +6,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, createEvent } from "@testing-library/react";
 import { MarkdownViewer } from "../components/MarkdownViewer";
 
 // ---------------------------------------------------------------------------
@@ -261,6 +261,46 @@ describe("MarkdownViewer — collapsible sections", () => {
     ) as HTMLElement;
     expect(chevronAfter.getAttribute("data-folded")).toBe("true");
   });
+
+  // computeEffectiveHidden: hierarchical folding
+  it("folding a parent h2 also hides a child h3 section (hierarchical fold)", () => {
+    // Document with h2 parent and h3 child — folding the h2 must cascade to h3
+    const NESTED_MD =
+      "## Parent Section\n\n### Child Section\n\nChild paragraph.";
+    const { container } = renderMd(NESTED_MD);
+
+    // Both sections should start visible (no .cpc-folded)
+    const sections = container.querySelectorAll("section[data-fold-slug]");
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+    sections.forEach((s) => expect(s.classList.contains("cpc-folded")).toBe(false));
+
+    // Click the h2 fold button (first button in document order)
+    const buttons = container.querySelectorAll(".cpc-fold-btn");
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(buttons[0] as HTMLElement);
+
+    // After folding the h2, all .cpc-folded sections should be >= 1
+    // and the child h3 section must also be folded (cascaded via computeEffectiveHidden)
+    const foldedSections = container.querySelectorAll(".cpc-folded");
+    expect(foldedSections.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("sibling h2 section is not folded when only the first h2 is folded", () => {
+    // Two independent h2 sections — folding the first must not affect the second
+    const TWO_H2_MD =
+      "## Section A\n\nParagraph A.\n\n## Section B\n\nParagraph B.";
+    const { container } = renderMd(TWO_H2_MD);
+
+    const buttons = container.querySelectorAll(".cpc-fold-btn");
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+
+    // Fold only Section A (first button)
+    fireEvent.click(buttons[0] as HTMLElement);
+
+    const foldedSections = container.querySelectorAll(".cpc-folded");
+    // Only one section should be folded (Section A), not Section B
+    expect(foldedSections.length).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -287,10 +327,13 @@ describe("MarkdownViewer — external links", () => {
   it("external link click prevents default navigation", () => {
     renderMd("[Visit](https://example.com)");
     const link = screen.getByRole("link", { name: "Visit" });
-    // Observable proof that default was prevented: Telegram's openLink fires
-    // instead of the browser navigating. fireEvent routes through React's
-    // synthetic event system correctly.
-    fireEvent.click(link);
+    // Use createEvent so we can spy on preventDefault directly.
+    const clickEvent = createEvent.click(link);
+    const preventDefaultSpy = vi.spyOn(clickEvent, "preventDefault");
+    fireEvent(link, clickEvent);
+    // Mechanism: default must be prevented
+    expect(preventDefaultSpy).toHaveBeenCalled();
+    // Behavior: Telegram's openLink must still have been invoked
     expect(mockOpenLink).toHaveBeenCalledWith("https://example.com");
   });
 
