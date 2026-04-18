@@ -7,6 +7,7 @@ import { Links } from "./components/Links";
 import { ActionBar } from "./components/action-bar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
+import { haptic } from "./lib/haptic";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
@@ -181,8 +182,10 @@ export function App() {
     if (isDragging.current && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
       const currentIdx = TABS.indexOf(activeTab);
       if (dx < 0 && currentIdx < TABS.length - 1) {
+        haptic.selection();
         setActiveTab(TABS[currentIdx + 1]);
       } else if (dx > 0 && currentIdx > 0) {
+        haptic.selection();
         setActiveTab(TABS[currentIdx - 1]);
       }
     }
@@ -340,7 +343,7 @@ export function App() {
             <button
               ref={(el) => { tabRefs.current[i] = el; }}
               key={tab}
-              onClick={() => { setIsAnimating(true); setActiveTab(tab); }}
+              onClick={() => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }}
               style={{
                 padding: "8px 14px",
                 fontSize: 13,
