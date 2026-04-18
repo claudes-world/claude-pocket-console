@@ -7,8 +7,7 @@ import { useState, useCallback } from "react";
 const CACHE_KEY = "cpc_pr_cache";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// Types mirror PrTicker's internal types (copied here to avoid coupling)
-interface PrRow {
+export interface PrRow {
   key: string;
   repo: string;
   number: number;
@@ -25,7 +24,7 @@ interface PrRow {
   lastChanged: number;
 }
 
-interface RepoSummary {
+export interface RepoSummary {
   name: string;
   dirName: string;
   org: string;

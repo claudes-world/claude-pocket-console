@@ -1,34 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 import { usePrCache } from "../hooks/usePrCache";
-
-// --- Types matching server PrRow ---
-
-interface PrRow {
-  key: string;
-  repo: string;
-  number: number;
-  title: string;
-  state: "OPEN" | "CLOSED" | "MERGED";
-  isDraft: boolean;
-  headRefName: string;
-  author: string;
-  reviewDecision: "APPROVED" | "REVIEW_REQUIRED" | "CHANGES_REQUESTED" | null;
-  ciStatus: "SUCCESS" | "FAILURE" | "PENDING" | "ERROR" | null;
-  url: string;
-  updatedAt: string;
-  firstSeen: number;
-  lastChanged: number;
-}
-
-interface RepoSummary {
-  name: string;
-  dirName: string;
-  org: string;
-  fullName: string;
-  branch: string;
-  prCount: number;
-}
+import type { PrRow, RepoSummary } from "../hooks/usePrCache";
+import { timeAgo } from "../lib/time";
 
 // Grouped structure: org -> repo -> { branch, prs }
 type GroupedPrs = Record<string, Record<string, { branch: string; prs: PrRow[] }>>;
@@ -63,20 +37,6 @@ function getStatusColor(pr: PrRow): string {
     return COLORS.green;
   }
   return COLORS.yellow; // pending
-}
-
-// --- Relative time ---
-
-function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 // --- Review status label ---
