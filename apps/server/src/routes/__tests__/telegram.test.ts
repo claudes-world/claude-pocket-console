@@ -1,189 +1,158 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
- * Tests for `telegram.ts` route endpoints:
- *   - POST /send-to-chat — sends a file-sharing message to Telegram
+ * Tests for the /send-to-chat endpoint in telegram.ts.
  *
- * Strategy:
- *   - Mock `../utils.js` to stub getTelegramCreds and execAsync so no real
- *     shell or curl calls run. tgRaw and tgSanitize are NOT stubbed — they
- *     are pure functions exercised through their real implementations.
- *   - Drive the telegramRoute Hono sub-app via `app.request()`.
+ * Covers:
+ *   1. Missing filePath returns 400
+ *   2. Disallowed filePath returns 403 (path validation)
+ *   3. Happy path: allowed path triggers fetch to Telegram API, returns messageId
+ *   4. Telegram API failure surfaces as 500
  */
 
 // ---------------------------------------------------------------------------
-// Mocks — must be declared before dynamic imports
+// Mocks
 // ---------------------------------------------------------------------------
 
-const mockExecAsync = vi.fn();
-const mockGetTelegramCreds = vi.fn();
+// Mock path-allowed: allow only paths starting with /home/claude/code
+// Uses resolve() to normalize traversals (e.g. /../..) like the real impl.
+vi.mock("../../lib/path-allowed.js", () => ({
+  ALLOWED_FILE_ROOTS: ["/home/claude/code"],
+  isPathAllowed: async (candidate: string, _roots: string[]) => {
+    const resolved = resolve(candidate);
+    return resolved.startsWith("/home/claude/code/");
+  },
+}));
 
+// Mock getTelegramCreds so we don't need real secrets
 vi.mock("../utils.js", async () => {
-  const actual = await vi.importActual<typeof import("../utils.js")>("../utils.js");
+  const real = await vi.importActual<typeof import("../utils.js")>("../utils.js");
   return {
-    ...actual,
-    getTelegramCreds: (...args: any[]) => mockGetTelegramCreds(...args),
-    execAsync: (...args: any[]) => mockExecAsync(...args),
+    ...real,
+    getTelegramCreds: async () => ({
+      botToken: "test-bot-token",
+      chatId: "12345",
+    }),
   };
 });
 
-// ---------------------------------------------------------------------------
-// Import route AFTER mocks
-// ---------------------------------------------------------------------------
+// We need to mock global fetch
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
 const { telegramRoute } = await import("../telegram.js");
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function postSendToChat(body: unknown): Promise<Response> {
-  return telegramRoute.request("/send-to-chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Setup / teardown
-// ---------------------------------------------------------------------------
-
 beforeEach(() => {
-  mockGetTelegramCreds.mockResolvedValue({
-    botToken: "123456:ABC-DEF",
-    chatId: "-1001234567890",
-  });
-  mockExecAsync.mockResolvedValue({
-    stdout: JSON.stringify({ ok: true, result: { message_id: 42 } }),
-  });
-});
-
-afterEach(() => {
-  vi.clearAllMocks();
+  mockFetch.mockReset();
 });
 
 // ---------------------------------------------------------------------------
-// Tests
+// POST /send-to-chat
 // ---------------------------------------------------------------------------
-
 describe("POST /send-to-chat", () => {
-  it("returns ok:true with messageId on success", async () => {
-    const res = await postSendToChat({ filePath: "/home/claude/code/test.ts" });
+  it("returns 400 when filePath is missing", async () => {
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("filePath required");
+  });
+
+  it("returns 403 for a disallowed filePath", async () => {
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: "/etc/passwd" }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("Access denied");
+  });
+
+  it("returns 403 for path traversal attempt", async () => {
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: "/home/claude/code/../../../etc/shadow" }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("Access denied");
+  });
+
+  it("sends message via fetch and returns messageId on success", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, result: { message_id: 42 } }),
+    });
+
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: "/home/claude/code/test-file.ts" }),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; messageId: number };
     expect(body.ok).toBe(true);
     expect(body.messageId).toBe(42);
+
+    // Verify fetch was called with the right URL and payload
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe("https://api.telegram.org/bottest-bot-token/sendMessage");
+    expect(opts.method).toBe("POST");
+    expect(opts.headers["Content-Type"]).toBe("application/json");
+    const payload = JSON.parse(opts.body);
+    expect(payload.chat_id).toBe("12345");
+    expect(payload.parse_mode).toBe("MarkdownV2");
+    // The text should contain the shortened path
+    expect(payload.text).toContain("~/code/test\\-file\\.ts");
   });
 
-  it("calls getTelegramCreds", async () => {
-    await postSendToChat({ filePath: "/home/claude/test.txt" });
-    expect(mockGetTelegramCreds).toHaveBeenCalledTimes(1);
+  it("does not call fetch when path is disallowed", async () => {
+    await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: "/tmp/evil" }),
+    });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("calls execAsync with a curl command containing the botToken and chatId", async () => {
-    await postSendToChat({ filePath: "/home/claude/code/example.ts" });
-    expect(mockExecAsync).toHaveBeenCalledTimes(1);
-    const [cmd, opts] = mockExecAsync.mock.calls[0];
-    expect(cmd).toContain("curl");
-    expect(cmd).toContain("123456:ABC-DEF");
-    expect(cmd).toContain("-1001234567890");
-    expect(opts.shell).toBe("/bin/bash");
-  });
+  it("returns 500 when fetch throws", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("network failure"));
 
-  it("shortens /home/claude/ paths to ~/ in the message", async () => {
-    await postSendToChat({ filePath: "/home/claude/code/test.ts" });
-    const [cmd] = mockExecAsync.mock.calls[0];
-    // tgRaw escapes ~ and . — in the JSON payload within the curl command,
-    // the backslash is doubled (JSON encoding), so \~ becomes \\~
-    expect(cmd).toContain("\\\\~/code/test\\\\.ts");
-    // Original unescaped path should not appear
-    expect(cmd).not.toContain("/home/claude/code/test.ts");
-  });
-
-  it("includes MarkdownV2 parse_mode in the request", async () => {
-    await postSendToChat({ filePath: "/home/claude/test.md" });
-    const [cmd] = mockExecAsync.mock.calls[0];
-    expect(cmd).toContain("MarkdownV2");
-  });
-
-  it("returns 400 when filePath is missing", async () => {
-    const res = await postSendToChat({});
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toBe("filePath required");
-  });
-
-  it("returns 400 when filePath is empty string", async () => {
-    const res = await postSendToChat({ filePath: "" });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toBe("filePath required");
-  });
-
-  it("returns 500 when getTelegramCreds throws", async () => {
-    mockGetTelegramCreds.mockRejectedValueOnce(
-      new Error("Telegram not configured in common.sh"),
-    );
-    const res = await postSendToChat({ filePath: "/home/claude/test.txt" });
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toBe("Telegram not configured in common.sh");
-  });
-
-  it("returns 500 when execAsync (curl) throws", async () => {
-    mockExecAsync.mockRejectedValueOnce(new Error("curl failed"));
-    const res = await postSendToChat({ filePath: "/home/claude/test.txt" });
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toBe("curl failed");
-  });
-
-  it("returns 500 when Telegram API returns invalid JSON", async () => {
-    mockExecAsync.mockResolvedValueOnce({ stdout: "not json" });
-    const res = await postSendToChat({ filePath: "/home/claude/test.txt" });
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-  });
-
-  it("returns 500 when request body is not valid JSON", async () => {
-    // Send a raw invalid-JSON body directly (bypasses postSendToChat helper).
-    // c.req.json() throws on invalid JSON; Hono's default error handler returns 500 for unhandled throws.
     const res = await telegramRoute.request("/send-to-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: "this is { not valid } json",
+      body: JSON.stringify({ filePath: "/home/claude/code/test-file.ts" }),
     });
     expect(res.status).toBe(500);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("network failure");
   });
 
-  it("returns 200 with undefined messageId when Telegram API returns ok:false", async () => {
-    // Current source does not check result.ok — it returns ok:true regardless.
-    // This test documents the current behaviour. If the source is later hardened
-    // to return 500 on ok:false, update this test and the source together.
-    mockExecAsync.mockResolvedValueOnce({
-      stdout: JSON.stringify({ ok: false, description: "Bad Request: chat not found" }),
+  it("returns 502 when Telegram returns ok:false", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: false, description: "Bad Request: chat not found" }),
     });
-    const res = await postSendToChat({ filePath: "/home/claude/test.txt" });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; messageId: number | undefined };
-    expect(body.ok).toBe(true);
-    // result.result is undefined when ok:false, so messageId is undefined
-    expect(body.messageId).toBeUndefined();
-  });
 
-  it("handles paths not under /home/claude/ without error", async () => {
-    const res = await postSendToChat({ filePath: "/tmp/shared/file.txt" });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean };
-    expect(body.ok).toBe(true);
-    // The shortPath goes through tgRaw which escapes dots; in the JSON
-    // payload the backslash is doubled, so \. becomes \\.
-    const [cmd] = mockExecAsync.mock.calls[0];
-    expect(cmd).toContain("/tmp/shared/file\\\\.txt");
+    const res = await telegramRoute.request("/send-to-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: "/home/claude/code/test-file.ts" }),
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("Bad Request: chat not found");
   });
 });

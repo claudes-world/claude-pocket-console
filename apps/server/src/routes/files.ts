@@ -294,6 +294,14 @@ app.post("/download-ticket", async (c) => {
 
 app.get("/download", async (c) => {
   const ticket = c.req.query("ticket");
+  const filePath = c.req.query("path");
+
+  // Reject ambiguous requests that supply both ticket and path — the two auth
+  // modes are mutually exclusive and mixing them could mask logic errors.
+  if (ticket && filePath) {
+    return c.json({ error: "Ambiguous request: use ticket OR path, not both" }, 400);
+  }
+
   if (ticket) {
     // Pruning happens in the POST handler so the map doesn't grow unbounded;
     // the per-request expiry check below handles correctness on GET.
@@ -318,7 +326,6 @@ app.get("/download", async (c) => {
     return createDownloadResponse(file);
   }
 
-  const filePath = c.req.query("path");
   if (!filePath) {
     return c.json({ error: "path parameter required" }, 400);
   }
