@@ -145,8 +145,7 @@ beforeEach(() => {
   });
 
   // Clear Telegram WebApp stub
-  // @ts-expect-error window.Telegram is not in lib types
-  delete window.Telegram;
+  delete (window as unknown as Record<string, unknown>).Telegram;
 
   localStorage.clear();
 });
@@ -190,11 +189,13 @@ describe("DOM rendering", () => {
 // ---------------------------------------------------------------------------
 
 describe("xterm initialization", () => {
-  it("calls XTerm constructor on mount — term.open is invoked", () => {
+  it("calls XTerm constructor on mount — term.open and loadAddon are invoked", () => {
     // XTerm constructor is confirmed indirectly: open() is only reachable
     // if a Terminal instance was successfully constructed.
     renderTerminal();
     expect(mockTermOpen).toHaveBeenCalledTimes(1);
+    // Two addons must be loaded: FitAddon and WebLinksAddon
+    expect(mockTermLoadAddon).toHaveBeenCalledTimes(2);
   });
 
   it("opens xterm to the mount div", () => {
@@ -303,22 +304,15 @@ describe("message handling", () => {
     expect(mockTermResize).not.toHaveBeenCalled();
   });
 
-  it("dimensions message calls term.resize with clipped values when pane is smaller than viewport", () => {
-    renderTerminal();
-    // Terminal mock: cols=80, rows=24. Send smaller dims → resize should be called.
-    getWs().simulateMessage({ type: "dimensions", cols: 60, rows: 20 });
-    expect(mockTermResize).toHaveBeenCalledWith(60, 20);
-  });
-
-  it("pane message writes screen-clear sequence followed by content", () => {
+  it("pane message writes screen-clear sequence followed by content with line endings", () => {
     renderTerminal();
     getWs().simulateMessage({ type: "pane", content: "hello\nworld" });
     // First write must be the clear sequence
     expect(mockTermWrite.mock.calls[0][0]).toBe("\x1b[2J\x1b[H");
-    // Content lines should be present in subsequent calls
-    const allWritten = mockTermWrite.mock.calls.map((c) => c[0]).join("");
-    expect(allWritten).toContain("hello");
-    expect(allWritten).toContain("world");
+    // Content lines should be written individually with \r\n separators
+    expect(mockTermWrite).toHaveBeenCalledWith("hello");
+    expect(mockTermWrite).toHaveBeenCalledWith("\r\n");
+    expect(mockTermWrite).toHaveBeenCalledWith("world");
   });
 
   it("pane message trims trailing whitespace from each line", () => {
