@@ -53,11 +53,16 @@ export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
 
     const ws = new WebSocket(buildWsUrl());
 
+    // Guard all handlers against stale sockets: if connectWs is called again
+    // before the previous socket finishes closing, the old socket's events
+    // must not overwrite state belonging to the new connection.
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       onConnectionChangeRef.current(true);
     };
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "dimensions") {
@@ -91,10 +96,12 @@ export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       onConnectionChangeRef.current(false);
     };
 
     ws.onerror = () => {
+      if (wsRef.current !== ws) return;
       onConnectionChangeRef.current(false);
     };
 
