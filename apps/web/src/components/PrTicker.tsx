@@ -1,33 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthHeaders } from "../lib/telegram";
-
-// --- Types matching server PrRow ---
-
-interface PrRow {
-  key: string;
-  repo: string;
-  number: number;
-  title: string;
-  state: "OPEN" | "CLOSED" | "MERGED";
-  isDraft: boolean;
-  headRefName: string;
-  author: string;
-  reviewDecision: "APPROVED" | "REVIEW_REQUIRED" | "CHANGES_REQUESTED" | null;
-  ciStatus: "SUCCESS" | "FAILURE" | "PENDING" | "ERROR" | null;
-  url: string;
-  updatedAt: string;
-  firstSeen: number;
-  lastChanged: number;
-}
-
-interface RepoSummary {
-  name: string;
-  dirName: string;
-  org: string;
-  fullName: string;
-  branch: string;
-  prCount: number;
-}
+import { usePrCache } from "../hooks/usePrCache";
+import type { PrRow, RepoSummary } from "../hooks/usePrCache";
+import { timeAgo } from "../lib/time";
 
 // Grouped structure: org -> repo -> { branch, prs }
 type GroupedPrs = Record<string, Record<string, { branch: string; prs: PrRow[] }>>;
@@ -62,20 +37,6 @@ function getStatusColor(pr: PrRow): string {
     return COLORS.green;
   }
   return COLORS.yellow; // pending
-}
-
-// --- Relative time ---
-
-function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 // --- Review status label ---
@@ -157,15 +118,17 @@ function saveCollapsedOrgs(collapsed: Set<string>) {
 const POLL_INTERVAL_MS = 10_000;
 
 export function PrTicker() {
-  const [prs, setPrs] = useState<PrRow[]>([]);
-  const [repos, setRepos] = useState<RepoSummary[]>([]);
+  const { cache, saveCache } = usePrCache();
+  const [prs, setPrs] = useState<PrRow[]>(cache?.prs ?? []);
+  const [repos, setRepos] = useState<RepoSummary[]>(cache?.repos ?? []);
   const [collapsedOrgs, setCollapsedOrgs] = useState<Set<string>>(loadCollapsedOrgs);
-  const [loading, setLoading] = useState(true);
-  const [lastPollAt, setLastPollAt] = useState<number>(0);
+  const [loading, setLoading] = useState(cache === null); // skip spinner if cache available
+  const [lastPollAt, setLastPollAt] = useState<number>(cache?.cachedAt ?? 0);
   const [pollError, setPollError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [, setTick] = useState(0); // Force re-render for "last poll Xs ago"
   const mountedRef = useRef(true);
+  const hasLiveDataRef = useRef(false); // true once first live fetch succeeds
 
   const toggleOrg = useCallback((org: string) => {
     setCollapsedOrgs((prev) => {
@@ -187,10 +150,12 @@ export function PrTicker() {
       const data = await res.json();
       if (mountedRef.current) {
         if (data.ok) {
+          saveCache(data.prs ?? [], data.repos ?? []);
           setPrs(data.prs ?? []);
           setRepos(data.repos ?? []);
           setLastPollAt(data.lastPollOk || Date.now());
           setPollError(data.lastPollErr ?? null);
+          hasLiveDataRef.current = true;
         } else {
           setPollError(data.error ?? "Unknown error");
         }
@@ -216,6 +181,8 @@ export function PrTicker() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (mountedRef.current && data.ok) {
+        saveCache(data.prs ?? [], data.repos ?? []);
+        hasLiveDataRef.current = true;
         setPrs(data.prs ?? []);
         setRepos(data.repos ?? []);
         setLastPollAt(data.lastPollOk || Date.now());
@@ -377,17 +344,21 @@ export function PrTicker() {
       }}>
         <span>{totalPrs} open</span>
         <span>
-          last poll {pollAgoSec}s ago
+          {hasLiveDataRef.current
+            ? `last poll ${pollAgoSec}s ago`
+            : cache
+              ? `cached ${Math.floor((Date.now() - cache.cachedAt) / 60_000)}m ago`
+              : "loading..."}
           <span style={{
             display: "inline-block",
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: pollError ? COLORS.red : COLORS.green,
+            background: pollError ? COLORS.red : hasLiveDataRef.current ? COLORS.green : COLORS.yellow,
             marginLeft: 6,
             verticalAlign: "middle",
           }} />
-          {" "}{pollError ? "degraded" : "live"}
+          {" "}{pollError ? "degraded" : hasLiveDataRef.current ? "live" : "connecting..."}
         </span>
       </div>
     </div>
