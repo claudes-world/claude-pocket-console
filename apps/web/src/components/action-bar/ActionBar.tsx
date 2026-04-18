@@ -179,14 +179,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       haptic.error();
       setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    setTimeout(() => setStatus(null), 2000);
   };
   const handleFork = () => {
     const name = forkName.trim();
     setModal(null);
     void sendToTmux(name ? `/fork\n/rename ${name}` : "/fork");
     setStatus(name ? `Forked as "${name}"` : "Forked");
-    setTimeout(() => setStatus(null), 2000);
   };
   const handleGitAction = async (action: { label: string; command: string }) => {
     setGitOutput(`Running ${action.label}...`);
@@ -373,7 +371,6 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       haptic.error();
       setStatus(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    setTimeout(() => setStatus(null), 3000);
   };
   const handleSendToChat = async () => {
     if (!viewingFile) return;
@@ -391,7 +388,6 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       haptic.error();
       setStatus("Failed");
     }
-    setTimeout(() => setStatus(null), 2000);
   };
 
   let modalNode: ReactNode = null;
@@ -400,10 +396,10 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
       modalNode = (
         <CommandsSheet
           onClose={() => setModal(null)}
-          onEsc={() => { void sendToTmux("Escape", true); setModal(null); setStatus("Sent: Esc"); setTimeout(() => setStatus(null), 1500); }}
-          onDigit={(digit) => { void sendToTmux(String(digit)); setModal(null); setStatus(`Sent: ${digit}`); setTimeout(() => setStatus(null), 1500); }}
-          onShiftTab={() => { void sendToTmux("BTab", true); setModal(null); setStatus("Sent: \u21e7Tab"); setTimeout(() => setStatus(null), 1500); }}
-          onControlB={() => { void sendToTmux("C-b", true); setModal(null); setStatus("Sent: ^B"); setTimeout(() => setStatus(null), 1500); }}
+          onEsc={() => { void sendToTmux("Escape", true); setModal(null); setStatus("Sent: Esc"); }}
+          onDigit={(digit) => { void sendToTmux(String(digit)); setModal(null); setStatus(`Sent: ${digit}`); }}
+          onShiftTab={() => { void sendToTmux("BTab", true); setModal(null); setStatus("Sent: \u21e7Tab"); }}
+          onControlB={() => { void sendToTmux("C-b", true); setModal(null); setStatus("Sent: ^B"); }}
           onNew={() => setModal("new-confirm")}
           onResume={() => { void loadSessionNames(); setModal("resume"); }}
           onFork={() => { setForkName(""); setModal("fork-name"); }}

@@ -524,7 +524,7 @@ describe("ActionBar", () => {
 
   // ─── Status message lifecycle ──────────────────────────────────
 
-  it("clears status message after the 2-second handleSendToChat timeout", async () => {
+  it("clears status message after the 4-second useEffect status timer", async () => {
     render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/test.txt", name: "test.txt" }} />);
     fireEvent.click(screen.getByText("Send to Chat"));
 
@@ -532,11 +532,11 @@ describe("ActionBar", () => {
       expect(screen.getByText("Sent to chat")).toBeInTheDocument();
     });
 
-    // At 1900ms the 2s timeout has NOT yet fired — message must still be present
-    act(() => { vi.advanceTimersByTime(1900); });
+    // At 3900ms the 4s useEffect timer has NOT yet fired — message must still be present
+    act(() => { vi.advanceTimersByTime(3900); });
     expect(screen.getByText("Sent to chat")).toBeInTheDocument();
 
-    // Advance past 2000ms — the 2s timeout fires and clears the message
+    // Advance past 4000ms — the useEffect timer fires and clears the message
     act(() => { vi.advanceTimersByTime(200); });
 
     await waitFor(() => {
