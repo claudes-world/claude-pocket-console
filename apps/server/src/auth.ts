@@ -1,5 +1,26 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
+// Allow up to 30 seconds of clock skew on the future-timestamp check.
+// Telegram servers and client devices can drift by a few seconds; a hard
+// equality check (authDate > nowSec) would reject legitimate requests that
+// arrive with a timestamp slightly ahead of the server clock.
+const CLOCK_SKEW_TOLERANCE_SEC = 30;
+
+/**
+ * Validate an auth_date unix timestamp.
+ * Rejects NaN, non-positive, more than 30s in the future (clock-skew
+ * tolerance), and older than 24 hours.
+ */
+function validateAuthDate(rawAuthDate: string | undefined): boolean {
+  if (!rawAuthDate) return false;
+  const authDate = parseInt(rawAuthDate, 10);
+  const nowSec = Date.now() / 1000;
+  if (!Number.isFinite(authDate) || authDate <= 0) return false;
+  if (authDate > nowSec + CLOCK_SKEW_TOLERANCE_SEC) return false;
+  if (nowSec - authDate > 86400) return false;
+  return true;
+}
+
 /**
  * Validate Telegram Mini App initData.
  * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
@@ -26,6 +47,9 @@ export function validateTelegramInitData(
     .digest("hex");
 
   if (computedHash !== hash) return { valid: false };
+
+  // Check auth_date is within 24 hours (guard against NaN, future timestamps)
+  if (!validateAuthDate(params.get("auth_date") ?? undefined)) return { valid: false };
 
   // Parse user data
   const userStr = params.get("user");
@@ -76,9 +100,8 @@ export function validateTelegramLoginWidget(
 
   if (computedHash !== hash) return { valid: false };
 
-  // Check auth_date is within 24 hours
-  const authDate = parseInt(rest.auth_date || "0");
-  if (Date.now() / 1000 - authDate > 86400) return { valid: false };
+  // Check auth_date is within 24 hours (guard against NaN, future timestamps)
+  if (!validateAuthDate(rest.auth_date)) return { valid: false };
 
   return {
     valid: true,
