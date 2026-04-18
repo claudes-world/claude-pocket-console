@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 
 vi.mock("../../lib/telegram", () => ({
   getAuthHeaders: () => ({ Authorization: "tma test" }),
+  getTelegramWebApp: () => null,
 }));
 
 // Stub BottomSheet to render children directly
