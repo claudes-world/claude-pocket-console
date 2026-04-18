@@ -173,6 +173,34 @@ export function validateSession(token: string): { valid: boolean; user?: Telegra
   return { valid: true, user: session.user };
 }
 
+/**
+ * Try initData against each token in order; return first success or { valid: false }.
+ */
+export function validateTelegramInitDataWithTokens(
+  initData: string,
+  tokens: string[],
+): { valid: boolean; user?: TelegramUser } {
+  for (const token of tokens) {
+    const result = validateTelegramInitData(initData, token);
+    if (result.valid) return result;
+  }
+  return { valid: false };
+}
+
+/**
+ * Try a JWT token against each bot token in order; return first success or { valid: false }.
+ */
+export function validateJwtTokenWithTokens(
+  jwtToken: string,
+  tokens: string[],
+): { valid: boolean; user?: TelegramUser } {
+  for (const token of tokens) {
+    const result = validateJwtToken(jwtToken, token);
+    if (result.valid) return result;
+  }
+  return { valid: false };
+}
+
 /** Return the list of bot tokens to validate against.
  * Prefers TELEGRAM_BOT_TOKENS (comma-separated) over TELEGRAM_BOT_TOKEN. */
 export function getBotTokens(): string[] {
@@ -190,15 +218,7 @@ export function checkAuth(initData: string): { ok: boolean; user?: TelegramUser;
   const tokens = getBotTokens();
   if (tokens.length === 0) return { ok: false, error: "Server not configured" };
 
-  let lastResult: { valid: boolean; user?: TelegramUser } = { valid: false };
-  for (const token of tokens) {
-    const result = validateTelegramInitData(initData, token);
-    if (result.valid) {
-      lastResult = result;
-      break;
-    }
-  }
-  const { valid, user } = lastResult;
+  const { valid, user } = validateTelegramInitDataWithTokens(initData, tokens);
   if (!valid) return { ok: false, error: "Invalid auth" };
 
   const allowed = getAllowedUsers();

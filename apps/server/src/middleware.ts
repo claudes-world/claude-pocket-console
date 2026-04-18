@@ -1,5 +1,10 @@
 import type { Context, Next } from "hono";
-import { validateTelegramInitData, validateSession, validateJwtToken, getBotTokens } from "./auth.js";
+import {
+  validateSession,
+  getBotTokens,
+  validateTelegramInitDataWithTokens,
+  validateJwtTokenWithTokens,
+} from "./auth.js";
 import { isAllowedUser } from "./lib/allowed-users.js";
 
 /**
@@ -46,17 +51,7 @@ export async function telegramAuth(c: Context, next: Next) {
   // Primary: Telegram Mini App initData
   if (authHeader?.startsWith("tma ")) {
     const initData = authHeader.slice(4);
-    // Try each token; accept on first match
-    let valid = false;
-    let user: ReturnType<typeof validateTelegramInitData>["user"];
-    for (const token of botTokens) {
-      const result = validateTelegramInitData(initData, token);
-      if (result.valid) {
-        valid = true;
-        user = result.user;
-        break;
-      }
-    }
+    const { valid, user } = validateTelegramInitDataWithTokens(initData, botTokens);
 
     if (!valid) {
       return c.json({ error: "Invalid Telegram auth" }, 401);
@@ -94,11 +89,7 @@ export async function telegramAuth(c: Context, next: Next) {
     }
 
     // Try JWT token validation (keyboard button auth) — try each configured bot token
-    let jwtResult: ReturnType<typeof validateJwtToken> = { valid: false };
-    for (const bt of botTokens) {
-      const r = validateJwtToken(token, bt);
-      if (r.valid) { jwtResult = r; break; }
-    }
+    const jwtResult = validateJwtTokenWithTokens(token, botTokens);
     if (jwtResult.valid) {
       if (!isAllowedUser(jwtResult.user?.id)) {
         return c.json({ error: "User not authorized" }, 403);
@@ -118,12 +109,7 @@ export async function telegramAuth(c: Context, next: Next) {
   // Fallback: JWT token in query param (keyboard button auth)
   const urlToken = c.req.query("token");
   if (urlToken) {
-    let jwtQResult: ReturnType<typeof validateJwtToken> = { valid: false };
-    for (const bt of botTokens) {
-      const r = validateJwtToken(urlToken, bt);
-      if (r.valid) { jwtQResult = r; break; }
-    }
-    const { valid, user } = jwtQResult;
+    const { valid, user } = validateJwtTokenWithTokens(urlToken, botTokens);
     if (valid) {
       if (!isAllowedUser(user?.id)) {
         return c.json({ error: "User not authorized" }, 403);
