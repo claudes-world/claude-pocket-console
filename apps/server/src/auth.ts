@@ -173,12 +173,52 @@ export function validateSession(token: string): { valid: boolean; user?: Telegra
   return { valid: true, user: session.user };
 }
 
+/**
+ * Try initData against each token in order; return first success or { valid: false }.
+ */
+export function validateTelegramInitDataWithTokens(
+  initData: string,
+  tokens: string[],
+): { valid: boolean; user?: TelegramUser } {
+  for (const token of tokens) {
+    const result = validateTelegramInitData(initData, token);
+    if (result.valid) return result;
+  }
+  return { valid: false };
+}
+
+/**
+ * Try a JWT token against each bot token in order; return first success or { valid: false }.
+ */
+export function validateJwtTokenWithTokens(
+  jwtToken: string,
+  tokens: string[],
+): { valid: boolean; user?: TelegramUser } {
+  for (const token of tokens) {
+    const result = validateJwtToken(jwtToken, token);
+    if (result.valid) return result;
+  }
+  return { valid: false };
+}
+
+/** Return the list of bot tokens to validate against.
+ * Prefers TELEGRAM_BOT_TOKENS (comma-separated) over TELEGRAM_BOT_TOKEN. */
+export function getBotTokens(): string[] {
+  const multi = process.env.TELEGRAM_BOT_TOKENS;
+  if (multi) {
+    const tokens = multi.split(",").map((t) => t.trim()).filter(Boolean);
+    if (tokens.length > 0) return tokens;
+  }
+  const single = process.env.TELEGRAM_BOT_TOKEN;
+  return single ? [single] : [];
+}
+
 /** Full auth check: validate initData + check allowlist. Returns user if authorized. */
 export function checkAuth(initData: string): { ok: boolean; user?: TelegramUser; error?: string } {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) return { ok: false, error: "Server not configured" };
+  const tokens = getBotTokens();
+  if (tokens.length === 0) return { ok: false, error: "Server not configured" };
 
-  const { valid, user } = validateTelegramInitData(initData, botToken);
+  const { valid, user } = validateTelegramInitDataWithTokens(initData, tokens);
   if (!valid) return { ok: false, error: "Invalid auth" };
 
   const allowed = getAllowedUsers();

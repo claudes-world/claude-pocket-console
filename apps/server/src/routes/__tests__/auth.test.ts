@@ -246,6 +246,69 @@ describe("telegramAuth middleware", () => {
     });
   });
 
+  describe("multi-bot token support (TELEGRAM_BOT_TOKENS)", () => {
+    const SECOND_BOT_TOKEN = "654321:XYZ-TOKEN2ndBot-abcdef";
+
+    it("accepts initData signed by the second token in TELEGRAM_BOT_TOKENS list", async () => {
+      const originalSingle = process.env.TELEGRAM_BOT_TOKEN;
+      const hadMulti = "TELEGRAM_BOT_TOKENS" in process.env;
+      const originalMulti = process.env.TELEGRAM_BOT_TOKENS;
+      process.env.TELEGRAM_BOT_TOKENS = `${TEST_BOT_TOKEN},${SECOND_BOT_TOKEN}`;
+      delete process.env.TELEGRAM_BOT_TOKEN;
+      try {
+        const initData = makeInitData(TEST_USER, { botToken: SECOND_BOT_TOKEN });
+        const res = await app.request("/api/test", {
+          headers: { Authorization: `tma ${initData}` },
+        });
+        expect(res.status).toBe(200);
+      } finally {
+        if (originalSingle !== undefined) {
+          process.env.TELEGRAM_BOT_TOKEN = originalSingle;
+        }
+        if (hadMulti) {
+          process.env.TELEGRAM_BOT_TOKENS = originalMulti;
+        } else {
+          delete process.env.TELEGRAM_BOT_TOKENS;
+        }
+      }
+    });
+
+    it("rejects initData when no token in TELEGRAM_BOT_TOKENS matches", async () => {
+      const originalSingle = process.env.TELEGRAM_BOT_TOKEN;
+      const hadMulti = "TELEGRAM_BOT_TOKENS" in process.env;
+      const originalMulti = process.env.TELEGRAM_BOT_TOKENS;
+      process.env.TELEGRAM_BOT_TOKENS = `${TEST_BOT_TOKEN},${SECOND_BOT_TOKEN}`;
+      delete process.env.TELEGRAM_BOT_TOKEN;
+      try {
+        const initData = makeInitData(TEST_USER, { botToken: "999999:UNREGISTERED-TOKEN" });
+        const res = await app.request("/api/test", {
+          headers: { Authorization: `tma ${initData}` },
+        });
+        expect(res.status).toBe(401);
+        const body = (await res.json()) as { error: string };
+        expect(body.error).toBe("Invalid Telegram auth");
+      } finally {
+        if (originalSingle !== undefined) {
+          process.env.TELEGRAM_BOT_TOKEN = originalSingle;
+        }
+        if (hadMulti) {
+          process.env.TELEGRAM_BOT_TOKENS = originalMulti;
+        } else {
+          delete process.env.TELEGRAM_BOT_TOKENS;
+        }
+      }
+    });
+
+    it("falls back to TELEGRAM_BOT_TOKEN when TELEGRAM_BOT_TOKENS is not set", async () => {
+      // Default test env already has TELEGRAM_BOT_TOKEN set — just verify existing behavior
+      const initData = makeInitData(TEST_USER);
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(200);
+    });
+  });
+
   describe("ticket format bypass (issue #225)", () => {
     it("bypasses auth for a valid hex-32 ticket on /api/files/download", async () => {
       const res = await app.request(
