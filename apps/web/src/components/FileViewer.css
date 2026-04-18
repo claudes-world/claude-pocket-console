@@ -13,13 +13,10 @@
  * rest of the app keeps its native scrollbars.
  */
 
-.cpc-file-viewer {
-  /* Firefox */
-  scrollbar-color: var(--color-accent-cyan) var(--color-bg-alt);
-  scrollbar-width: thin;
-}
-
+.cpc-file-viewer,
 .cpc-file-viewer * {
+  /* Firefox — scrollbar-color does not cascade, so both the root element and
+     any scrollable descendants need the declaration explicitly. */
   scrollbar-color: var(--color-accent-cyan) var(--color-bg-alt);
   scrollbar-width: thin;
 }
