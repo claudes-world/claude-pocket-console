@@ -10,11 +10,17 @@ export async function telegramAuth(c: Context, next: Next) {
   const ticket = c.req.query("ticket");
   const filePath = c.req.query("path");
 
+  // Use key presence (not value truthiness) so ?ticket=&path=foo is still
+  // caught — an empty-string value is a valid key that signals intent.
+  const url = new URL(c.req.url);
+  const hasTicketKey = url.searchParams.has("ticket");
+  const hasPathKey = url.searchParams.has("path");
+
   if (
     c.req.method === "GET" &&
     c.req.path === "/api/files/download" &&
-    ticket &&
-    filePath
+    hasTicketKey &&
+    hasPathKey
   ) {
     return c.json({ error: "Ambiguous request: use ticket OR path, not both" }, 400);
   }

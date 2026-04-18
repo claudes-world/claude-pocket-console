@@ -376,5 +376,25 @@ describe("telegramAuth middleware", () => {
       const body = (await res.json()) as { error: string };
       expect(body.error).toMatch(/ambiguous/i);
     });
+
+    it("returns 400 when ?ticket= is empty string but ?path= is present", async () => {
+      // Empty-string ticket value: key is present so the guard must fire.
+      // A truthiness check (ticket && filePath) would miss this case.
+      const res = await app.request(
+        "/api/files/download?ticket=&path=/some/file.txt",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/ambiguous/i);
+    });
+
+    it("returns 400 when ?ticket= is present but ?path= is empty string", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000&path=",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/ambiguous/i);
+    });
   });
 });
