@@ -4,6 +4,7 @@ import { getAuthHeaders } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BottomSheet } from "./BottomSheet";
 import { getFileIcon } from "./file-icons";
+import "./FileViewer.css";
 
 const PASTE_MAX_BYTES = 1024 * 1024;
 
@@ -552,7 +553,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   const shortPath = currentPath.replace("/home/claude/", "~/");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
+    <div className="cpc-file-viewer" style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
       {/* Root directory shortcuts */}
       {fileContent === null && (
         <div
