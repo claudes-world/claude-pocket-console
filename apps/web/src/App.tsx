@@ -9,6 +9,7 @@ import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
+import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 
 type Tab = "terminal" | "files" | "links" | "voice" | "prs";
 const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
@@ -88,6 +89,7 @@ function TabUnderline({
 
 const SORT_KEY = "cpc-file-sort-mode";
 const HIDDEN_KEY = "cpc-file-show-hidden";
+const HOME_SCREEN_PROMPT_KEY = "cpc:home-screen-prompted";
 const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc"];
 
 export function App() {
@@ -121,6 +123,7 @@ export function App() {
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
+  const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -232,6 +235,40 @@ export function App() {
     fetchCpcBranch();
     const interval = setInterval(fetchCpcBranch, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Home screen prompt — show once if not already added (Bot API 8.0+)
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(HOME_SCREEN_PROMPT_KEY)) return;
+    } catch {
+      return; // storage blocked (private browsing, etc.) — skip silently
+    }
+
+    let active = true;
+    const timer = setTimeout(() => {
+      const twa = getTelegramWebApp();
+      if (!twa?.checkHomeScreenStatus) return; // older client — skip silently
+      twa.checkHomeScreenStatus((status) => {
+        if (active && status !== "added") {
+          setShowHomeScreenPrompt(true);
+        }
+      });
+    }, 3000);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const handleHomeScreenDismiss = useCallback(() => {
+    try {
+      localStorage.setItem(HOME_SCREEN_PROMPT_KEY, "1");
+    } catch {
+      // storage blocked — suppress silently, prompt won't re-appear this session
+    }
+    setShowHomeScreenPrompt(false);
   }, []);
 
   // The strip is (TABS.length * 100vw) wide. To show tab N we shift by -(N * 100vw).
@@ -417,6 +454,9 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
+
+      {/* Home screen prompt — rendered once, dismissed to localStorage */}
+      {showHomeScreenPrompt && <HomeScreenPrompt onDismiss={handleHomeScreenDismiss} />}
 
       {/* Dev-only debug overlay — renders nothing on production hostnames */}
       <DebugOverlay />
