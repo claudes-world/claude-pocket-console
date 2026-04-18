@@ -173,12 +173,32 @@ export function validateSession(token: string): { valid: boolean; user?: Telegra
   return { valid: true, user: session.user };
 }
 
+/** Return the list of bot tokens to validate against.
+ * Prefers TELEGRAM_BOT_TOKENS (comma-separated) over TELEGRAM_BOT_TOKEN. */
+export function getBotTokens(): string[] {
+  const multi = process.env.TELEGRAM_BOT_TOKENS;
+  if (multi) {
+    const tokens = multi.split(",").map((t) => t.trim()).filter(Boolean);
+    if (tokens.length > 0) return tokens;
+  }
+  const single = process.env.TELEGRAM_BOT_TOKEN;
+  return single ? [single] : [];
+}
+
 /** Full auth check: validate initData + check allowlist. Returns user if authorized. */
 export function checkAuth(initData: string): { ok: boolean; user?: TelegramUser; error?: string } {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) return { ok: false, error: "Server not configured" };
+  const tokens = getBotTokens();
+  if (tokens.length === 0) return { ok: false, error: "Server not configured" };
 
-  const { valid, user } = validateTelegramInitData(initData, botToken);
+  let lastResult: { valid: boolean; user?: TelegramUser } = { valid: false };
+  for (const token of tokens) {
+    const result = validateTelegramInitData(initData, token);
+    if (result.valid) {
+      lastResult = result;
+      break;
+    }
+  }
+  const { valid, user } = lastResult;
   if (!valid) return { ok: false, error: "Invalid auth" };
 
   const allowed = getAllowedUsers();

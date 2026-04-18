@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { validateTelegramInitData, validateSession, validateJwtToken } from "./auth.js";
+import { validateTelegramInitData, validateSession, validateJwtToken, getBotTokens } from "./auth.js";
 import { isAllowedUser } from "./lib/allowed-users.js";
 
 /**
@@ -36,8 +36,8 @@ export async function telegramAuth(c: Context, next: Next) {
     return;
   }
 
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) {
+  const botTokens = getBotTokens();
+  if (botTokens.length === 0) {
     return c.json({ error: "Server not configured: missing bot token" }, 500);
   }
 
@@ -46,7 +46,17 @@ export async function telegramAuth(c: Context, next: Next) {
   // Primary: Telegram Mini App initData
   if (authHeader?.startsWith("tma ")) {
     const initData = authHeader.slice(4);
-    const { valid, user } = validateTelegramInitData(initData, botToken);
+    // Try each token; accept on first match
+    let valid = false;
+    let user: ReturnType<typeof validateTelegramInitData>["user"];
+    for (const token of botTokens) {
+      const result = validateTelegramInitData(initData, token);
+      if (result.valid) {
+        valid = true;
+        user = result.user;
+        break;
+      }
+    }
 
     if (!valid) {
       return c.json({ error: "Invalid Telegram auth" }, 401);
@@ -83,8 +93,12 @@ export async function telegramAuth(c: Context, next: Next) {
       return;
     }
 
-    // Try JWT token validation (keyboard button auth)
-    const jwtResult = validateJwtToken(token, botToken);
+    // Try JWT token validation (keyboard button auth) — try each configured bot token
+    let jwtResult: ReturnType<typeof validateJwtToken> = { valid: false };
+    for (const bt of botTokens) {
+      const r = validateJwtToken(token, bt);
+      if (r.valid) { jwtResult = r; break; }
+    }
     if (jwtResult.valid) {
       if (!isAllowedUser(jwtResult.user?.id)) {
         return c.json({ error: "User not authorized" }, 403);
@@ -104,7 +118,12 @@ export async function telegramAuth(c: Context, next: Next) {
   // Fallback: JWT token in query param (keyboard button auth)
   const urlToken = c.req.query("token");
   if (urlToken) {
-    const { valid, user } = validateJwtToken(urlToken, botToken);
+    let jwtQResult: ReturnType<typeof validateJwtToken> = { valid: false };
+    for (const bt of botTokens) {
+      const r = validateJwtToken(urlToken, bt);
+      if (r.valid) { jwtQResult = r; break; }
+    }
+    const { valid, user } = jwtQResult;
     if (valid) {
       if (!isAllowedUser(user?.id)) {
         return c.json({ error: "User not authorized" }, 403);
