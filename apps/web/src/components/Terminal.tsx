@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -6,74 +6,55 @@ import "@xterm/xterm/css/xterm.css";
 
 interface TerminalProps {
   onConnectionChange: (connected: boolean) => void;
+  isActive?: boolean;
 }
 
-export function Terminal({ onConnectionChange }: TerminalProps) {
+/** Build the WebSocket URL with auth params. */
+function buildWsUrl(): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const initData = window.Telegram?.WebApp?.initData || "";
+  let authParam = "";
+  if (initData) {
+    authParam = `?auth=${encodeURIComponent(initData)}`;
+  } else {
+    // Fallback: URL token from keyboard button, then saved session token
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#[^&]*&?/, ""));
+    const urlToken = urlParams.get("token") || hashParams.get("token") || "";
+    const savedToken = localStorage.getItem("cpc-session-token") || "";
+    const token = urlToken || savedToken;
+    if (token) authParam = `?token=${encodeURIComponent(token)}`;
+  }
+  return `${protocol}//${window.location.host}/ws/terminal${authParam}`;
+}
+
+export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
-  useEffect(() => {
-    if (!wrapperRef.current || !mountRef.current) return;
+  // Stable ref for onConnectionChange so connectWs doesn't need it as a dep
+  const onConnectionChangeRef = useRef(onConnectionChange);
+  onConnectionChangeRef.current = onConnectionChange;
 
-    const term = new XTerm({
-      cursorBlink: false,
-      cursorStyle: "bar",
-      fontSize: 12,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-      theme: {
-        background: "#1a1b26",
-        foreground: "#c0caf5",
-        cursor: "#c0caf5",
-        selectionBackground: "#33467c",
-        black: "#15161e",
-        red: "#f7768e",
-        green: "#9ece6a",
-        yellow: "#e0af68",
-        blue: "#7aa2f7",
-        magenta: "#bb9af7",
-        cyan: "#7dcfff",
-        white: "#a9b1d6",
-      },
-      disableStdin: true,
-      scrollback: 0,
-    });
+  /** Open a WebSocket and wire it to the current xterm instance.
+   *  Closes any existing connection first to prevent duplicates. */
+  const connectWs = useCallback(() => {
+    const term = termRef.current;
+    const fit = fitRef.current;
+    if (!term || !fit) return;
 
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
-    term.open(mountRef.current);
-
-    termRef.current = term;
-    fitRef.current = fit;
-
-    // Connect to WebSocket
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const initData = window.Telegram?.WebApp?.initData || "";
-    let authParam = "";
-    if (initData) {
-      authParam = `?auth=${encodeURIComponent(initData)}`;
-    } else {
-      // Fallback: URL token from keyboard button, then saved session token
-      const urlParams = new URLSearchParams(window.location.search);
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#[^&]*&?/, ""));
-      const urlToken = urlParams.get("token") || hashParams.get("token") || "";
-      const savedToken = localStorage.getItem("cpc-session-token") || "";
-      const token = urlToken || savedToken;
-      if (token) authParam = `?token=${encodeURIComponent(token)}`;
+    // Tear down previous connection if still open
+    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
+      wsRef.current.close();
     }
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;
-    const ws = new WebSocket(wsUrl);
 
-    fit.fit();
-    const frameId = window.requestAnimationFrame(() => {
-      fit.fit();
-    });
+    const ws = new WebSocket(buildWsUrl());
 
     ws.onopen = () => {
-      onConnectionChange(true);
+      onConnectionChangeRef.current(true);
     };
 
     ws.onmessage = (event) => {
@@ -110,14 +91,58 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     };
 
     ws.onclose = () => {
-      onConnectionChange(false);
+      onConnectionChangeRef.current(false);
     };
 
     ws.onerror = () => {
-      onConnectionChange(false);
+      onConnectionChangeRef.current(false);
     };
 
     wsRef.current = ws;
+  }, []);
+
+  // Initialize xterm and open the first WS connection on mount
+  useEffect(() => {
+    if (!wrapperRef.current || !mountRef.current) return;
+
+    const term = new XTerm({
+      cursorBlink: false,
+      cursorStyle: "bar",
+      fontSize: 12,
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      theme: {
+        background: "#1a1b26",
+        foreground: "#c0caf5",
+        cursor: "#c0caf5",
+        selectionBackground: "#33467c",
+        black: "#15161e",
+        red: "#f7768e",
+        green: "#9ece6a",
+        yellow: "#e0af68",
+        blue: "#7aa2f7",
+        magenta: "#bb9af7",
+        cyan: "#7dcfff",
+        white: "#a9b1d6",
+      },
+      disableStdin: true,
+      scrollback: 0,
+    });
+
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon());
+    term.open(mountRef.current);
+
+    termRef.current = term;
+    fitRef.current = fit;
+
+    fit.fit();
+    const frameId = window.requestAnimationFrame(() => {
+      fit.fit();
+    });
+
+    // Auto-connect on initial render
+    connectWs();
 
     // Handle viewport resize — just refit xterm to container
     const resizeObserver = new ResizeObserver(() => {
@@ -128,10 +153,19 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     return () => {
       window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
-      ws.close();
+      if (wsRef.current) wsRef.current.close();
       term.dispose();
     };
-  }, [onConnectionChange]);
+  }, [connectWs]);
+
+  // Auto-reconnect when the terminal tab becomes active and WS is disconnected
+  useEffect(() => {
+    if (!isActive) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      connectWs();
+    }
+  }, [isActive, connectWs]);
 
   return (
     <div

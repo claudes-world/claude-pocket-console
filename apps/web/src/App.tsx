@@ -386,7 +386,7 @@ export function App() {
           onTransitionEnd={() => setIsAnimating(false)}
         >
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
+            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} isActive={activeTab === "terminal"} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
