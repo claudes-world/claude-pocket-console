@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *   - POST /send-to-chat — sends a file-sharing message to Telegram
  *
  * Strategy:
- *   - Mock `../utils.js` to stub getTelegramCreds, tgRaw, tgSanitize, and
- *     execAsync so no real shell or curl calls run.
+ *   - Mock `../utils.js` to stub getTelegramCreds and execAsync so no real
+ *     shell or curl calls run. tgRaw and tgSanitize are NOT stubbed — they
+ *     are pure functions exercised through their real implementations.
  *   - Drive the telegramRoute Hono sub-app via `app.request()`.
  */
 
@@ -149,7 +150,7 @@ describe("POST /send-to-chat", () => {
     expect(body.ok).toBe(false);
   });
 
-  it("returns 400 when request body is not valid JSON", async () => {
+  it("returns 500 when request body is not valid JSON", async () => {
     // Send a raw invalid-JSON body directly (bypasses postSendToChat helper).
     // c.req.json() throws on invalid JSON; Hono's default error handler returns 500 for unhandled throws.
     const res = await telegramRoute.request("/send-to-chat", {

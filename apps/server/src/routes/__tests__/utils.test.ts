@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *   - sendToTmux — calls execFile with correct args, literal flag, and --
  *   - tgRaw / tgSanitize — Telegram MarkdownV2 escaping
  *   - loadOpenAIEnv / loadAnthropicEnv — secrets file loading
- *   - getTelegramCreds — parses common.sh output
  *   - Exported constants (HOME, CLAUDES_WORLD, SESSION_NAMES_FILE)
+ *
+ * NOT covered here (see rationale in the getTelegramCreds section below):
+ *   - getTelegramCreds — parsing logic not unit-tested; see section comment
  *
  * Strategy:
  *   - Mock `node:child_process` to spy on execFile without running real tmux/bash.
@@ -351,20 +353,17 @@ describe("loadAnthropicEnv", () => {
 // ---------------------------------------------------------------------------
 // getTelegramCreds is intentionally NOT unit-tested here.
 //
-// The function uses `execAsync = promisify(exec)`. The `promisify` call
-// happens at module import time and captures the `exec` reference in a
-// closure that is NOT re-evaluated when we later call
-// `vi.mocked(exec).mockImplementationOnce(...)`. As a result, any try-catch
-// wrapper that swallowed assertion failures would be a false-green test —
-// the assertions would silently not run. Removing the try-catch surfaces
-// a test that is either genuinely broken (wrong) or genuinely passing.
+// getTelegramCreds calls execAsync (the module-level `promisify(exec)` export).
+// To mock that at this level, we would need to mock `node:child_process` exec
+// AND ensure `execAsync` re-evaluates — but `execAsync` is a module-level
+// constant, not looked up fresh per-call. The correct seam is to mock
+// `../utils.js` as a whole (replacing execAsync directly), which is what
+// telegram.test.ts does. Note: telegram.test.ts stubs getTelegramCreds itself,
+// so the "botToken|||chatId" parsing logic in getTelegramCreds is not currently
+// covered by any unit test. It is exercised only through real integration runs.
 //
-// The actual parsing logic ("botToken|||chatId" split) is exercised end-to-end
-// in telegram.test.ts, which mocks `../utils.js` at the module level and
-// drives the real HTTP route. That is the correct seam for this test.
-//
-// If a future refactor decouples the `exec` call from `promisify`
-// (e.g. by accepting an injected executor), add a unit test here then.
+// If a future refactor makes execAsync injectable (e.g. a parameter or DI),
+// add a focused unit test here at that point.
 
 // ---------------------------------------------------------------------------
 // execAsync
