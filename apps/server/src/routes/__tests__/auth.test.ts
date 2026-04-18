@@ -42,6 +42,8 @@ function buildApp(): Hono {
   app.use("/api/*", telegramAuth);
   // Protected test endpoint
   app.get("/api/test", (c) => c.json({ ok: true }));
+  // Download endpoint — ticket bypass tested here
+  app.get("/api/files/download", (c) => c.json({ download: true }));
   return app;
 }
 
@@ -241,6 +243,221 @@ describe("telegramAuth middleware", () => {
       } finally {
         process.env.TELEGRAM_BOT_TOKEN = original;
       }
+    });
+  });
+
+  describe("multi-bot token support (TELEGRAM_BOT_TOKENS)", () => {
+    const SECOND_BOT_TOKEN = "654321:XYZ-TOKEN2ndBot-abcdef";
+
+    it("accepts initData signed by the second token in TELEGRAM_BOT_TOKENS list", async () => {
+      const originalSingle = process.env.TELEGRAM_BOT_TOKEN;
+      const hadMulti = "TELEGRAM_BOT_TOKENS" in process.env;
+      const originalMulti = process.env.TELEGRAM_BOT_TOKENS;
+      process.env.TELEGRAM_BOT_TOKENS = `${TEST_BOT_TOKEN},${SECOND_BOT_TOKEN}`;
+      delete process.env.TELEGRAM_BOT_TOKEN;
+      try {
+        const initData = makeInitData(TEST_USER, { botToken: SECOND_BOT_TOKEN });
+        const res = await app.request("/api/test", {
+          headers: { Authorization: `tma ${initData}` },
+        });
+        expect(res.status).toBe(200);
+      } finally {
+        if (originalSingle !== undefined) {
+          process.env.TELEGRAM_BOT_TOKEN = originalSingle;
+        }
+        if (hadMulti) {
+          process.env.TELEGRAM_BOT_TOKENS = originalMulti;
+        } else {
+          delete process.env.TELEGRAM_BOT_TOKENS;
+        }
+      }
+    });
+
+    it("rejects initData when no token in TELEGRAM_BOT_TOKENS matches", async () => {
+      const originalSingle = process.env.TELEGRAM_BOT_TOKEN;
+      const hadMulti = "TELEGRAM_BOT_TOKENS" in process.env;
+      const originalMulti = process.env.TELEGRAM_BOT_TOKENS;
+      process.env.TELEGRAM_BOT_TOKENS = `${TEST_BOT_TOKEN},${SECOND_BOT_TOKEN}`;
+      delete process.env.TELEGRAM_BOT_TOKEN;
+      try {
+        const initData = makeInitData(TEST_USER, { botToken: "999999:UNREGISTERED-TOKEN" });
+        const res = await app.request("/api/test", {
+          headers: { Authorization: `tma ${initData}` },
+        });
+        expect(res.status).toBe(401);
+        const body = (await res.json()) as { error: string };
+        expect(body.error).toBe("Invalid Telegram auth");
+      } finally {
+        if (originalSingle !== undefined) {
+          process.env.TELEGRAM_BOT_TOKEN = originalSingle;
+        }
+        if (hadMulti) {
+          process.env.TELEGRAM_BOT_TOKENS = originalMulti;
+        } else {
+          delete process.env.TELEGRAM_BOT_TOKENS;
+        }
+      }
+    });
+
+    it("falls back to TELEGRAM_BOT_TOKEN when TELEGRAM_BOT_TOKENS is not set", async () => {
+      // Default test env already has TELEGRAM_BOT_TOKEN set — just verify existing behavior
+      const initData = makeInitData(TEST_USER);
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("ticket format bypass (issue #225)", () => {
+    it("bypasses auth for a valid hex-32 ticket on /api/files/download", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000",
+      );
+      // Middleware lets it through — route responds 200
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects non-hex-32 ticket values (too short)", async () => {
+      const res = await app.request("/api/files/download?ticket=abc123");
+      // Middleware does NOT bypass — requires auth → 401
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-hex-32 ticket values (uppercase hex)", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=DEADBEEF00000000DEADBEEF00000000",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-hex-32 ticket values (contains non-hex chars)", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=zzzzzzzz00000000zzzzzzzz00000000",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects non-hex-32 ticket values (too long)", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000extra",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects empty ticket parameter", async () => {
+      const res = await app.request("/api/files/download?ticket=");
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("initData auth_date expiry (issue #227)", () => {
+    it("rejects initData with auth_date older than 24 hours", async () => {
+      const staleAuthDate = String(Math.floor(Date.now() / 1000) - 86401);
+      const initData = makeInitData(TEST_USER, {
+        extraParams: { auth_date: staleAuthDate },
+      });
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Invalid Telegram auth");
+    });
+
+    it("accepts initData with auth_date within 24 hours", async () => {
+      // makeInitData already sets auth_date to now — just verify it works
+      const initData = makeInitData(TEST_USER);
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("rejects initData with auth_date=notanumber (NaN bypass)", async () => {
+      const initData = makeInitData(TEST_USER, {
+        extraParams: { auth_date: "notanumber" },
+      });
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Invalid Telegram auth");
+    });
+
+    it("rejects initData with auth_date absent (missing field)", async () => {
+      // Build initData manually without auth_date
+      const token = TEST_BOT_TOKEN;
+      const params = new URLSearchParams();
+      params.set("user", JSON.stringify(TEST_USER));
+      // auth_date intentionally omitted
+      const dataCheckString = Array.from(params.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, val]) => `${key}=${val}`)
+        .join("\n");
+      const { createHmac: hmac } = await import("node:crypto");
+      const secretKey = hmac("sha256", "WebAppData").update(token).digest();
+      const hash = hmac("sha256", secretKey).update(dataCheckString).digest("hex");
+      params.set("hash", hash);
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${params.toString()}` },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects initData with a far-future auth_date (year 2099)", async () => {
+      // 2099-01-01T00:00:00Z as unix timestamp
+      const futureAuthDate = String(4070908800);
+      const initData = makeInitData(TEST_USER, {
+        extraParams: { auth_date: futureAuthDate },
+      });
+      const res = await app.request("/api/test", {
+        headers: { Authorization: `tma ${initData}` },
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("ticket newline bypass (security hardening)", () => {
+    it("rejects a ticket with a trailing newline (URL-encoded %0A)", async () => {
+      // ticket is 32 valid hex chars + a newline — middleware must reject it
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000%0A",
+      );
+      // Middleware does NOT bypass — requires auth → 401
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("ambiguous ticket+path requests", () => {
+    it("returns 400 when both ?ticket= and ?path= are present", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000&path=/some/file.txt",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/ambiguous/i);
+    });
+
+    it("returns 400 when ?ticket= is empty string but ?path= is present", async () => {
+      // Empty-string ticket value: key is present so the guard must fire.
+      // A truthiness check (ticket && filePath) would miss this case.
+      const res = await app.request(
+        "/api/files/download?ticket=&path=/some/file.txt",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/ambiguous/i);
+    });
+
+    it("returns 400 when ?ticket= is present but ?path= is empty string", async () => {
+      const res = await app.request(
+        "/api/files/download?ticket=deadbeef00000000deadbeef00000000&path=",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/ambiguous/i);
     });
   });
 });

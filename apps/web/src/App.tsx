@@ -7,14 +7,13 @@ import { Links } from "./components/Links";
 import { ActionBar } from "./components/action-bar";
 import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
+import { haptic } from "./lib/haptic";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
+import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 
 type Tab = "terminal" | "files" | "links" | "voice" | "prs";
-const BASE_TABS: Tab[] = ["terminal", "files", "links", "voice"];
-const TABS: Tab[] = import.meta.env.VITE_FEATURE_PR_TICKER
-  ? [...BASE_TABS, "prs"]
-  : BASE_TABS;
+const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
 const SWIPE_THRESHOLD = 120;
 
 // Moving blue underline indicator that tracks the active tab and follows
@@ -91,6 +90,7 @@ function TabUnderline({
 
 const SORT_KEY = "cpc-file-sort-mode";
 const HIDDEN_KEY = "cpc-file-show-hidden";
+const HOME_SCREEN_PROMPT_KEY = "cpc:home-screen-prompted";
 const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc"];
 
 export function App() {
@@ -124,6 +124,7 @@ export function App() {
   const [viewingFile, setViewingFile] = useState<{ path: string; name: string } | null>(null);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
+  const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -181,8 +182,10 @@ export function App() {
     if (isDragging.current && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
       const currentIdx = TABS.indexOf(activeTab);
       if (dx < 0 && currentIdx < TABS.length - 1) {
+        haptic.selection();
         setActiveTab(TABS[currentIdx + 1]);
       } else if (dx > 0 && currentIdx > 0) {
+        haptic.selection();
         setActiveTab(TABS[currentIdx - 1]);
       }
     }
@@ -235,6 +238,40 @@ export function App() {
     fetchCpcBranch();
     const interval = setInterval(fetchCpcBranch, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Home screen prompt — show once if not already added (Bot API 8.0+)
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(HOME_SCREEN_PROMPT_KEY)) return;
+    } catch {
+      return; // storage blocked (private browsing, etc.) — skip silently
+    }
+
+    let active = true;
+    const timer = setTimeout(() => {
+      const twa = getTelegramWebApp();
+      if (!twa?.checkHomeScreenStatus) return; // older client — skip silently
+      twa.checkHomeScreenStatus((status) => {
+        if (active && status !== "added") {
+          setShowHomeScreenPrompt(true);
+        }
+      });
+    }, 3000);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const handleHomeScreenDismiss = useCallback(() => {
+    try {
+      localStorage.setItem(HOME_SCREEN_PROMPT_KEY, "1");
+    } catch {
+      // storage blocked — suppress silently, prompt won't re-appear this session
+    }
+    setShowHomeScreenPrompt(false);
   }, []);
 
   // The strip is (TABS.length * 100vw) wide. To show tab N we shift by -(N * 100vw).
@@ -306,7 +343,7 @@ export function App() {
             <button
               ref={(el) => { tabRefs.current[i] = el; }}
               key={tab}
-              onClick={() => { setIsAnimating(true); setActiveTab(tab); }}
+              onClick={() => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }}
               style={{
                 padding: "8px 14px",
                 fontSize: 13,
@@ -389,7 +426,7 @@ export function App() {
           onTransitionEnd={() => setIsAnimating(false)}
         >
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} />
+            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} isActive={activeTab === "terminal"} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
@@ -400,11 +437,9 @@ export function App() {
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <VoiceRecorder />
           </div>
-          {TABS.includes("prs") && (
-            <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-              <PrTicker />
-            </div>
-          )}
+          <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
+            <PrTicker />
+          </div>
         </div>
       </div>
 
@@ -422,6 +457,9 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
+
+      {/* Home screen prompt — rendered once, dismissed to localStorage */}
+      {showHomeScreenPrompt && <HomeScreenPrompt onDismiss={handleHomeScreenDismiss} />}
 
       {/* Dev-only debug overlay — renders nothing on production hostnames */}
       <DebugOverlay />

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -6,15 +6,109 @@ import "@xterm/xterm/css/xterm.css";
 
 interface TerminalProps {
   onConnectionChange: (connected: boolean) => void;
+  isActive?: boolean;
 }
 
-export function Terminal({ onConnectionChange }: TerminalProps) {
+/** Build the WebSocket URL with auth params. */
+function buildWsUrl(): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const initData = window.Telegram?.WebApp?.initData || "";
+  let authParam = "";
+  if (initData) {
+    authParam = `?auth=${encodeURIComponent(initData)}`;
+  } else {
+    // Fallback: URL token from keyboard button, then saved session token
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#[^&]*&?/, ""));
+    const urlToken = urlParams.get("token") || hashParams.get("token") || "";
+    const savedToken = localStorage.getItem("cpc-session-token") || "";
+    const token = urlToken || savedToken;
+    if (token) authParam = `?token=${encodeURIComponent(token)}`;
+  }
+  return `${protocol}//${window.location.host}/ws/terminal${authParam}`;
+}
+
+export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
+  // Stable ref for onConnectionChange so connectWs doesn't need it as a dep
+  const onConnectionChangeRef = useRef(onConnectionChange);
+  onConnectionChangeRef.current = onConnectionChange;
+
+  /** Open a WebSocket and wire it to the current xterm instance.
+   *  Closes any existing connection first to prevent duplicates. */
+  const connectWs = useCallback(() => {
+    const term = termRef.current;
+    const fit = fitRef.current;
+    if (!term || !fit) return;
+
+    // Tear down previous connection if still open
+    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
+      wsRef.current.close();
+    }
+
+    const ws = new WebSocket(buildWsUrl());
+
+    // Guard all handlers against stale sockets: if connectWs is called again
+    // before the previous socket finishes closing, the old socket's events
+    // must not overwrite state belonging to the new connection.
+    ws.onopen = () => {
+      if (wsRef.current !== ws) return;
+      onConnectionChangeRef.current(true);
+    };
+
+    ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return;
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "dimensions") {
+          // Use the SMALLER of tmux pane width and what fits in the viewport.
+          // This prevents text being cut off on narrow screens while still
+          // aligning correctly when the viewport is wider than the pane.
+          console.log(`[tmux pane] ${msg.cols}x${msg.rows}`);
+          if (msg.cols > 0 && msg.rows > 0) {
+            fit.fit(); // Calculate what fits in the viewport
+            const viewCols = term.cols;
+            const viewRows = term.rows;
+            const cols = Math.min(msg.cols, viewCols);
+            const rows = Math.min(msg.rows, viewRows);
+            if (cols !== viewCols || rows !== viewRows) {
+              term.resize(cols, rows);
+            }
+          }
+        } else if (msg.type === "pane") {
+          // Clear screen and write from top
+          term.write("\x1b[2J\x1b[H");
+          // Write each line, trimming trailing whitespace
+          const lines = msg.content.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            term.write(lines[i].trimEnd());
+            if (i < lines.length - 1) term.write("\r\n");
+          }
+        }
+      } catch {
+        term.write(event.data);
+      }
+    };
+
+    ws.onclose = () => {
+      if (wsRef.current !== ws) return;
+      onConnectionChangeRef.current(false);
+    };
+
+    ws.onerror = () => {
+      if (wsRef.current !== ws) return;
+      onConnectionChangeRef.current(false);
+    };
+
+    wsRef.current = ws;
+  }, []);
+
+  // Initialize xterm and open the first WS connection on mount
   useEffect(() => {
     if (!wrapperRef.current || !mountRef.current) return;
 
@@ -49,75 +143,13 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     termRef.current = term;
     fitRef.current = fit;
 
-    // Connect to WebSocket
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const initData = window.Telegram?.WebApp?.initData || "";
-    let authParam = "";
-    if (initData) {
-      authParam = `?auth=${encodeURIComponent(initData)}`;
-    } else {
-      // Fallback: URL token from keyboard button, then saved session token
-      const urlParams = new URLSearchParams(window.location.search);
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#[^&]*&?/, ""));
-      const urlToken = urlParams.get("token") || hashParams.get("token") || "";
-      const savedToken = localStorage.getItem("cpc-session-token") || "";
-      const token = urlToken || savedToken;
-      if (token) authParam = `?token=${encodeURIComponent(token)}`;
-    }
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal${authParam}`;
-    const ws = new WebSocket(wsUrl);
-
     fit.fit();
     const frameId = window.requestAnimationFrame(() => {
       fit.fit();
     });
 
-    ws.onopen = () => {
-      onConnectionChange(true);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "dimensions") {
-          // Use the SMALLER of tmux pane width and what fits in the viewport.
-          // This prevents text being cut off on narrow screens while still
-          // aligning correctly when the viewport is wider than the pane.
-          console.log(`[tmux pane] ${msg.cols}x${msg.rows}`);
-          if (msg.cols > 0 && msg.rows > 0) {
-            fit.fit(); // Calculate what fits in the viewport
-            const viewCols = term.cols;
-            const viewRows = term.rows;
-            const cols = Math.min(msg.cols, viewCols);
-            const rows = Math.min(msg.rows, viewRows);
-            if (cols !== viewCols || rows !== viewRows) {
-              term.resize(cols, rows);
-            }
-          }
-        } else if (msg.type === "pane") {
-          // Clear screen and write from top
-          term.write("\x1b[2J\x1b[H");
-          // Write each line, trimming trailing whitespace
-          const lines = msg.content.split("\n");
-          for (let i = 0; i < lines.length; i++) {
-            term.write(lines[i].trimEnd());
-            if (i < lines.length - 1) term.write("\r\n");
-          }
-        }
-      } catch {
-        term.write(event.data);
-      }
-    };
-
-    ws.onclose = () => {
-      onConnectionChange(false);
-    };
-
-    ws.onerror = () => {
-      onConnectionChange(false);
-    };
-
-    wsRef.current = ws;
+    // Auto-connect on initial render
+    connectWs();
 
     // Handle viewport resize — just refit xterm to container
     const resizeObserver = new ResizeObserver(() => {
@@ -128,10 +160,19 @@ export function Terminal({ onConnectionChange }: TerminalProps) {
     return () => {
       window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
-      ws.close();
+      if (wsRef.current) wsRef.current.close();
       term.dispose();
     };
-  }, [onConnectionChange]);
+  }, [connectWs]);
+
+  // Auto-reconnect when the terminal tab becomes active and WS is disconnected
+  useEffect(() => {
+    if (!isActive) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      connectWs();
+    }
+  }, [isActive, connectWs]);
 
   return (
     <div

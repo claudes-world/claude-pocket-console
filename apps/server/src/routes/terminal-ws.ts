@@ -1,6 +1,6 @@
 import { spawn, execSync } from "node:child_process";
 import type { WSContext } from "hono/ws";
-import { checkAuth, validateSession, validateJwtToken } from "../auth.js";
+import { checkAuth, validateSession, validateJwtTokenWithTokens, getBotTokens } from "../auth.js";
 import { isAllowedUser } from "../lib/allowed-users.js";
 // Import the validated TMUX_SESSION from routes/utils so we inherit the
 // `/^[A-Za-z0-9_.-]+$/` character-set check that runs once at module load.
@@ -61,15 +61,12 @@ export function terminalWsRoute(c: any) {
       }
 
       // Fallback: JWT token validation (keyboard button auth)
+      // Iterates all configured bot tokens (TELEGRAM_BOT_TOKENS or TELEGRAM_BOT_TOKEN)
+      // so multi-bot deployments work over WebSocket the same as over HTTP.
       if (!authResult.ok) {
-        const botToken = process.env.TELEGRAM_BOT_TOKEN;
-        if (botToken) {
-          const { valid: jwtValid, user: jwtUser } = validateJwtToken(token, botToken);
-          if (jwtValid && jwtUser) {
-            if (isAllowedUser(jwtUser.id)) {
-              authResult = { ok: true, user: jwtUser };
-            }
-          }
+        const { valid: jwtValid, user: jwtUser } = validateJwtTokenWithTokens(token, getBotTokens());
+        if (jwtValid && jwtUser && isAllowedUser(jwtUser.id)) {
+          authResult = { ok: true, user: jwtUser };
         }
       }
     }

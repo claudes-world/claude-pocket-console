@@ -2,6 +2,46 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] — 2026-04-18
+
+### Highlights
+
+- Multi-bot token auth — any authorized bot can open the CPC mini app
+- 98 new tests across server routes + 3 React components
+- Terminal auto-reconnect on tab switch and initial open
+- Security hardening for auth + file sharing endpoints
+
+### Security
+
+- Ticket format validation + initData expiry check (closes #225, #227)
+- Auth date clock-skew tolerance + DRY validation helpers
+- Ambiguous ticket+path request guard with empty-key coverage
+- FilePath validation + curl→fetch migration in send-to-chat (closes #226)
+
+### Features
+
+- Multi-bot token support — TELEGRAM_BOT_TOKENS env var for multi-agent mini app access (closes #252)
+- Terminal auto-reconnect WebSocket on tab switch and initial open (closes #247)
+- CloudStorage-backed unified preferences system (#231)
+- Offline PR cache with stale-while-revalidate (closes #223)
+- Add-to-home-screen prompt on first launch (closes #222)
+- Haptic feedback on key UI events (closes #224)
+- Brighter scrollbar against dark theme (#237)
+- PRs tab added to navigation array (#245)
+
+### Tests
+
+- Server route tests — prs, telegram, and utils (47 tests) (#220)
+- ActionBar component tests (47 tests) (#228)
+- MarkdownViewer component tests (29 tests) (#234)
+- Terminal component tests (22 tests) (#235)
+
+### Fixes
+
+- Redundant ambiguous-request check removed from files.ts (closes #250)
+- Manual setTimeout race condition in ActionBar status messages (closes #250)
+- ActionBar test compatibility with haptic feedback integration
+
 ## [1.11.1] — 2026-04-12
 
 ### Highlights

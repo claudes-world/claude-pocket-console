@@ -294,6 +294,8 @@ app.post("/download-ticket", async (c) => {
 
 app.get("/download", async (c) => {
   const ticket = c.req.query("ticket");
+  const filePath = c.req.query("path");
+
   if (ticket) {
     // Pruning happens in the POST handler so the map doesn't grow unbounded;
     // the per-request expiry check below handles correctness on GET.
@@ -318,7 +320,6 @@ app.get("/download", async (c) => {
     return createDownloadResponse(file);
   }
 
-  const filePath = c.req.query("path");
   if (!filePath) {
     return c.json({ error: "path parameter required" }, 400);
   }

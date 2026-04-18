@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthHeaders } from "../lib/telegram";
+import { haptic } from "../lib/haptic";
 
 // --- Types matching server PrRow ---
 
@@ -515,7 +516,7 @@ function PrRowItem({
 
   return (
     <div
-      onClick={() => onTap(pr.url)}
+      onClick={() => { haptic.impact("light"); onTap(pr.url); }}
       style={{
         padding: "10px 12px 10px 36px",
         borderBottom: `1px solid ${COLORS.border}`,
