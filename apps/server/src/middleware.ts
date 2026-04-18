@@ -7,10 +7,30 @@ import { isAllowedUser } from "./lib/allowed-users.js";
  * Expects initData in the Authorization header as: tma <initData>
  */
 export async function telegramAuth(c: Context, next: Next) {
+  const ticket = c.req.query("ticket");
+  const filePath = c.req.query("path");
+
+  // Use key presence (not value truthiness) so ?ticket=&path=foo is still
+  // caught — an empty-string value is a valid key that signals intent.
+  const url = new URL(c.req.url);
+  const hasTicketKey = url.searchParams.has("ticket");
+  const hasPathKey = url.searchParams.has("path");
+
   if (
     c.req.method === "GET" &&
     c.req.path === "/api/files/download" &&
-    c.req.query("ticket")
+    hasTicketKey &&
+    hasPathKey
+  ) {
+    return c.json({ error: "Ambiguous request: use ticket OR path, not both" }, 400);
+  }
+
+  if (
+    c.req.method === "GET" &&
+    c.req.path === "/api/files/download" &&
+    ticket &&
+    ticket.length === 32 &&
+    /^[0-9a-f]{32}$/.test(ticket)
   ) {
     await next();
     return;
