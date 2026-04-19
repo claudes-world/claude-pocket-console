@@ -26,11 +26,16 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
     if (hasMoved) wasDragging.current = true;
   }, []);
 
+  const handleDragStart = useCallback(() => {
+    wasDragging.current = false;
+  }, []);
+
   const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel, animateTo } = useDrawerGesture({
     drawerRef,
     overlayRef,
     onSnapChange: handleSnapChange,
     onDragEnd: handleDragEnd,
+    onDragStart: handleDragStart,
   });
 
   // Expose animateTo imperatively so App.tsx can call it for onMore
@@ -63,14 +68,21 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
         onClick={handleOverlayTap}
       />
 
-      {/* Drawer shell — 90vh tall, translateY to peek position initially */}
+      {/* Drawer shell — 90vh tall; useLayoutEffect writes initial px transform before paint */}
       <div
         ref={drawerRef}
         className="bottom-drawer"
-        style={{ transform: `translateY(calc(90vh - var(--dock-height)))` }}
       >
-        {/* Tab dock — FIRST in DOM so it's visible in peek (top of shifted-down element) */}
-        <div className="drawer-tab-dock">
+        {/* Tab dock — FIRST in DOM so it's visible in peek (top of shifted-down element).
+            Gesture handlers attached here provide drag surface in peek state.
+            onTouchEnd only calls stopPropagation when hasMoved=true so pill taps still fire. */}
+        <div
+          className="drawer-tab-dock"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchCancel}
+        >
           {children}
         </div>
 

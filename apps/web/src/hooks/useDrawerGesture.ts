@@ -13,6 +13,7 @@ interface UseDrawerGestureConfig {
   overlayRef: React.RefObject<HTMLDivElement | null>;
   onSnapChange: (snap: SnapPoint) => void;
   onDragEnd?: (hasMoved: boolean) => void;
+  onDragStart?: () => void;
 }
 
 // Snap positions as translateY values (drawer is 90vh tall):
@@ -20,7 +21,7 @@ interface UseDrawerGestureConfig {
 // half: translateY(50vh)   → shows 40vh
 // full: translateY(0)      → shows 90vh
 
-export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEnd }: UseDrawerGestureConfig) {
+export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEnd, onDragStart }: UseDrawerGestureConfig) {
   const snapRef = useRef<SnapPoint>("peek");
   const startY = useRef(0);
   const startTranslateY = useRef(0);
@@ -84,6 +85,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     e.stopPropagation();
+    onDragStart?.();
     // Disable Telegram vertical swipe dismissal as soon as a drag begins
     const tg = (window as any).Telegram?.WebApp;
     tg?.disableVerticalSwipes?.();
@@ -98,7 +100,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
     if (el) {
       el.style.transition = "none";
     }
-  }, [drawerRef, getCurrentTranslateY]);
+  }, [drawerRef, getCurrentTranslateY, onDragStart]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
     e.stopPropagation();
@@ -135,7 +137,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
   }, [drawerRef]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    e.stopPropagation();
+    if (hasMoved.current) e.stopPropagation(); // allow taps to reach pill buttons
     const vh = window.innerHeight;
     const drawerH = vh * 0.9;
     const currentY = getCurrentTranslateY();
@@ -173,7 +175,10 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
 
   const onTouchCancel = useCallback(() => {
     const tg = (window as any).Telegram?.WebApp;
-    tg?.enableVerticalSwipes?.();
+    // Only re-enable vertical swipes if we're at peek — don't re-enable while expanded overlay is showing
+    if (snapRef.current === "peek") {
+      tg?.enableVerticalSwipes?.();
+    }
     // Snap back to current snap point instantly — no transition
     const el = drawerRef.current;
     if (el) {
