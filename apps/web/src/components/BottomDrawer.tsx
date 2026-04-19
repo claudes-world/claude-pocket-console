@@ -2,17 +2,24 @@ import { createPortal } from "react-dom";
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
 import { useDrawerGesture } from "../hooks/useDrawerGesture";
 import type { SnapPoint } from "../hooks/useDrawerGesture";
+import { AppSwitcher } from "./AppSwitcher";
+import { MessageTicker } from "./MessageTicker";
 import "./BottomDrawer.css";
 
+type Tab = "terminal" | "files" | "links" | "voice" | "prs";
+
 interface BottomDrawerProps {
-  children: React.ReactNode; // TabDock (always visible at bottom)
-  drawerContent?: React.ReactNode; // ActionChips (only shows in half/full)
+  children: React.ReactNode;       // TabDock (always visible at bottom)
+  drawerContent?: React.ReactNode; // ActionChips (half/full)
+  activeTab: Tab;                  // for AppSwitcher
+  onTabChange: (tab: Tab) => void; // for AppSwitcher tile tap
+  connected?: boolean;             // for MessageTicker
   onSnapChange?: (snap: SnapPoint) => void;
   // Imperative handle: parent passes a ref, we assign animateTo into it
   snapToRef?: React.MutableRefObject<((snap: SnapPoint) => void) | null>;
 }
 
-export function BottomDrawer({ children, drawerContent, onSnapChange, snapToRef }: BottomDrawerProps) {
+export function BottomDrawer({ children, drawerContent, activeTab, onTabChange, connected, onSnapChange, snapToRef }: BottomDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [snap, setSnap] = useState<SnapPoint>("peek");
@@ -91,6 +98,9 @@ export function BottomDrawer({ children, drawerContent, onSnapChange, snapToRef 
           {children}
         </div>
 
+        {/* Message ticker — between tab dock and drawer content */}
+        <MessageTicker connected={connected} />
+
         {/* Drag handle — only visible when half/full */}
         <div
           className={`drawer-handle${snap !== "peek" ? " visible" : ""}`}
@@ -102,9 +112,12 @@ export function BottomDrawer({ children, drawerContent, onSnapChange, snapToRef 
           <div className="drawer-handle-bar" />
         </div>
 
-        {/* Expandable content area — ActionChips always mounted, hidden at peek via CSS to preserve state */}
+        {/* Expandable content area — full: AppSwitcher, half: ActionChips, peek: hidden */}
         <div className="drawer-content" style={snap === "peek" ? { display: "none" } : undefined}>
-          {drawerContent}
+          {snap === "full"
+            ? <AppSwitcher activeTab={activeTab} onSelect={(tab) => { onTabChange(tab); animateTo("peek"); }} />
+            : drawerContent
+          }
         </div>
       </div>
     </>,
