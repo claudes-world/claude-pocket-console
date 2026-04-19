@@ -112,8 +112,9 @@ export function BottomDrawer({ children, drawerContent, activeTab, onTabChange, 
           <div className="drawer-handle-bar" />
         </div>
 
-        {/* Expandable content area — full: AppSwitcher, half: ActionChips, peek: hidden */}
-        <div className="drawer-content" style={snap === "peek" ? { display: "none" } : undefined}>
+        {/* AppSwitcher at full, ActionChips (drawerContent) at half — ActionChips remounts on full→half transition;
+            useActionBarModals state (debounce timers, audio refs) is discarded when AppSwitcher is open */}
+        <div className="drawer-content">
           {snap === "full"
             ? <AppSwitcher activeTab={activeTab} onSelect={(tab) => { onTabChange(tab); animateTo("peek"); }} />
             : drawerContent

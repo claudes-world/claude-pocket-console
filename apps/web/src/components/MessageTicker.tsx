@@ -23,6 +23,7 @@ export function MessageTicker({ connected, extraMessages }: MessageTickerProps) 
   const [currentIdx, setCurrentIdx] = useState(0);
 
   useEffect(() => {
+    setCurrentIdx(0);
     const timer = setInterval(() => {
       setCurrentIdx((prev) => (prev + 1) % messages.length);
     }, 4000);

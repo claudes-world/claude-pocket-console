@@ -31,7 +31,7 @@ export function ActionChips(props: ActionBarProps) {
       {modalNode}
       <div
         onTouchStart={(e) => e.stopPropagation()}
-        style={{ padding: "8px 12px", display: "flex", gap: 8, flexWrap: "wrap", overflowX: "auto" }}
+        style={{ padding: "8px 12px", display: "flex", gap: 8, flexWrap: "wrap" }}
       >
 
         {/* TODO — always visible */}
@@ -83,12 +83,12 @@ export function ActionChips(props: ActionBarProps) {
         {/* Files chips — browsing */}
         {activeTab === "files" && !viewingFile && <>
           <button
-            onClick={() => { openFileSearch(); }}
+            onClick={() => { haptic.impact("light"); openFileSearch(); }}
             style={{ ...chipStyle, background: "#2d3a5a", color: "var(--color-accent-blue)", border: "1px solid #3d4a6a" }}
           >
             Search
           </button>
-          <button onClick={() => openFileOptions()} style={chipStyle}>
+          <button onClick={() => { haptic.impact("light"); openFileOptions(); }} style={chipStyle}>
             Options
           </button>
         </>}

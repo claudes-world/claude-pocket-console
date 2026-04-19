@@ -207,11 +207,17 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
       el.style.transition = "none";
       el.style.transform = `translateY(${y}px)`;
     }
-    // Reset overlay if cancelled while at peek — otherwise it freezes at partial opacity
-    if (snapRef.current === "peek" && overlayRef.current) {
-      overlayRef.current.style.transition = "none";
-      overlayRef.current.style.background = "rgba(0,0,0,0)";
-      overlayRef.current.style.pointerEvents = "none";
+    // Restore overlay for current snap — onTouchMove may have partially updated it during the cancelled drag
+    const overlay = overlayRef.current;
+    if (overlay) {
+      overlay.style.transition = "none";
+      if (snapRef.current === "peek") {
+        overlay.style.background = "rgba(0,0,0,0)";
+        overlay.style.pointerEvents = "none";
+      } else {
+        overlay.style.background = "rgba(0,0,0,0.4)";
+        overlay.style.pointerEvents = "auto";
+      }
     }
   }, [drawerRef, overlayRef, getTranslateYForSnap]);
 
