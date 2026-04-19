@@ -272,7 +272,7 @@ export function App() {
 
       {/* Content area — swipeable viewport */}
       <div
-        style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative", paddingBottom: 48 }}
+        style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative", paddingBottom: "var(--dock-height)" }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -324,7 +324,7 @@ export function App() {
 
       {/* Bottom tab dock — rendered via portal to escape CSS transform containment */}
       <BottomDrawer>
-        <TabDock activeTab={activeTab} onTabChange={setActiveTab} connected={connected} />
+        <TabDock activeTab={activeTab} onTabChange={(tab) => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }} connected={connected} />
       </BottomDrawer>
 
       {/* Home screen prompt — rendered once, dismissed to localStorage */}

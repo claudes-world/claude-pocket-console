@@ -1,14 +1,21 @@
+:root {
+  --dock-height: calc(48px + env(safe-area-inset-bottom, 0px));
+}
+
 .bottom-drawer {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 48px;
+  height: var(--dock-height);
   background: var(--color-bg);
   border-top: 1px solid var(--color-border);
   z-index: 20;
   display: flex;
-  align-items: center;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  align-items: flex-start;
   will-change: transform;
+}
+
+.tab-dock-pills::-webkit-scrollbar {
+  display: none;
 }

@@ -27,7 +27,7 @@ export function TabDock({ activeTab, onTabChange, connected }: TabDockProps) {
       height: 48,
     }}>
       {/* Tab pills */}
-      <div style={{ display: "flex", gap: 2, flex: 1, overflowX: "auto", scrollbarWidth: "none" }}>
+      <div className="tab-dock-pills" style={{ display: "flex", gap: 2, flex: 1, overflowX: "auto", scrollbarWidth: "none" }}>
         {TABS.map((tab) => (
           <button
             key={tab}
