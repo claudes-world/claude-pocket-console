@@ -1,0 +1,14 @@
+.bottom-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 48px;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  will-change: transform;
+}

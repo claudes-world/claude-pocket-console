@@ -5,6 +5,8 @@ import { FileViewer } from "./components/FileViewer";
 import type { SortMode } from "./components/FileViewer";
 import { Links } from "./components/Links";
 import { ActionBar } from "./components/action-bar";
+import { BottomDrawer } from "./components/BottomDrawer";
+import { TabDock } from "./components/TabDock";
 import { VoiceRecorder } from "./components/VoiceRecorder";
 import { getTelegramWebApp, getAuthHeaders, hasAuth, setSessionToken } from "./lib/telegram";
 import { haptic } from "./lib/haptic";
@@ -16,77 +18,6 @@ type Tab = "terminal" | "files" | "links" | "voice" | "prs";
 const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
 const SWIPE_THRESHOLD = 120;
 
-// Moving blue underline indicator that tracks the active tab and follows
-// swipe progress in real time. Replaces the per-button static borderBottom.
-// See plan: ~/claudes-world/tmp/20260408-issue-102-tab-underline-plan.md
-function TabUnderline({
-  tabRefs,
-  activeIdx,
-  dragOffset,
-  isAnimating,
-}: {
-  tabRefs: React.RefObject<(HTMLButtonElement | null)[]>;
-  activeIdx: number;
-  dragOffset: number;
-  isAnimating: boolean;
-}) {
-  const [geom, setGeom] = useState<{ left: number; width: number }[]>([]);
-
-  // Measure tab button positions after mount and on window resize.
-  // Refs are populated during commit, so the first measure() runs with
-  // valid DOM nodes.
-  useEffect(() => {
-    const measure = () => {
-      const buttons = tabRefs.current ?? [];
-      const rects = buttons.map((b) => {
-        if (!b) return { left: 0, width: 0 };
-        return { left: b.offsetLeft, width: b.offsetWidth };
-      });
-      setGeom(rects);
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [tabRefs]);
-
-  if (geom.length === 0 || !geom[activeIdx]) return null;
-
-  // dragOffset is raw finger-delta pixels: negative dx = finger moved left
-  // = content strip advances to the NEXT tab = indicator should move right.
-  // One full-viewport swipe == one tab of progress, so normalize by viewport.
-  const viewportWidth = window.innerWidth || 375;
-  const dragFraction = -dragOffset / viewportWidth;
-  // Clamp to neighbor range so rubber-banded over-swipe at edges doesn't
-  // slingshot the indicator off the tab bar.
-  const clampedFraction = Math.max(-1, Math.min(1, dragFraction));
-
-  const targetFloat = activeIdx + clampedFraction;
-  const leftIdx = Math.max(0, Math.min(TABS.length - 1, Math.floor(targetFloat)));
-  const rightIdx = Math.max(0, Math.min(TABS.length - 1, Math.ceil(targetFloat)));
-  const t = targetFloat - leftIdx; // 0..1 interpolation weight
-
-  const leftGeom = geom[leftIdx] ?? geom[activeIdx];
-  const rightGeom = geom[rightIdx] ?? geom[activeIdx];
-
-  const interpLeft = leftGeom.left + (rightGeom.left - leftGeom.left) * t;
-  const interpWidth = leftGeom.width + (rightGeom.width - leftGeom.width) * t;
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        width: interpWidth,
-        height: 2,
-        background: "var(--color-accent-blue)",
-        transform: `translateX(${interpLeft}px)`,
-        transition: isAnimating ? "transform 300ms ease-out, width 300ms ease-out" : "none",
-        pointerEvents: "none",
-      }}
-    />
-  );
-}
 
 const SORT_KEY = "cpc-file-sort-mode";
 const HIDDEN_KEY = "cpc-file-show-hidden";
@@ -138,10 +69,6 @@ export function App() {
   const isDragging = useRef(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
-
-  // Refs to each tab button so the moving underline can measure
-  // variable-width tab labels.
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const activeIdx = TABS.indexOf(activeTab);
 
@@ -325,69 +252,6 @@ export function App() {
           DEVELOPMENT
         </div>
       )}
-      {/* Header with tabs — stop propagation so swipe doesn't fire from tab bar */}
-      <header
-        style={{
-          padding: "0 12px",
-          borderBottom: "1px solid var(--color-border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexShrink: 0,
-          height: 40,
-        }}
-        onTouchStart={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", gap: 0, position: "relative" }}>
-          {TABS.map((tab, i) => (
-            <button
-              ref={(el) => { tabRefs.current[i] = el; }}
-              key={tab}
-              onClick={() => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }}
-              style={{
-                padding: "8px 14px",
-                fontSize: 13,
-                fontWeight: activeTab === tab ? 600 : 400,
-                background: "none",
-                color: activeTab === tab ? "var(--color-fg)" : "var(--color-muted)",
-                border: "none",
-                // borderBottom removed — moving indicator below replaces it
-                cursor: "pointer",
-                textTransform: "capitalize",
-              }}
-            >
-              {tab}
-            </button>
-          ))}
-          <TabUnderline
-            tabRefs={tabRefs}
-            activeIdx={activeIdx}
-            dragOffset={dragOffset}
-            isAnimating={isAnimating}
-          />
-        </div>
-        <span
-          style={{
-            fontSize: 11,
-            color: connected ? "var(--color-accent-green)" : "var(--color-accent-red)",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: connected ? "var(--color-accent-green)" : "var(--color-accent-red)",
-              display: "inline-block",
-            }}
-          />
-          {connected ? "live" : "offline"}
-        </span>
-      </header>
-
       {/* CPC branch indicator — terminal tab only */}
       {activeTab === "terminal" && cpcBranch && (
         <div
@@ -408,7 +272,7 @@ export function App() {
 
       {/* Content area — swipeable viewport */}
       <div
-        style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}
+        style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative", paddingBottom: 48 }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -457,6 +321,11 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
+
+      {/* Bottom tab dock — rendered via portal to escape CSS transform containment */}
+      <BottomDrawer>
+        <TabDock activeTab={activeTab} onTabChange={setActiveTab} connected={connected} />
+      </BottomDrawer>
 
       {/* Home screen prompt — rendered once, dismissed to localStorage */}
       {showHomeScreenPrompt && <HomeScreenPrompt onDismiss={handleHomeScreenDismiss} />}
