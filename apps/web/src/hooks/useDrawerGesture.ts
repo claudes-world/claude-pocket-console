@@ -2,10 +2,18 @@ import { useRef, useCallback } from "react";
 
 export type SnapPoint = "peek" | "half" | "full";
 
+/** Read --dock-height CSS variable so JS peek position matches CSS exactly (safe-area-aware). */
+function getDockHeight(): number {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--dock-height").trim();
+  return parseFloat(raw) || 48;
+}
+
 interface UseDrawerGestureConfig {
   drawerRef: React.RefObject<HTMLDivElement | null>;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   onSnapChange: (snap: SnapPoint) => void;
+  onDragEnd?: () => void;
 }
 
 // Snap positions as translateY values (drawer is 90vh tall):
@@ -13,7 +21,7 @@ interface UseDrawerGestureConfig {
 // half: translateY(50vh)   → shows 40vh
 // full: translateY(0)      → shows 90vh
 
-export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange }: UseDrawerGestureConfig) {
+export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEnd }: UseDrawerGestureConfig) {
   const snapRef = useRef<SnapPoint>("peek");
   const startY = useRef(0);
   const startTranslateY = useRef(0);
@@ -25,7 +33,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange }: UseDra
     const vh = window.innerHeight;
     const drawerH = vh * 0.9;
     switch (snap) {
-      case "peek": return drawerH - 48; // approximation — safe area handled in CSS
+      case "peek": return drawerH - getDockHeight(); // safe-area-aware via CSS var
       case "half": return vh * 0.5;
       case "full": return 0;
     }
@@ -64,12 +72,21 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange }: UseDra
     const el = drawerRef.current;
     if (!el) return getTranslateYForSnap("peek");
     const style = window.getComputedStyle(el);
-    const matrix = new DOMMatrix(style.transform);
-    return matrix.m42; // translateY value
+    const transform = style.transform;
+    if (!transform || transform === "none") return getTranslateYForSnap("peek");
+    try {
+      const matrix = new DOMMatrix(transform);
+      return isNaN(matrix.m42) ? getTranslateYForSnap("peek") : matrix.m42;
+    } catch {
+      return getTranslateYForSnap("peek");
+    }
   }, [drawerRef, getTranslateYForSnap]);
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     e.stopPropagation();
+    // Disable Telegram vertical swipe dismissal as soon as a drag begins
+    const tg = (window as any).Telegram?.WebApp;
+    tg?.disableVerticalSwipes?.();
     const touch = e.touches[0];
     startY.current = touch.clientY;
     lastY.current = touch.clientY;
@@ -103,7 +120,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange }: UseDra
 
     // Rubber-band at edges
     const minY = 0; // full
-    const maxY = drawerH - 48; // peek
+    const maxY = drawerH - getDockHeight(); // peek — safe-area-aware
     if (targetY < minY) {
       targetY = minY + (targetY - minY) * 0.3;
     } else if (targetY > maxY) {
@@ -113,13 +130,14 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange }: UseDra
     el.style.transform = `translateY(${targetY}px)`;
   }, [drawerRef]);
 
-  const onTouchEnd = useCallback((_e: React.TouchEvent) => {
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
     const vh = window.innerHeight;
     const drawerH = vh * 0.9;
     const currentY = getCurrentTranslateY();
     const v = velocity.current; // px/ms, positive = downward
 
-    const peekY = drawerH - 48;
+    const peekY = drawerH - getDockHeight();
     const halfY = vh * 0.5;
     const fullY = 0;
 
@@ -145,8 +163,9 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange }: UseDra
       else target = "peek";
     }
 
+    onDragEnd?.();
     animateTo(target);
-  }, [getCurrentTranslateY, animateTo]);
+  }, [getCurrentTranslateY, animateTo, onDragEnd]);
 
   return { onTouchStart, onTouchMove, onTouchEnd, animateTo, snapRef };
 }

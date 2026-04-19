@@ -15,16 +15,22 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
   const drawerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [snap, setSnap] = useState<SnapPoint>("peek");
+  const wasDragging = useRef(false);
 
   const handleSnapChange = useCallback((s: SnapPoint) => {
     setSnap(s);
     onSnapChange?.(s);
   }, [onSnapChange]);
 
+  const handleDragEnd = useCallback(() => {
+    wasDragging.current = true;
+  }, []);
+
   const { onTouchStart, onTouchMove, onTouchEnd, animateTo } = useDrawerGesture({
     drawerRef,
     overlayRef,
     onSnapChange: handleSnapChange,
+    onDragEnd: handleDragEnd,
   });
 
   // Expose animateTo imperatively so App.tsx can call it for onMore
@@ -34,7 +40,14 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
     }
   }, [snapToRef, animateTo]);
 
+  // Replace CSS-calc initial transform with a resolved px value so DOMMatrix
+  // can read it correctly on first touch (WebKit may return NaN for env() expressions)
+  useEffect(() => {
+    animateTo("peek");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — intentional mount-only
+
   const handleOverlayTap = useCallback(() => {
+    if (wasDragging.current) { wasDragging.current = false; return; }
     animateTo("peek");
   }, [animateTo]);
 
@@ -55,6 +68,11 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
         className="bottom-drawer"
         style={{ transform: `translateY(calc(90vh - var(--dock-height)))` }}
       >
+        {/* Tab dock — FIRST in DOM so it's visible in peek (top of shifted-down element) */}
+        <div className="drawer-tab-dock">
+          {children}
+        </div>
+
         {/* Drag handle — only visible when half/full */}
         <div
           className={`drawer-handle${snap !== "peek" ? " visible" : ""}`}
@@ -67,11 +85,6 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
 
         {/* Expandable content area — empty in Phase 2, filled in Phase 3+ */}
         <div className="drawer-content" />
-
-        {/* Tab dock — always at bottom */}
-        <div className="drawer-tab-dock">
-          {children}
-        </div>
       </div>
     </>,
     document.body

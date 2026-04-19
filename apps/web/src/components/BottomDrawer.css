@@ -60,13 +60,13 @@
   overflow: hidden;
 }
 
-/* Tab dock — pinned to bottom of drawer */
+/* Tab dock — pinned to top of drawer (first in DOM, visible in peek) */
 .drawer-tab-dock {
   flex-shrink: 0;
   height: var(--dock-height);
   display: flex;
   align-items: flex-start;
-  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* WebKit scrollbar hide for pill strip */
