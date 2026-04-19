@@ -63,6 +63,9 @@ export function App() {
     setReconnectKey((k) => k + 1);
   }, []);
 
+  // Drawer snap imperative handle — BottomDrawer assigns animateTo here
+  const drawerSnapRef = useRef<((snap: "peek" | "half" | "full") => void) | null>(null);
+
   // Swipe gesture state
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -323,8 +326,13 @@ export function App() {
       </div>
 
       {/* Bottom tab dock — rendered via portal to escape CSS transform containment */}
-      <BottomDrawer>
-        <TabDock activeTab={activeTab} onTabChange={(tab) => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }} connected={connected} />
+      <BottomDrawer snapToRef={drawerSnapRef}>
+        <TabDock
+          activeTab={activeTab}
+          onTabChange={(tab) => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }}
+          connected={connected}
+          onMore={() => drawerSnapRef.current?.("full")}
+        />
       </BottomDrawer>
 
       {/* Home screen prompt — rendered once, dismissed to localStorage */}

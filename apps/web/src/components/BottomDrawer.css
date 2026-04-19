@@ -2,20 +2,74 @@
   --dock-height: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
+/* Dimmed overlay */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: none;
+  transition: background 300ms ease-out;
+  z-index: 10;
+}
+
+/* Drawer shell */
 .bottom-drawer {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  height: var(--dock-height);
+  height: 90vh;
   background: var(--color-bg);
   border-top: 1px solid var(--color-border);
+  border-radius: 16px 16px 0 0;
   z-index: 20;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   will-change: transform;
+  contain: layout style;
 }
 
+/* Drag handle */
+.drawer-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  touch-action: none;
+}
+
+.drawer-handle.visible {
+  opacity: 1;
+}
+
+.drawer-handle-bar {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-subtle);
+}
+
+/* Expandable content (empty in Phase 2) */
+.drawer-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Tab dock — pinned to bottom of drawer */
+.drawer-tab-dock {
+  flex-shrink: 0;
+  height: var(--dock-height);
+  display: flex;
+  align-items: flex-start;
+  border-top: 1px solid var(--color-border);
+}
+
+/* WebKit scrollbar hide for pill strip */
 .tab-dock-pills::-webkit-scrollbar {
   display: none;
 }

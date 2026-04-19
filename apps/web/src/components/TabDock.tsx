@@ -14,9 +14,10 @@ interface TabDockProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   connected: boolean;
+  onMore: () => void;
 }
 
-export function TabDock({ activeTab, onTabChange, connected }: TabDockProps) {
+export function TabDock({ activeTab, onTabChange, connected, onMore }: TabDockProps) {
   return (
     <div style={{
       display: "flex",
@@ -67,7 +68,7 @@ export function TabDock({ activeTab, onTabChange, connected }: TabDockProps) {
 
       {/* More button */}
       <button
-        onClick={() => {}}
+        onClick={onMore}
         style={{
           padding: "6px 10px",
           borderRadius: 16,
