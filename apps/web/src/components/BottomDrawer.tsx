@@ -23,7 +23,10 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
   }, [onSnapChange]);
 
   const handleDragEnd = useCallback((hasMoved: boolean) => {
-    if (hasMoved) wasDragging.current = true;
+    if (hasMoved) {
+      wasDragging.current = true;
+      setTimeout(() => { wasDragging.current = false; }, 100);
+    }
   }, []);
 
   const handleDragStart = useCallback(() => {

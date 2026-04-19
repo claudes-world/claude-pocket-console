@@ -149,6 +149,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     if (!hasMoved.current) return; // tap, not a drag — don't snap
+    e.preventDefault(); // prevent browser from synthesizing a click after a drag gesture
     e.stopPropagation();
     const vh = window.innerHeight;
     const drawerH = vh * 0.9;
@@ -198,7 +199,13 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
       el.style.transition = "none";
       el.style.transform = `translateY(${y}px)`;
     }
-  }, [drawerRef, getTranslateYForSnap]);
+    // Reset overlay if cancelled while at peek — otherwise it freezes at partial opacity
+    if (snapRef.current === "peek" && overlayRef.current) {
+      overlayRef.current.style.transition = "none";
+      overlayRef.current.style.background = "rgba(0,0,0,0)";
+      overlayRef.current.style.pointerEvents = "none";
+    }
+  }, [drawerRef, overlayRef, getTranslateYForSnap]);
 
   // Re-enable Telegram vertical swipes on unmount
   useEffect(() => {
