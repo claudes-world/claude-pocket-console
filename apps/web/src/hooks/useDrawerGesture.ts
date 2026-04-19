@@ -134,10 +134,22 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
     }
 
     el.style.transform = `translateY(${targetY}px)`;
-  }, [drawerRef]);
+
+    // Update overlay in real-time during drag
+    const overlay = overlayRef.current;
+    if (overlay && hasMoved.current) {
+      const peekY = drawerH - getDockHeight();
+      // progress: 0 = at peek, 1 = at full
+      const progress = Math.max(0, Math.min(1, (peekY - targetY) / peekY));
+      overlay.style.transition = "none";
+      overlay.style.background = `rgba(0,0,0,${0.4 * progress})`;
+      overlay.style.pointerEvents = progress > 0.05 ? "auto" : "none";
+    }
+  }, [drawerRef, overlayRef]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (hasMoved.current) e.stopPropagation(); // allow taps to reach pill buttons
+    if (!hasMoved.current) return; // tap, not a drag — don't snap
+    e.stopPropagation();
     const vh = window.innerHeight;
     const drawerH = vh * 0.9;
     const currentY = getCurrentTranslateY();

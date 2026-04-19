@@ -40,9 +40,10 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
 
   // Expose animateTo imperatively so App.tsx can call it for onMore
   useEffect(() => {
-    if (snapToRef) {
-      snapToRef.current = animateTo;
-    }
+    if (snapToRef) snapToRef.current = animateTo;
+    return () => {
+      if (snapToRef) snapToRef.current = null;
+    };
   }, [snapToRef, animateTo]);
 
   // Replace CSS-calc initial transform with a resolved px value so DOMMatrix
