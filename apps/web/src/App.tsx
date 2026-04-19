@@ -5,6 +5,7 @@ import { FileViewer } from "./components/FileViewer";
 import type { SortMode } from "./components/FileViewer";
 import { Links } from "./components/Links";
 import { ActionBar } from "./components/action-bar";
+import { ActionChips } from "./components/ActionChips";
 import { BottomDrawer } from "./components/BottomDrawer";
 import { TabDock } from "./components/TabDock";
 import { VoiceRecorder } from "./components/VoiceRecorder";
@@ -310,23 +311,23 @@ export function App() {
         </div>
       </div>
 
-      {/* Action bar — stop propagation so swipe doesn't fire from action buttons */}
-      <div onTouchStart={(e) => e.stopPropagation()}>
-        <ActionBar
-          onReconnect={onReconnect}
-          connected={connected}
-          activeTab={activeTab}
-          fileShowHidden={fileShowHidden}
-          setFileShowHidden={setFileShowHidden}
-          fileSortMode={fileSortMode}
-          setFileSortMode={setFileSortMode}
-          viewingFile={viewingFile}
-          currentFolder={currentFolder}
-        />
-      </div>
-
       {/* Bottom tab dock — rendered via portal to escape CSS transform containment */}
-      <BottomDrawer snapToRef={drawerSnapRef}>
+      <BottomDrawer
+        snapToRef={drawerSnapRef}
+        drawerContent={
+          <ActionChips
+            onReconnect={onReconnect}
+            connected={connected}
+            activeTab={activeTab}
+            fileShowHidden={fileShowHidden}
+            setFileShowHidden={setFileShowHidden}
+            fileSortMode={fileSortMode}
+            setFileSortMode={setFileSortMode}
+            viewingFile={viewingFile}
+            currentFolder={currentFolder}
+          />
+        }
+      >
         <TabDock
           activeTab={activeTab}
           onTabChange={(tab) => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }}
