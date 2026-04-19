@@ -1,19 +1,18 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 export type SnapPoint = "peek" | "half" | "full";
 
-/** Read --dock-height CSS variable so JS peek position matches CSS exactly (safe-area-aware). */
+/** Resolve dock height using Telegram WebApp safe-area API (matches BottomSheet.tsx pattern). */
 function getDockHeight(): number {
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue("--dock-height").trim();
-  return parseFloat(raw) || 48;
+  const safeArea = (window as any).Telegram?.WebApp?.safeAreaInset?.bottom ?? 0;
+  return 48 + safeArea;
 }
 
 interface UseDrawerGestureConfig {
   drawerRef: React.RefObject<HTMLDivElement | null>;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   onSnapChange: (snap: SnapPoint) => void;
-  onDragEnd?: () => void;
+  onDragEnd?: (hasMoved: boolean) => void;
 }
 
 // Snap positions as translateY values (drawer is 90vh tall):
@@ -28,6 +27,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
   const lastY = useRef(0);
   const lastTime = useRef(0);
   const velocity = useRef(0);
+  const hasMoved = useRef(false);
 
   const getTranslateYForSnap = useCallback((snap: SnapPoint): number => {
     const vh = window.innerHeight;
@@ -39,12 +39,12 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
     }
   }, []);
 
-  const animateTo = useCallback((snap: SnapPoint) => {
+  const animateTo = useCallback((snap: SnapPoint, instant = false) => {
     const el = drawerRef.current;
     const overlay = overlayRef.current;
     if (!el) return;
     const y = getTranslateYForSnap(snap);
-    el.style.transition = "transform 300ms cubic-bezier(0.25, 1, 0.5, 1)";
+    el.style.transition = instant ? "none" : "transform 300ms cubic-bezier(0.25, 1, 0.5, 1)";
     el.style.transform = `translateY(${y}px)`;
     // Update overlay opacity
     if (overlay) {
@@ -92,6 +92,7 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
     lastY.current = touch.clientY;
     lastTime.current = Date.now();
     velocity.current = 0;
+    hasMoved.current = false;
     startTranslateY.current = getCurrentTranslateY();
     const el = drawerRef.current;
     if (el) {
@@ -110,6 +111,9 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
     }
     lastY.current = touch.clientY;
     lastTime.current = now;
+    if (Math.abs(touch.clientY - startY.current) > 5) {
+      hasMoved.current = true;
+    }
 
     const el = drawerRef.current;
     if (!el) return;
@@ -163,9 +167,29 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
       else target = "peek";
     }
 
-    onDragEnd?.();
+    onDragEnd?.(hasMoved.current);
     animateTo(target);
   }, [getCurrentTranslateY, animateTo, onDragEnd]);
 
-  return { onTouchStart, onTouchMove, onTouchEnd, animateTo, snapRef };
+  const onTouchCancel = useCallback(() => {
+    const tg = (window as any).Telegram?.WebApp;
+    tg?.enableVerticalSwipes?.();
+    // Snap back to current snap point instantly — no transition
+    const el = drawerRef.current;
+    if (el) {
+      const y = getTranslateYForSnap(snapRef.current);
+      el.style.transition = "none";
+      el.style.transform = `translateY(${y}px)`;
+    }
+  }, [drawerRef, getTranslateYForSnap]);
+
+  // Re-enable Telegram vertical swipes on unmount
+  useEffect(() => {
+    return () => {
+      const tg = (window as any).Telegram?.WebApp;
+      tg?.enableVerticalSwipes?.();
+    };
+  }, []);
+
+  return { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel, animateTo, snapRef };
 }

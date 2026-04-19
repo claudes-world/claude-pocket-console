@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
 import { useDrawerGesture } from "../hooks/useDrawerGesture";
 import type { SnapPoint } from "../hooks/useDrawerGesture";
 import "./BottomDrawer.css";
@@ -22,11 +22,11 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
     onSnapChange?.(s);
   }, [onSnapChange]);
 
-  const handleDragEnd = useCallback(() => {
-    wasDragging.current = true;
+  const handleDragEnd = useCallback((hasMoved: boolean) => {
+    if (hasMoved) wasDragging.current = true;
   }, []);
 
-  const { onTouchStart, onTouchMove, onTouchEnd, animateTo } = useDrawerGesture({
+  const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel, animateTo } = useDrawerGesture({
     drawerRef,
     overlayRef,
     onSnapChange: handleSnapChange,
@@ -41,10 +41,11 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
   }, [snapToRef, animateTo]);
 
   // Replace CSS-calc initial transform with a resolved px value so DOMMatrix
-  // can read it correctly on first touch (WebKit may return NaN for env() expressions)
-  useEffect(() => {
-    animateTo("peek");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps — intentional mount-only
+  // can read it correctly on first touch (WebKit may return NaN for env() expressions).
+  // useLayoutEffect fires before paint — no transition flicker on mount.
+  useLayoutEffect(() => {
+    animateTo("peek", true); // instant = true, no transition on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOverlayTap = useCallback(() => {
     if (wasDragging.current) { wasDragging.current = false; return; }
@@ -79,6 +80,7 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchCancel}
         >
           <div className="drawer-handle-bar" />
         </div>
