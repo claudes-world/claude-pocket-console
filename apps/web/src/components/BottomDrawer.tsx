@@ -6,12 +6,13 @@ import "./BottomDrawer.css";
 
 interface BottomDrawerProps {
   children: React.ReactNode; // TabDock (always visible at bottom)
+  drawerContent?: React.ReactNode; // ActionChips (only shows in half/full)
   onSnapChange?: (snap: SnapPoint) => void;
   // Imperative handle: parent passes a ref, we assign animateTo into it
   snapToRef?: React.MutableRefObject<((snap: SnapPoint) => void) | null>;
 }
 
-export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawerProps) {
+export function BottomDrawer({ children, drawerContent, onSnapChange, snapToRef }: BottomDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [snap, setSnap] = useState<SnapPoint>("peek");
@@ -101,8 +102,10 @@ export function BottomDrawer({ children, onSnapChange, snapToRef }: BottomDrawer
           <div className="drawer-handle-bar" />
         </div>
 
-        {/* Expandable content area — empty in Phase 2, filled in Phase 3+ */}
-        <div className="drawer-content" />
+        {/* Expandable content area — ActionChips always mounted, hidden at peek via CSS to preserve state */}
+        <div className="drawer-content" style={snap === "peek" ? { display: "none" } : undefined}>
+          {drawerContent}
+        </div>
       </div>
     </>,
     document.body
