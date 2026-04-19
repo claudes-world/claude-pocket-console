@@ -313,6 +313,9 @@ export function App() {
       {/* Bottom tab dock — rendered via portal to escape CSS transform containment */}
       <BottomDrawer
         snapToRef={drawerSnapRef}
+        activeTab={activeTab}
+        onTabChange={(tab) => { haptic.selection(); setIsAnimating(true); setActiveTab(tab); }}
+        connected={connected}
         drawerContent={
           <ActionChips
             onReconnect={onReconnect}
