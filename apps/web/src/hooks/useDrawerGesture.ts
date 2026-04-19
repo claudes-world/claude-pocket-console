@@ -148,7 +148,14 @@ export function useDrawerGesture({ drawerRef, overlayRef, onSnapChange, onDragEn
   }, [drawerRef, overlayRef]);
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!hasMoved.current) return; // tap, not a drag — don't snap
+    if (!hasMoved.current) {
+      // Tap, not drag — re-enable Telegram swipes if we're at peek
+      if (snapRef.current === "peek") {
+        const tg = (window as any).Telegram?.WebApp;
+        tg?.enableVerticalSwipes?.();
+      }
+      return;
+    }
     e.preventDefault(); // prevent browser from synthesizing a click after a drag gesture
     e.stopPropagation();
     const vh = window.innerHeight;

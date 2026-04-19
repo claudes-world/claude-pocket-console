@@ -622,7 +622,7 @@ export function useActionBarModals(props: ActionBarProps): UseActionBarModalsRet
       break;
   }
 
-  const isViewingMd = Boolean(viewingFile?.name.toLowerCase().endsWith(".md"));
+  const isViewingMd = viewingFile?.name?.toLowerCase()?.endsWith(".md") ?? false;
 
   return {
     modalNode,

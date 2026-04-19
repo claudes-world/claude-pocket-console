@@ -102,9 +102,9 @@ export function BottomDrawer({ children, drawerContent, onSnapChange, snapToRef 
           <div className="drawer-handle-bar" />
         </div>
 
-        {/* Expandable content area — ActionChips render here in half/full */}
-        <div className="drawer-content">
-          {snap !== "peek" && drawerContent}
+        {/* Expandable content area — ActionChips always mounted, hidden at peek via CSS to preserve state */}
+        <div className="drawer-content" style={snap === "peek" ? { display: "none" } : undefined}>
+          {drawerContent}
         </div>
       </div>
     </>,

@@ -1,5 +1,6 @@
 import { useActionBarModals } from "../hooks/useActionBarModals";
 import { btnStyle, type ActionBarProps } from "./action-bar/types";
+import { StatusLine } from "./action-bar/StatusLine";
 import { haptic } from "../lib/haptic";
 
 const chipStyle = { ...btnStyle, fontSize: 12, padding: "5px 12px", borderRadius: 14 };
@@ -7,6 +8,8 @@ const chipStyle = { ...btnStyle, fontSize: 12, padding: "5px 12px", borderRadius
 export function ActionChips(props: ActionBarProps) {
   const {
     modalNode,
+    status,
+    gitBranch,
     openTodo,
     openCommands,
     openGitStatus,
@@ -21,12 +24,15 @@ export function ActionChips(props: ActionBarProps) {
     isViewingMd,
   } = useActionBarModals(props);
 
-  const { activeTab, viewingFile, onReconnect } = props;
+  const { activeTab, viewingFile, onReconnect, connected } = props;
 
   return (
     <>
       {modalNode}
-      <div style={{ padding: "8px 12px", display: "flex", gap: 8, flexWrap: "wrap", overflowX: "auto" }}>
+      <div
+        onTouchStart={(e) => e.stopPropagation()}
+        style={{ padding: "8px 12px", display: "flex", gap: 8, flexWrap: "wrap", overflowX: "auto" }}
+      >
 
         {/* TODO — always visible */}
         <button
@@ -113,6 +119,7 @@ export function ActionChips(props: ActionBarProps) {
           )}
         </>}
       </div>
+      <StatusLine connected={connected} status={status} gitBranch={gitBranch} />
     </>
   );
 }
