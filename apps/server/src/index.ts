@@ -1,3 +1,4 @@
+import './lib/otel.js';
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,9 @@ import { telegramAuth } from "./middleware.js";
 import { validateTelegramLoginWidget, createSession } from "./auth.js";
 import { isAllowedUser } from "./lib/allowed-users.js";
 import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
+import { registerDbSizeGauge, getTracer } from "./lib/otel.js";
+import { propagation, context as otelContext, trace, SpanStatusCode } from "@opentelemetry/api";
+import { DB_PATH } from "./db.js";
 import { terminalRoute } from "./routes/terminal/index.js";
 import { sessionRoute } from "./routes/session.js";
 import { todoRoute } from "./routes/todo.js";
@@ -46,12 +50,43 @@ function loadEnv(path: string) {
 
 loadEnv(`${process.env.HOME}/.secrets/cpc.env`);
 
+// Register DB size gauge after env is loaded so DB_PATH is stable
+registerDbSizeGauge(DB_PATH);
+
 const app = new Hono<{ Bindings: HttpBindings }>();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 app.use("*", cors({
   origin: [...ALLOWED_ORIGINS],
 }));
+
+// ── HTTP span middleware ───────────────────────────────────────────────────────
+// Extract W3C traceparent from incoming headers, create a span per /api/* request.
+// Must run before auth middleware so auth failures are still traced.
+const httpTracer = getTracer('cpc-server-http');
+app.use('/api/*', async (c, next) => {
+  const headers: Record<string, string> = {};
+  c.req.raw.headers.forEach((v, k) => { headers[k] = v; });
+  const parentCtx = propagation.extract(otelContext.active(), headers);
+
+  const span = httpTracer.startSpan(`${c.req.method} /api/*`, {
+    attributes: { 'http.method': c.req.method, 'http.url': c.req.url },
+  });
+  await otelContext.with(trace.setSpan(parentCtx, span), async () => {
+    try {
+      await next();
+      span.setAttribute('http.route', c.req.routePath);
+      span.setAttribute('http.status_code', c.res.status);
+      if (c.res.status >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
+    } catch (err) {
+      span.recordException(err instanceof Error ? err : String(err));
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw err;
+    } finally {
+      span.end();
+    }
+  });
+});
 
 // Public routes (no auth)
 app.get("/api/public/health", (c) => c.json({ status: "ok" }));

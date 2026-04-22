@@ -1,10 +1,14 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
+import { getTracer } from "./lib/otel.js";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 // Allow up to 30 seconds of clock skew on the future-timestamp check.
 // Telegram servers and client devices can drift by a few seconds; a hard
 // equality check (authDate > nowSec) would reject legitimate requests that
 // arrive with a timestamp slightly ahead of the server clock.
 const CLOCK_SKEW_TOLERANCE_SEC = 30;
+
+const authTracer = getTracer('cpc-server-auth');
 
 /**
  * Validate an auth_date unix timestamp.
@@ -29,37 +33,66 @@ export function validateTelegramInitData(
   initData: string,
   botToken: string,
 ): { valid: boolean; user?: TelegramUser } {
-  const params = new URLSearchParams(initData);
-  const hash = params.get("hash");
-  if (!hash) return { valid: false };
-
-  // Remove hash from params and sort alphabetically
-  params.delete("hash");
-  const dataCheckString = Array.from(params.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, val]) => `${key}=${val}`)
-    .join("\n");
-
-  // HMAC-SHA256 with "WebAppData" as key prefix
-  const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
-  const computedHash = createHmac("sha256", secretKey)
-    .update(dataCheckString)
-    .digest("hex");
-
-  if (computedHash !== hash) return { valid: false };
-
-  // Check auth_date is within 24 hours (guard against NaN, future timestamps)
-  if (!validateAuthDate(params.get("auth_date") ?? undefined)) return { valid: false };
-
-  // Parse user data
-  const userStr = params.get("user");
-  if (!userStr) return { valid: true };
-
+  const span = authTracer.startSpan('auth.telegram_initdata');
   try {
-    const user = JSON.parse(userStr) as TelegramUser;
-    return { valid: true, user };
-  } catch {
-    return { valid: false };
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    if (!hash) {
+      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'missing_hash' });
+      return { valid: false };
+    }
+
+    // Remove hash from params and sort alphabetically
+    params.delete("hash");
+    const dataCheckString = Array.from(params.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, val]) => `${key}=${val}`)
+      .join("\n");
+
+    // HMAC-SHA256 with "WebAppData" as key prefix
+    const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
+    const computedHash = createHmac("sha256", secretKey)
+      .update(dataCheckString)
+      .digest("hex");
+
+    if (computedHash !== hash) {
+      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'hmac_mismatch' });
+      return { valid: false };
+    }
+
+    // Check auth_date is within 24 hours (guard against NaN, future timestamps)
+    const authDateStr = params.get("auth_date") ?? undefined;
+    if (!validateAuthDate(authDateStr)) {
+      const authDate = authDateStr ? parseInt(authDateStr, 10) : NaN;
+      const nowSec = Date.now() / 1000;
+      const reason = Number.isFinite(authDate) && authDate > nowSec + CLOCK_SKEW_TOLERANCE_SEC
+        ? 'future_date'
+        : 'expired';
+      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': reason });
+      return { valid: false };
+    }
+
+    // Parse user data
+    const userStr = params.get("user");
+    if (!userStr) {
+      span.setAttribute('auth.valid', true);
+      return { valid: true };
+    }
+
+    try {
+      const user = JSON.parse(userStr) as TelegramUser;
+      span.setAttribute('auth.valid', true);
+      return { valid: true, user };
+    } catch {
+      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'hmac_mismatch' });
+      return { valid: false };
+    }
+  } catch (err) {
+    span.recordException(err instanceof Error ? err : String(err));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw err;
+  } finally {
+    span.end();
   }
 }
 

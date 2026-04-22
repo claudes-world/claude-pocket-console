@@ -1,11 +1,66 @@
 import Database, { type Database as DatabaseType } from "better-sqlite3";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { getTracer } from "./lib/otel.js";
 
 const DATA_DIR = join(process.env.HOME || "/home/claude", "data");
 mkdirSync(DATA_DIR, { recursive: true });
 
-const db: DatabaseType = new Database(join(DATA_DIR, "cpc-voice.db"));
+const DB_PATH = join(DATA_DIR, "cpc-voice.db");
+const rawDb: DatabaseType = new Database(DB_PATH);
+
+// ── OTEL helpers ──────────────────────────────────────────────────────────────
+
+function extractTable(sql: string): string {
+  return sql.match(/\b(?:FROM|INTO|UPDATE|JOIN)\s+(\w+)/i)?.[1] ?? 'unknown';
+}
+
+function extractOperation(sql: string): string {
+  return sql.trim().split(/\s+/)[0]?.toUpperCase() ?? 'QUERY';
+}
+
+const dbTracer = getTracer('cpc-server-db');
+
+function tracedQuery<T>(op: string, table: string, fn: () => T): T {
+  const span = dbTracer.startSpan(`db.${op.toLowerCase()}`, {
+    attributes: { 'db.system': 'sqlite', 'db.operation': op, 'db.sql.table': table },
+  });
+  try {
+    return fn();
+  } catch (err) {
+    span.recordException(err instanceof Error ? err : String(err));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw err;
+  } finally {
+    span.end();
+  }
+}
+
+// Proxy wrapping ALL .prepare() usage
+const TRACED_STMT_METHODS = ['get', 'all', 'run', 'iterate', 'pluck', 'expand', 'raw'] as const;
+
+export const db: DatabaseType = new Proxy(rawDb, {
+  get(target, prop) {
+    if (prop === 'prepare') {
+      return (sql: string) => {
+        const stmt = target.prepare(sql);
+        const table = extractTable(sql);
+        const op = extractOperation(sql);
+        return new Proxy(stmt, {
+          get(s, method) {
+            if ((TRACED_STMT_METHODS as readonly string[]).includes(method as string)) {
+              return (...args: unknown[]) =>
+                tracedQuery(op, table, () => (s[method as keyof typeof s] as (...a: unknown[]) => unknown)(...args));
+            }
+            return s[method as keyof typeof s];
+          },
+        });
+      };
+    }
+    return target[prop as keyof typeof target];
+  },
+});
 
 // WAL mode for better concurrent reads
 db.pragma("journal_mode = WAL");
@@ -123,5 +178,5 @@ db.exec(
   }
 }
 
-export { db };
+export { DB_PATH };
 export type { DatabaseType };
