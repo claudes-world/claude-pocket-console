@@ -70,7 +70,7 @@ app.use('/api/*', async (c, next) => {
   const parentCtx = propagation.extract(otelContext.active(), headers);
 
   const span = httpTracer.startSpan(`${c.req.method} /api/*`, {
-    attributes: { 'http.method': c.req.method, 'http.url': c.req.url },
+    attributes: { 'http.method': c.req.method },
   }, parentCtx);
   await otelContext.with(trace.setSpan(parentCtx, span), async () => {
     try {

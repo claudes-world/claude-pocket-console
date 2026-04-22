@@ -58,8 +58,7 @@ const shutdown = async (signal: string) => {
   const hardKill = setTimeout(() => process.exit(1), 10_000);
   hardKill.unref();
   try {
-    await provider.shutdown();
-    await meterProvider.shutdown();
+    await Promise.allSettled([provider.shutdown(), meterProvider.shutdown()]);
   } finally {
     process.exit(0);
   }
