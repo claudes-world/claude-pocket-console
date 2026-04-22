@@ -1,11 +1,13 @@
 import { Hono } from "hono";
-import { writeFileSync, unlinkSync, readFileSync } from "node:fs";
+import { writeFileSync, unlinkSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { nanoid } from "nanoid";
 import { db } from "../db.js";
 import { getUserId as getUserIdShared } from "../lib/get-user-id.js";
+import { getTracer } from "../lib/otel.js";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 /**
  * Allowlist for uploaded-audio file extensions. Anything outside this set is
@@ -40,6 +42,8 @@ function loadOpenAIEnv() {
 }
 
 loadOpenAIEnv();
+
+const voiceTracer = getTracer('cpc-server-audio');
 
 const app = new Hono();
 
@@ -82,11 +86,29 @@ app.post("/transcribe", async (c) => {
     // the ext (and therefore the tmp path) shell-safe, but routing through
     // execFile is the stronger guarantee: defense-in-depth against any
     // future regression that might weaken the allowlist.
-    const result = execFileSync(transcribeBin, [tmpPath], {
-      encoding: "utf-8",
-      env: { ...process.env },
+    let audioSizeBytes = 0;
+    try { audioSizeBytes = statSync(tmpPath).size; } catch { /* best-effort */ }
+
+    const span = voiceTracer.startSpan('audio.transcribe', {
+      attributes: {
+        'audio.format': rawExt,
+        'audio.size_bytes': audioSizeBytes,
+      },
     });
-    const text = result.trim();
+    let text: string;
+    try {
+      const result = execFileSync(transcribeBin, [tmpPath], {
+        encoding: "utf-8",
+        env: { ...process.env },
+      });
+      text = result.trim();
+    } catch (err) {
+      span.recordException(err instanceof Error ? err : String(err));
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      span.end();
+      throw err;
+    }
+    span.end();
 
     return c.json({ text });
   } catch (err: any) {
