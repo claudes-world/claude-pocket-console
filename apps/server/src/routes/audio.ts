@@ -106,40 +106,47 @@ app.post("/generate", async (c) => {
       },
     });
 
-    let res: Response;
+    let buffer: Buffer;
     try {
-      res = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "tts-1",
-          input: ttsInput,
-          voice: ttsVoice,
-          response_format: "mp3",
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch("https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "tts-1",
+            input: ttsInput,
+            voice: ttsVoice,
+            response_format: "mp3",
+          }),
+        });
+      } catch (err) {
+        ttsSpan.recordException(err instanceof Error ? err : String(err));
+        ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
+        throw err;
+      }
+
+      if (!res.ok) {
+        const err = await res.text();
+        ttsSpan.setAttribute('http.status_code', res.status);
+        ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
+        // Return inside the try block so finally still runs to call ttsSpan.end()
+        return c.json({ ok: false, error: `TTS API error: ${err}` }, 500);
+      }
+
+      ttsSpan.setAttribute('http.status_code', res.status);
+      buffer = Buffer.from(await res.arrayBuffer());
     } catch (err) {
       ttsSpan.recordException(err instanceof Error ? err : String(err));
       ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
-      ttsSpan.end();
       throw err;
-    }
-
-    if (!res.ok) {
-      const err = await res.text();
-      ttsSpan.setAttribute('http.status_code', res.status);
-      ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
+    } finally {
       ttsSpan.end();
-      return c.json({ ok: false, error: `TTS API error: ${err}` }, 500);
     }
 
-    ttsSpan.setAttribute('http.status_code', res.status);
-    ttsSpan.end();
-
-    const buffer = Buffer.from(await res.arrayBuffer());
     writeFileSync(audioPath, buffer);
 
     return c.json({ ok: true, path: audioPath });

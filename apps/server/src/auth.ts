@@ -28,71 +28,59 @@ function validateAuthDate(rawAuthDate: string | undefined): boolean {
 /**
  * Validate Telegram Mini App initData.
  * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ *
+ * Note: no span here — the span lives in validateTelegramInitDataWithTokens so
+ * that multi-token deploys emit ONE span per request (not N hmac_mismatch spans).
  */
 export function validateTelegramInitData(
   initData: string,
   botToken: string,
-): { valid: boolean; user?: TelegramUser } {
-  const span = authTracer.startSpan('auth.telegram_initdata');
+): { valid: boolean; user?: TelegramUser; failureReason?: string } {
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) {
+    return { valid: false, failureReason: 'missing_hash' };
+  }
+
+  // Remove hash from params and sort alphabetically
+  params.delete("hash");
+  const dataCheckString = Array.from(params.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, val]) => `${key}=${val}`)
+    .join("\n");
+
+  // HMAC-SHA256 with "WebAppData" as key prefix
+  const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
+  const computedHash = createHmac("sha256", secretKey)
+    .update(dataCheckString)
+    .digest("hex");
+
+  if (computedHash !== hash) {
+    return { valid: false, failureReason: 'hmac_mismatch' };
+  }
+
+  // Check auth_date is within 24 hours (guard against NaN, future timestamps)
+  const authDateStr = params.get("auth_date") ?? undefined;
+  if (!validateAuthDate(authDateStr)) {
+    const authDate = authDateStr ? parseInt(authDateStr, 10) : NaN;
+    const nowSec = Date.now() / 1000;
+    const reason = Number.isFinite(authDate) && authDate > nowSec + CLOCK_SKEW_TOLERANCE_SEC
+      ? 'future_date'
+      : 'expired';
+    return { valid: false, failureReason: reason };
+  }
+
+  // Parse user data
+  const userStr = params.get("user");
+  if (!userStr) {
+    return { valid: true };
+  }
+
   try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get("hash");
-    if (!hash) {
-      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'missing_hash' });
-      return { valid: false };
-    }
-
-    // Remove hash from params and sort alphabetically
-    params.delete("hash");
-    const dataCheckString = Array.from(params.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, val]) => `${key}=${val}`)
-      .join("\n");
-
-    // HMAC-SHA256 with "WebAppData" as key prefix
-    const secretKey = createHmac("sha256", "WebAppData").update(botToken).digest();
-    const computedHash = createHmac("sha256", secretKey)
-      .update(dataCheckString)
-      .digest("hex");
-
-    if (computedHash !== hash) {
-      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'hmac_mismatch' });
-      return { valid: false };
-    }
-
-    // Check auth_date is within 24 hours (guard against NaN, future timestamps)
-    const authDateStr = params.get("auth_date") ?? undefined;
-    if (!validateAuthDate(authDateStr)) {
-      const authDate = authDateStr ? parseInt(authDateStr, 10) : NaN;
-      const nowSec = Date.now() / 1000;
-      const reason = Number.isFinite(authDate) && authDate > nowSec + CLOCK_SKEW_TOLERANCE_SEC
-        ? 'future_date'
-        : 'expired';
-      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': reason });
-      return { valid: false };
-    }
-
-    // Parse user data
-    const userStr = params.get("user");
-    if (!userStr) {
-      span.setAttribute('auth.valid', true);
-      return { valid: true };
-    }
-
-    try {
-      const user = JSON.parse(userStr) as TelegramUser;
-      span.setAttribute('auth.valid', true);
-      return { valid: true, user };
-    } catch {
-      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'parse_error' });
-      return { valid: false };
-    }
-  } catch (err) {
-    span.recordException(err instanceof Error ? err : String(err));
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    throw err;
-  } finally {
-    span.end();
+    const user = JSON.parse(userStr) as TelegramUser;
+    return { valid: true, user };
+  } catch {
+    return { valid: false, failureReason: 'parse_error' };
   }
 }
 
@@ -208,16 +196,37 @@ export function validateSession(token: string): { valid: boolean; user?: Telegra
 
 /**
  * Try initData against each token in order; return first success or { valid: false }.
+ * Emits ONE span per request regardless of how many tokens are configured,
+ * avoiding N hmac_mismatch spans per request in multi-token deploys.
  */
 export function validateTelegramInitDataWithTokens(
   initData: string,
   tokens: string[],
 ): { valid: boolean; user?: TelegramUser } {
-  for (const token of tokens) {
-    const result = validateTelegramInitData(initData, token);
-    if (result.valid) return result;
+  const span = authTracer.startSpan('auth.telegram_initdata');
+  try {
+    let lastReason: string | undefined;
+    for (const token of tokens) {
+      const result = validateTelegramInitData(initData, token);
+      if (result.valid) {
+        span.setAttributes({ 'auth.valid': true, 'auth.tokens_tried': tokens.length });
+        return { valid: true, user: result.user };
+      }
+      lastReason = result.failureReason;
+    }
+    span.setAttributes({
+      'auth.valid': false,
+      'auth.tokens_tried': tokens.length,
+      ...(lastReason ? { 'auth.failure_reason': lastReason } : {}),
+    });
+    return { valid: false };
+  } catch (err) {
+    span.recordException(err instanceof Error ? err : String(err));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw err;
+  } finally {
+    span.end();
   }
-  return { valid: false };
 }
 
 /**

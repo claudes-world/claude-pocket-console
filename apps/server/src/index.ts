@@ -71,7 +71,7 @@ app.use('/api/*', async (c, next) => {
 
   const span = httpTracer.startSpan(`${c.req.method} /api/*`, {
     attributes: { 'http.method': c.req.method, 'http.url': c.req.url },
-  });
+  }, parentCtx);
   await otelContext.with(trace.setSpan(parentCtx, span), async () => {
     try {
       await next();

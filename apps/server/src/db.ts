@@ -37,8 +37,12 @@ function tracedQuery<T>(op: string, table: string, fn: () => T): T {
   }
 }
 
-// Proxy wrapping ALL .prepare() usage
-const TRACED_STMT_METHODS = ['get', 'all', 'run', 'iterate', 'pluck', 'expand', 'raw'] as const;
+// Proxy wrapping ALL .prepare() usage.
+// Only trace actual execution methods — pluck/expand/raw are configurators that
+// return `this` for chaining (e.g. stmt.pluck().get(params)). Intercepting them
+// with tracedQuery would return the unproxied statement, losing span coverage on
+// the subsequent .get()/.all()/.run() call.
+const TRACED_STMT_METHODS = ['get', 'all', 'run', 'iterate'] as const;
 
 export const db: DatabaseType = new Proxy(rawDb, {
   get(target, prop) {
@@ -51,14 +55,18 @@ export const db: DatabaseType = new Proxy(rawDb, {
           get(s, method) {
             if ((TRACED_STMT_METHODS as readonly string[]).includes(method as string)) {
               return (...args: unknown[]) =>
-                tracedQuery(op, table, () => (s[method as keyof typeof s] as (...a: unknown[]) => unknown)(...args));
+                tracedQuery(op, table, () => Reflect.apply(s[method as keyof typeof s] as Function, s, args));
             }
-            return s[method as keyof typeof s];
+            const val = s[method as keyof typeof s];
+            if (typeof val === 'function') return (val as Function).bind(s);
+            return val;
           },
         });
       };
     }
-    return target[prop as keyof typeof target];
+    const val = target[prop as keyof typeof target];
+    if (typeof val === 'function') return (val as Function).bind(target);
+    return val;
   },
 });
 
