@@ -152,7 +152,7 @@ app.get("/list", async (c) => {
       .map((r) => ({
         name: basename(r),
         path: r,
-        type: "directory" as const,
+        type: "dir" as const,
       }));
 
     return c.json({

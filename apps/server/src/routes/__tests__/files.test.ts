@@ -664,7 +664,7 @@ describe("GET /list — synthetic home view", () => {
 
     // Every returned item must be a directory whose path starts with /home/claude/
     for (const item of body.items) {
-      expect(item.type).toBe("directory");
+      expect(item.type).toBe("dir");
       expect(item.path.startsWith("/home/claude/")).toBe(true);
     }
 
