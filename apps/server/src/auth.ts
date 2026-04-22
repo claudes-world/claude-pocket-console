@@ -84,7 +84,7 @@ export function validateTelegramInitData(
       span.setAttribute('auth.valid', true);
       return { valid: true, user };
     } catch {
-      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'hmac_mismatch' });
+      span.setAttributes({ 'auth.valid': false, 'auth.failure_reason': 'parse_error' });
       return { valid: false };
     }
   } catch (err) {

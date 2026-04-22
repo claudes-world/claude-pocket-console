@@ -141,7 +141,7 @@ app.post("/restart-session", async (c) => {
 
 app.post("/resize-terminal", async (c) => {
   try {
-    await tracedTmux('tmux.compact', TMUX_SESSION, 'resize-terminal', () =>
+    await tracedTmux('tmux.resize-terminal', TMUX_SESSION, 'resize-terminal', () =>
       execAsync(`tmux resize-window -t ${TMUX_SESSION} -A`)
     );
     return c.json({ ok: true, action: "resize-terminal" });
