@@ -13,9 +13,10 @@ import { haptic } from "./lib/haptic";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
+import PulseLabPage from "./components/pulse/PulseLabPage";
 
-type Tab = "terminal" | "files" | "links" | "voice" | "prs";
-const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
+type Tab = "terminal" | "files" | "links" | "voice" | "prs" | "pulse";
+const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs", "pulse"];
 const SWIPE_THRESHOLD = 120;
 
 
@@ -310,6 +311,9 @@ export function App() {
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <PrTicker />
+          </div>
+          <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0, overflow: "hidden", maxWidth: "100%" }}>
+            <PulseLabPage />
           </div>
         </div>
       </div>

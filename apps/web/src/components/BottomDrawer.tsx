@@ -6,7 +6,7 @@ import { AppSwitcher } from "./AppSwitcher";
 import { MessageTicker } from "./MessageTicker";
 import "./BottomDrawer.css";
 
-type Tab = "terminal" | "files" | "links" | "voice" | "prs";
+type Tab = "terminal" | "files" | "links" | "voice" | "prs" | "pulse";
 
 interface BottomDrawerProps {
   children: React.ReactNode;       // TabDock (always visible at bottom)
