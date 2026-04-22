@@ -37,6 +37,7 @@ export const ALLOWED_FILE_ROOTS = [
   "/home/claude/bin",
   "/home/claude/.claude",
   "/home/claude/claudes-world/.claude",
+  "/home/claude/.world",
 ] as const;
 
 

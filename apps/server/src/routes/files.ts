@@ -130,10 +130,37 @@ app.get("/roots", (c) => {
   });
 });
 
+// Synthetic home view — parent of all allowed roots. Constructed purely from
+// ALLOWED_ROOTS (no readdir on /home/claude) so disallowed siblings like .ssh
+// can never appear in the listing.
+const HOME_CLAUDE = "/home/claude";
+
 // List directory contents
 app.get("/list", async (c) => {
   const dir = c.req.query("path") || BASE_DIR;
   const resolved = resolve(dir);
+
+  // Synthetic home view: construct listing from allowlist, never readdir /home/claude.
+  if (resolved === HOME_CLAUDE) {
+    const items = ALLOWED_ROOTS
+      .map((r) => resolve(r))
+      .filter((r) => {
+        // Only include roots whose immediate parent is /home/claude
+        const parentDir = resolve(r, "..");
+        return parentDir === HOME_CLAUDE;
+      })
+      .map((r) => ({
+        name: basename(r),
+        path: r,
+        type: "dir" as const,
+      }));
+
+    return c.json({
+      path: HOME_CLAUDE,
+      parent: null,
+      items,
+    });
+  }
 
   if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
@@ -205,6 +232,10 @@ app.get("/read", async (c) => {
   }
 
   const resolved = resolve(filePath);
+  // /home/claude itself is a synthetic virtual directory — never a real file.
+  if (resolved === HOME_CLAUDE) {
+    return c.json({ error: "Access denied" }, 403);
+  }
   if (!await isPathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }

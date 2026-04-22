@@ -149,6 +149,24 @@ describe("isPathAllowed", () => {
     expect(await isPathAllowed(allowedRoot, [platformRoot])).toBe(true);
   });
 
+  it("allows a path under /home/claude/.world when that root is in the allowlist", async () => {
+    // Verify that ALLOWED_FILE_ROOTS includes /home/claude/.world by importing it
+    // and checking membership, then confirm the helper resolves the path as allowed
+    // against a synthetic tmp-based root (we can't use the live .world path in CI
+    // because it may not exist on the test host).
+    const { ALLOWED_FILE_ROOTS } = await import("../../lib/path-allowed.js");
+    expect(ALLOWED_FILE_ROOTS).toContain("/home/claude/.world");
+
+    // Functional check: a nested path under an allowed root that mimics the
+    // .world layout is accepted. Uses the existing allowedRoot fixture.
+    const snapshotsDir = join(allowedRoot, "pulse", "snapshots");
+    mkdirSync(snapshotsDir, { recursive: true });
+    writeFileSync(join(snapshotsDir, "current.json"), "{}");
+    expect(
+      await isPathAllowed(join(snapshotsDir, "current.json"), [allowedRoot]),
+    ).toBe(true);
+  });
+
   it("memoizes realpath(root) via an on-disk swap of the root target", async () => {
     // Spying on `realpath` in ESM is blocked by vitest (module namespace
     // is not configurable), so we verify memoization by observing a behavior
