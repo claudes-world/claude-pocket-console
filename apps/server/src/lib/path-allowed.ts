@@ -1,5 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
+import { getTracer } from "./otel.js";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 /**
  * Check whether an absolute path is contained within any of the allowed root
@@ -30,6 +32,8 @@ import { resolve, sep } from "node:path";
 // (e.g. if a root was temporarily missing). A guard prevents a delayed
 // rejection from evicting a newer entry added after a cache clear.
 const realRootCache = new Map<string, Promise<string>>();
+
+const pathTracer = getTracer('cpc-server-security');
 
 export const ALLOWED_FILE_ROOTS = [
   "/home/claude/claudes-world",
@@ -73,30 +77,44 @@ export async function isPathAllowed(
   absPath: string,
   allowedRoots: readonly string[],
 ): Promise<boolean> {
-  let realCandidate: string;
+  const span = pathTracer.startSpan('security.path_check', {
+    attributes: { 'path.root_count': allowedRoots.length },
+  });
   try {
-    realCandidate = await realpath(resolve(absPath));
-  } catch {
-    // Non-existent path, broken symlink, or permission denied — reject.
-    return false;
-  }
-
-  for (const root of allowedRoots) {
-    let realRoot: string;
+    let realCandidate: string;
     try {
-      realRoot = await getRealRoot(root);
+      realCandidate = await realpath(resolve(absPath));
     } catch {
-      // Allowed root is missing on disk — skip, don't let it match anything.
-      continue;
+      // Non-existent path, broken symlink, or permission denied — reject.
+      span.setAttribute('path.allowed', false);
+      return false;
     }
-    // When realRoot is the filesystem root (e.g. `/` on Unix, `C:\` on
-    // Windows), `realRoot + sep` yields `//` or `C:\\`, which no valid
-    // child path starts with. Only append a separator if the root doesn't
-    // already end with one.
-    const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
-    if (realCandidate === realRoot || realCandidate.startsWith(rootWithSep)) {
-      return true;
+
+    for (const root of allowedRoots) {
+      let realRoot: string;
+      try {
+        realRoot = await getRealRoot(root);
+      } catch {
+        // Allowed root is missing on disk — skip, don't let it match anything.
+        continue;
+      }
+      // When realRoot is the filesystem root (e.g. `/` on Unix, `C:\` on
+      // Windows), `realRoot + sep` yields `//` or `C:\\`, which no valid
+      // child path starts with. Only append a separator if the root doesn't
+      // already end with one.
+      const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+      if (realCandidate === realRoot || realCandidate.startsWith(rootWithSep)) {
+        span.setAttribute('path.allowed', true);
+        return true;
+      }
     }
+    span.setAttribute('path.allowed', false);
+    return false;
+  } catch (err) {
+    span.recordException(err instanceof Error ? err : String(err));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw err;
+  } finally {
+    span.end();
   }
-  return false;
 }
