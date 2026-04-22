@@ -368,6 +368,7 @@ function ColHeader({
   onSort,
   align = "right",
   title,
+  sticky = false,
 }: {
   label: string;
   sortKey: SortKey;
@@ -376,6 +377,7 @@ function ColHeader({
   onSort: (k: SortKey) => void;
   align?: "left" | "right";
   title?: string;
+  sticky?: boolean;
 }) {
   const active = currentKey === sortKey;
   return (
@@ -396,6 +398,7 @@ function ColHeader({
         minHeight: 44,
         verticalAlign: "bottom",
         background: "#0d0d0d",
+        ...(sticky ? { position: "sticky", left: 0, zIndex: 2, borderRight: "1px solid #1e1e1e" } : {}),
       }}
     >
       {label}
@@ -591,6 +594,7 @@ export default function TabularDashboard({ data }: Props) {
                 currentDir={sortDir}
                 onSort={handleSort}
                 align="left"
+                sticky
               />
               <ColHeader
                 label="STATUS"
