@@ -1,4 +1,4 @@
-type Tab = "terminal" | "files" | "links" | "voice" | "prs";
+type Tab = "terminal" | "files" | "links" | "voice" | "prs" | "pulse";
 
 interface AppSwitcherSection {
   id: Tab | "agents" | "settings";
@@ -13,6 +13,7 @@ const SECTIONS: AppSwitcherSection[] = [
   { id: "links",    label: "Links",    icon: "🔗", active: true },
   { id: "voice",    label: "Voice",    icon: "🎤", active: true },
   { id: "prs",      label: "PRs",      icon: "⊙",  active: true },
+  { id: "pulse",    label: "Pulse",    icon: "📊", active: true },
   { id: "agents",   label: "Agents",   icon: "🤖", active: false },
   { id: "settings", label: "Settings", icon: "⚙",  active: false },
 ];

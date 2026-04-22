@@ -1,4 +1,4 @@
-type Tab = "terminal" | "files" | "links" | "voice" | "prs";
+type Tab = "terminal" | "files" | "links" | "voice" | "prs" | "pulse";
 
 const TAB_LABELS: Record<Tab, string> = {
   terminal: "Terminal",
@@ -6,9 +6,10 @@ const TAB_LABELS: Record<Tab, string> = {
   links: "Links",
   voice: "Voice",
   prs: "PRs",
+  pulse: "Pulse",
 };
 
-const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
+const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs", "pulse"];
 
 interface TabDockProps {
   activeTab: Tab;
