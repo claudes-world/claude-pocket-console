@@ -10,7 +10,7 @@ type Tab = "terminal" | "files" | "links" | "voice" | "prs";
 
 interface BottomDrawerProps {
   children: React.ReactNode;       // TabDock (always visible at bottom)
-  drawerContent?: React.ReactNode; // ActionChips (half/full)
+  drawerContent?: React.ReactNode; // optional half/full drawer content
   activeTab: Tab;                  // for AppSwitcher
   onTabChange: (tab: Tab) => void; // for AppSwitcher tile tap
   connected?: boolean;             // for MessageTicker
@@ -112,8 +112,7 @@ export function BottomDrawer({ children, drawerContent, activeTab, onTabChange, 
           <div className="drawer-handle-bar" />
         </div>
 
-        {/* AppSwitcher at full, ActionChips (drawerContent) at half — ActionChips remounts on full→half transition;
-            useActionBarModals state (debounce timers, audio refs) is discarded when AppSwitcher is open */}
+        {/* AppSwitcher at full, drawerContent at half */}
         <div className="drawer-content">
           {snap === "full"
             ? <AppSwitcher activeTab={activeTab} onSelect={(tab) => { onTabChange(tab); animateTo("peek"); }} />
