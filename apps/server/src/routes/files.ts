@@ -141,7 +141,7 @@ app.get("/list", async (c) => {
   const resolved = resolve(dir);
 
   // Synthetic home view: construct listing from allowlist, never readdir /home/claude.
-  if (resolved === HOME_CLAUDE || resolved === HOME_CLAUDE + sep) {
+  if (resolved === HOME_CLAUDE) {
     const items = ALLOWED_ROOTS
       .map((r) => resolve(r))
       .filter((r) => {
@@ -233,7 +233,7 @@ app.get("/read", async (c) => {
 
   const resolved = resolve(filePath);
   // /home/claude itself is a synthetic virtual directory — never a real file.
-  if (resolved === HOME_CLAUDE || resolved === HOME_CLAUDE + sep) {
+  if (resolved === HOME_CLAUDE) {
     return c.json({ error: "Access denied" }, 403);
   }
   if (!await isPathAllowed(resolved)) {
