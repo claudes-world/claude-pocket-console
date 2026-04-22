@@ -642,3 +642,53 @@ describe("POST /paste", () => {
     expect(JSON.stringify(body)).not.toContain(sandbox);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /list — synthetic home view (/home/claude)
+// ---------------------------------------------------------------------------
+describe("GET /list — synthetic home view", () => {
+  it("returns only allowlisted subdirs of /home/claude, never disallowed siblings", async () => {
+    const res = await filesRoute.request(
+      `/list?path=${encodeURIComponent("/home/claude")}`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      path: string;
+      parent: string | null;
+      items: Array<{ name: string; path: string; type: string }>;
+    };
+
+    expect(body.path).toBe("/home/claude");
+    expect(body.parent).toBeNull();
+    expect(Array.isArray(body.items)).toBe(true);
+
+    // Every returned item must be a directory whose path starts with /home/claude/
+    for (const item of body.items) {
+      expect(item.type).toBe("dir");
+      expect(item.path.startsWith("/home/claude/")).toBe(true);
+    }
+
+    const names = body.items.map((i) => i.name);
+
+    // Allowlisted direct children must be present
+    expect(names).toContain("claudes-world");
+    expect(names).toContain("code");
+    expect(names).toContain("bin");
+    expect(names).toContain(".claude");
+    expect(names).toContain(".world");
+
+    // Disallowed siblings must never appear
+    expect(names).not.toContain(".ssh");
+    expect(names).not.toContain(".secrets");
+    expect(names).not.toContain("claudes-world/.claude"); // nested root, not a direct child
+  });
+
+  it("returns 403 for direct file-read on /home/claude", async () => {
+    const res = await filesRoute.request(
+      `/read?path=${encodeURIComponent("/home/claude")}`,
+    );
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Access denied");
+  });
+});
