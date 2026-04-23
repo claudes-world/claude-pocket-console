@@ -22,7 +22,7 @@ function extractOperation(sql: string): string {
 
 const dbTracer = getTracer('cpc-server-db');
 
-function tracedQuery<T>(op: string, table: string, fn: () => T): T {
+export function tracedQuery<T>(op: string, table: string, fn: () => T): T {
   const span = dbTracer.startSpan(`db.${op.toLowerCase()}`, {
     attributes: { 'db.system': 'sqlite', 'db.operation': op, 'db.sql.table': table },
   });
@@ -38,11 +38,39 @@ function tracedQuery<T>(op: string, table: string, fn: () => T): T {
 }
 
 // Proxy wrapping ALL .prepare() usage.
-// Only trace actual execution methods — pluck/expand/raw are configurators that
-// return `this` for chaining (e.g. stmt.pluck().get(params)). Intercepting them
-// with tracedQuery would return the unproxied statement, losing span coverage on
-// the subsequent .get()/.all()/.run() call.
-const TRACED_STMT_METHODS = ['get', 'all', 'run', 'iterate'] as const;
+//
+// Three classes of method need distinct handling:
+//
+//  1. TRACED_SYNC_METHODS (`get`, `all`, `run`) — synchronous execute-and-return.
+//     Wrap the whole call in tracedQuery so the span captures elapsed time +
+//     any thrown error.
+//
+//  2. `iterate` — returns a lazy iterator SYNCHRONOUSLY; the actual row fetches
+//     happen later as the caller consumes the iterator. Wrapping it like a sync
+//     method ends the span before any row is pulled, recording ~0µs and missing
+//     any error raised during iteration. Instead we hand back an iterator that
+//     starts the span eagerly and ends it on exhaustion, early return, or throw.
+//
+//  3. CONFIGURATOR_METHODS (`pluck`, `expand`, `raw`, `safeIntegers`, `bind`) —
+//     mutate the statement and return `this` for chaining. Returning the raw
+//     `s` here would hand the caller an UNPROXIED statement, so the subsequent
+//     `.get()/.all()/.iterate()` would bypass all tracing. We re-route these
+//     to run the configurator on `s` and return the outer Proxy so tracing
+//     stays intact across the chain.
+//
+//     NOTE: `columns()` is deliberately EXCLUDED. Despite being a configurator-
+//     adjacent introspection API, it returns `ColumnDefinition[]`, not `this`
+//     — wrapping it here would replace that array with the statement proxy and
+//     break callers. It falls through to the default branch which returns the
+//     method bound to the real statement.
+const TRACED_SYNC_METHODS = new Set(['get', 'all', 'run']);
+const CONFIGURATOR_METHODS = new Set([
+  'pluck',
+  'expand',
+  'raw',
+  'safeIntegers',
+  'bind',
+]);
 
 export const db: DatabaseType = new Proxy(rawDb, {
   get(target, prop) {
@@ -51,17 +79,135 @@ export const db: DatabaseType = new Proxy(rawDb, {
         const stmt = target.prepare(sql);
         const table = extractTable(sql);
         const op = extractOperation(sql);
-        return new Proxy(stmt, {
+        const stmtProxy: typeof stmt = new Proxy(stmt, {
           get(s, method) {
-            if ((TRACED_STMT_METHODS as readonly string[]).includes(method as string)) {
+            const methodStr = method as string;
+
+            if (TRACED_SYNC_METHODS.has(methodStr)) {
               return (...args: unknown[]) =>
-                tracedQuery(op, table, () => Reflect.apply(s[method as keyof typeof s] as Function, s, args));
+                tracedQuery(op, table, () =>
+                  Reflect.apply(s[method as keyof typeof s] as Function, s, args)
+                );
             }
+
+            if (methodStr === 'iterate') {
+              return (...args: unknown[]) => {
+                // Start the span BEFORE invoking iterate so we capture
+                // any throw from the prepare/bind phase, and keep it
+                // open across the full consumer loop. We end it on
+                // StopIteration, caller-initiated .return(), or .throw().
+                const span = dbTracer.startSpan(`db.${op.toLowerCase()}`, {
+                  attributes: {
+                    'db.system': 'sqlite',
+                    'db.operation': op,
+                    'db.sql.table': table,
+                  },
+                });
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                let innerIter: IterableIterator<unknown> & { return?: (value?: any) => IteratorResult<unknown> };
+                try {
+                  innerIter = Reflect.apply(
+                    s.iterate as Function,
+                    s,
+                    args
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ) as any;
+                } catch (err) {
+                  span.recordException(err instanceof Error ? err : String(err));
+                  span.setStatus({ code: SpanStatusCode.ERROR });
+                  span.end();
+                  throw err;
+                }
+                // Hand back a wrapper iterator that delegates to the inner
+                // better-sqlite3 iterator but ends the span exactly once,
+                // on whichever exit path fires first. Using an explicit
+                // iterator object (not a generator) avoids double-calling
+                // `.return()` on the underlying cursor, which previously
+                // left the DB connection in a "busy" state.
+                let ended = false;
+                const endOnce = () => {
+                  if (ended) return;
+                  ended = true;
+                  span.end();
+                };
+                const wrapper: IterableIterator<unknown> = {
+                  [Symbol.iterator]() { return this; },
+                  next() {
+                    try {
+                      const result = innerIter.next();
+                      if (result.done) endOnce();
+                      return result;
+                    } catch (err) {
+                      span.recordException(err instanceof Error ? err : String(err));
+                      span.setStatus({ code: SpanStatusCode.ERROR });
+                      endOnce();
+                      throw err;
+                    }
+                  },
+                  return(value?: unknown): IteratorResult<unknown> {
+                    try {
+                      const r = innerIter.return?.(value) ?? { value: undefined, done: true };
+                      endOnce();
+                      return r;
+                    } catch (err) {
+                      span.recordException(err instanceof Error ? err : String(err));
+                      span.setStatus({ code: SpanStatusCode.ERROR });
+                      endOnce();
+                      throw err;
+                    }
+                  },
+                  // `throw()` is rarely used but part of the Iterator protocol;
+                  // forward to the inner iterator if it supports throw, otherwise
+                  // record the error, end the span, and re-throw so the caller
+                  // still sees the exception.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  throw(err?: any): IteratorResult<unknown> {
+                    try {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const innerThrow = (innerIter as any).throw as
+                        | ((e?: unknown) => IteratorResult<unknown>)
+                        | undefined;
+                      if (typeof innerThrow === 'function') {
+                        const r = innerThrow.call(innerIter, err);
+                        endOnce();
+                        return r;
+                      }
+                      // No inner throw — simulate protocol by recording +
+                      // rethrowing. Caller gets the error they handed us.
+                      span.recordException(err instanceof Error ? err : String(err));
+                      span.setStatus({ code: SpanStatusCode.ERROR });
+                      endOnce();
+                      throw err;
+                    } catch (thrownErr) {
+                      span.recordException(thrownErr instanceof Error ? thrownErr : String(thrownErr));
+                      span.setStatus({ code: SpanStatusCode.ERROR });
+                      endOnce();
+                      throw thrownErr;
+                    }
+                  },
+                };
+                return wrapper;
+              };
+            }
+
+            if (CONFIGURATOR_METHODS.has(methodStr)) {
+              const orig = s[method as keyof typeof s] as Function | undefined;
+              if (typeof orig !== 'function') return orig;
+              return (...args: unknown[]) => {
+                // Run the configurator on the underlying statement, then
+                // return the outer proxy so subsequent chained calls
+                // (.get / .all / .iterate) remain traced.
+                Reflect.apply(orig, s, args);
+                return stmtProxy;
+              };
+            }
+
             const val = s[method as keyof typeof s];
             if (typeof val === 'function') return (val as Function).bind(s);
             return val;
           },
         });
+        return stmtProxy;
       };
     }
     const val = target[prop as keyof typeof target];
