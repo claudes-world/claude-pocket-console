@@ -1,6 +1,12 @@
 import fs from 'node:fs/promises';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
+import {
+  BatchSpanProcessor,
+  SimpleSpanProcessor,
+  ConsoleSpanExporter,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
@@ -16,7 +22,20 @@ const resource = new Resource({
 });
 
 // ── Traces ────────────────────────────────────────────────────────────────────
-const provider = new NodeTracerProvider({ resource });
+// Sampling: default to 10% of root traces — the previous always-on default
+// combined with per-call spans (isPathAllowed, db statements) could overflow
+// BatchSpanProcessor's buffer under load, silently dropping spans. The env
+// var OTEL_TRACES_SAMPLE_RATE lets ops tune (0.0–1.0). Wrapping in
+// ParentBasedSampler honors upstream sampling decisions — if Alloy or another
+// caller propagates a sampled trace, we inherit that decision instead of
+// re-rolling and potentially breaking a trace mid-flight.
+const sampleRateEnv = process.env['OTEL_TRACES_SAMPLE_RATE'];
+const parsed = sampleRateEnv !== undefined ? parseFloat(sampleRateEnv) : NaN;
+const sampleRate = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 0.1;
+const sampler = new ParentBasedSampler({
+  root: new TraceIdRatioBasedSampler(sampleRate),
+});
+const provider = new NodeTracerProvider({ resource, sampler });
 
 // OTLPTraceExporter silently drops spans when the collector is absent — no process crash.
 // Use BatchSpanProcessor in prod (non-blocking buffer flush) and SimpleSpanProcessor in dev.

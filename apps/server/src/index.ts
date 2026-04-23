@@ -69,13 +69,48 @@ app.use('/api/*', async (c, next) => {
   c.req.raw.headers.forEach((v, k) => { headers[k] = v; });
   const parentCtx = propagation.extract(otelContext.active(), headers);
 
+  // Start with the middleware mount path as the route; we refine it after
+  // next() runs, once Hono has resolved the matched handler. `c.req.routePath`
+  // inside middleware returns the MIDDLEWARE's own pattern (`/api/*`), not the
+  // matched handler's path — so we must wait until after next() and read the
+  // matched-route metadata instead. See Hono docs on `matchedRoutes`.
   const span = httpTracer.startSpan(`${c.req.method} /api/*`, {
     attributes: { 'http.method': c.req.method },
   }, parentCtx);
   await otelContext.with(trace.setSpan(parentCtx, span), async () => {
     try {
       await next();
-      span.setAttribute('http.route', c.req.routePath);
+      // Resolve the matched handler's route after next() has returned.
+      // Prefer the last entry in `matchedRoutes` that isn't this middleware's
+      // own mount pattern; fall back to `routePath`, then `/api/*`.
+      let matchedPath = '/api/*';
+      try {
+        // hono exposes `matchedRoutes` as an array of `{ path, method, handler }`.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const matched = (c.req as any).matchedRoutes as
+          | Array<{ path: string; method?: string }>
+          | undefined;
+        if (Array.isArray(matched) && matched.length > 0) {
+          // Walk from the end looking for a specific route (not a catch-all
+          // middleware mount like `/api/*`). This covers the common case
+          // where the matched application handler is the last entry.
+          for (let i = matched.length - 1; i >= 0; i--) {
+            const p = matched[i]?.path;
+            if (p && !p.endsWith('/*')) { matchedPath = p; break; }
+          }
+          if (matchedPath === '/api/*') {
+            // Fall back to the last matched path even if it's a wildcard.
+            matchedPath = matched[matched.length - 1]?.path ?? matchedPath;
+          }
+        } else {
+          matchedPath = c.req.routePath ?? matchedPath;
+        }
+      } catch {
+        // Hono getter threw — keep the /api/* default rather than 500 the
+        // request (defence-in-depth around a telemetry-only attribute).
+      }
+      span.setAttribute('http.route', matchedPath);
+      span.updateName(`${c.req.method} ${matchedPath}`);
       span.setAttribute('http.status_code', c.res.status);
       if (c.res.status >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
     } catch (err) {

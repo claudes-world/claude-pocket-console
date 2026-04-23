@@ -81,10 +81,14 @@ app.post("/send-keys", async (c) => {
         execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, ...tokens])
       );
     } else {
-      // Literal text — use -l to avoid special char issues, then Enter
+      // Literal text — use execFile (no shell) with `-l` and `--` so user
+      // input cannot inject via $(...) or backticks. The previous execAsync
+      // path spawned /bin/sh -c on an interpolated string; JSON.stringify
+      // only quotes for JS, NOT for shells, so `$(...)` and backticks in the
+      // keys survived the quote and were executed by sh BEFORE tmux saw them.
       await tracedTmux('tmux.send-keys', TMUX_SESSION, 'literal', async () => {
-        await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);
-        await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+        await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys]);
+        await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
       });
     }
     return c.json({ ok: true, action: "send-keys" });
@@ -99,10 +103,11 @@ app.post("/compact", async (c) => {
     const message = body.message as string;
     if (!message) return c.json({ ok: false, error: "message required" }, 400);
 
-    // Send via tmux send-keys
+    // Send via tmux send-keys — execFile (no shell) with -l + -- so the
+    // user-provided message cannot inject via $(...) or backticks.
     await tracedTmux('tmux.compact', TMUX_SESSION, 'compact', async () => {
-      await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(message)}`);
-      await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", message]);
+      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
     });
     return c.json({ ok: true, action: "compact" });
   } catch (err: any) {
