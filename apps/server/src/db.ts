@@ -51,19 +51,24 @@ export function tracedQuery<T>(op: string, table: string, fn: () => T): T {
 //     any error raised during iteration. Instead we hand back an iterator that
 //     starts the span eagerly and ends it on exhaustion, early return, or throw.
 //
-//  3. CONFIGURATOR_METHODS (`pluck`, `expand`, `raw`, `safeIntegers`, `columns`,
-//     `bind`) — mutate the statement and return `this` for chaining. Returning
-//     the raw `s` here would hand the caller an UNPROXIED statement, so the
-//     subsequent `.get()/.all()/.iterate()` would bypass all tracing. We
-//     re-route these to run the configurator on `s` and return the outer
-//     Proxy so tracing stays intact across the chain.
+//  3. CONFIGURATOR_METHODS (`pluck`, `expand`, `raw`, `safeIntegers`, `bind`) —
+//     mutate the statement and return `this` for chaining. Returning the raw
+//     `s` here would hand the caller an UNPROXIED statement, so the subsequent
+//     `.get()/.all()/.iterate()` would bypass all tracing. We re-route these
+//     to run the configurator on `s` and return the outer Proxy so tracing
+//     stays intact across the chain.
+//
+//     NOTE: `columns()` is deliberately EXCLUDED. Despite being a configurator-
+//     adjacent introspection API, it returns `ColumnDefinition[]`, not `this`
+//     — wrapping it here would replace that array with the statement proxy and
+//     break callers. It falls through to the default branch which returns the
+//     method bound to the real statement.
 const TRACED_SYNC_METHODS = new Set(['get', 'all', 'run']);
 const CONFIGURATOR_METHODS = new Set([
   'pluck',
   'expand',
   'raw',
   'safeIntegers',
-  'columns',
   'bind',
 ]);
 
