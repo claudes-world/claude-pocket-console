@@ -2,12 +2,24 @@ import { Hono } from "hono";
 import { writeFileSync, unlinkSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { db } from "../db.js";
 import { getUserId as getUserIdShared } from "../lib/get-user-id.js";
 import { getTracer } from "../lib/otel.js";
 import { SpanStatusCode } from "@opentelemetry/api";
+
+const execFileAsync = promisify(execFile);
+
+// Hard cap on the transcribe child process. Previously execFileSync had no
+// timeout, so a hung transcribe (network wedge, model hang, etc.) would
+// block the Node event loop indefinitely AND orphan the `audio.transcribe`
+// span — never ending means BatchSpanProcessor never exports it, eventually
+// overflowing the buffer. On timeout execFile SIGTERMs the child; we set
+// error status + `error.type=timeout` before span.end() so operators can
+// spot these in the trace backend.
+const TRANSCRIBE_TIMEOUT_MS = 60_000;
 
 /**
  * Allowlist for uploaded-audio file extensions. Anything outside this set is
@@ -97,18 +109,38 @@ app.post("/transcribe", async (c) => {
     });
     let text: string;
     try {
-      const result = execFileSync(transcribeBin, [tmpPath], {
-        encoding: "utf-8",
-        env: { ...process.env },
-      });
-      text = result.trim();
-    } catch (err) {
-      span.recordException(err instanceof Error ? err : String(err));
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      try {
+        // execFile (async) with a timeout so the event loop isn't blocked and
+        // the span always ends even if the child hangs. encoding: "utf-8"
+        // returns stdout as a string. maxBuffer bumped to 10 MiB to cover
+        // long transcripts (default 1 MiB would truncate noisy multi-minute
+        // recordings).
+        const { stdout } = await execFileAsync(transcribeBin, [tmpPath], {
+          encoding: "utf-8",
+          env: { ...process.env },
+          timeout: TRANSCRIBE_TIMEOUT_MS,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        text = stdout.trim();
+      } catch (err) {
+        // Node surfaces a SIGTERM with `code === null` and `signal === 'SIGTERM'`
+        // (or `killed: true`) when the timeout fires. Tag those distinctly so
+        // operators can filter transcribe-timeouts vs real transcribe errors.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = err as any;
+        if (e && (e.killed === true || e.signal === 'SIGTERM')) {
+          span.setAttribute('error.type', 'timeout');
+        }
+        span.recordException(err instanceof Error ? err : String(err));
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw err;
+      }
+    } finally {
+      // Single end() path (finally) so a throw between startSpan and the
+      // inner try can never leak the span. Defence-in-depth vs the prior
+      // two-call shape.
       span.end();
-      throw err;
     }
-    span.end();
 
     return c.json({ text });
   } catch (err: any) {

@@ -27,7 +27,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *     voiceRoute and injects a fake user.
  */
 
-const execFileSyncSpy = vi.fn((_bin: string, _args: string[]) => "hello world\n");
+// The shipping code switched from `execFileSync` (blocking, no timeout) to
+// promisified `execFile` so the audio.transcribe span always ends (see
+// phase-4 orch swarm M4). `util.promisify` without a custom symbol converts
+// a node-style callback (err, value) into a Promise resolving to `value`.
+// Our stub resolves with an `{stdout, stderr}` object so the awaiting code
+// destructures `{ stdout }` correctly.
+//
+// The mock module replaces `execFile` entirely (no promisify.custom), which
+// forces `promisify` down its default path — our spy's callback delivers
+// `{stdout, stderr}` as the single value arg.
+const execFileSpy = vi.fn((
+  _bin: string,
+  _args: string[],
+  optsOrCb: unknown,
+  maybeCb?: (err: Error | null, value: { stdout: string; stderr: string }) => void,
+) => {
+  const cb =
+    typeof optsOrCb === "function"
+      ? (optsOrCb as (err: Error | null, value: { stdout: string; stderr: string }) => void)
+      : maybeCb;
+  cb?.(null, { stdout: "hello world\n", stderr: "" });
+  return { kill: vi.fn() } as unknown as import("node:child_process").ChildProcess;
+});
 const writeFileSpy = vi.fn((_path: string, _data: any) => {});
 const unlinkSpy = vi.fn((_path: string) => {});
 
@@ -35,7 +57,7 @@ vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
   return {
     ...actual,
-    execFileSync: execFileSyncSpy,
+    execFile: execFileSpy,
   };
 });
 
@@ -80,7 +102,7 @@ app.use("*", async (c, next) => {
 app.route("/api/voice", voiceRoute);
 
 beforeEach(() => {
-  execFileSyncSpy.mockClear();
+  execFileSpy.mockClear();
   writeFileSpy.mockClear();
   unlinkSpy.mockClear();
 });
@@ -108,35 +130,35 @@ describe("/transcribe extension allowlist (M-4)", () => {
     // The rejection must happen BEFORE writeFileSync (no tmp file created)
     // and BEFORE execFileSync (no transcribe invocation).
     expect(writeFileSpy).not.toHaveBeenCalled();
-    expect(execFileSyncSpy).not.toHaveBeenCalled();
+    expect(execFileSpy).not.toHaveBeenCalled();
   });
 
   it("rejects a filename whose extension contains command substitution", async () => {
     const { status, body } = await postTranscribe("audio.$(whoami)");
     expect(status).toBe(400);
     expect(body.error).toMatch(/unsupported audio extension/);
-    expect(execFileSyncSpy).not.toHaveBeenCalled();
+    expect(execFileSpy).not.toHaveBeenCalled();
   });
 
   it("rejects a completely unknown extension like .exe", async () => {
     const { status, body } = await postTranscribe("malware.exe");
     expect(status).toBe(400);
     expect(body.error).toMatch(/unsupported audio extension/);
-    expect(execFileSyncSpy).not.toHaveBeenCalled();
+    expect(execFileSpy).not.toHaveBeenCalled();
   });
 
   it("rejects a filename whose extension is a pipe to another command", async () => {
     const { status } = await postTranscribe("audio.mp3|nc evil 1234");
     expect(status).toBe(400);
-    expect(execFileSyncSpy).not.toHaveBeenCalled();
+    expect(execFileSpy).not.toHaveBeenCalled();
   });
 
-  it("accepts a .mp3 upload and calls execFileSync with an argv array", async () => {
+  it("accepts a .mp3 upload and calls execFile with an argv array", async () => {
     const { status, body } = await postTranscribe("song.mp3");
     expect(status).toBe(200);
     expect(body.text).toBe("hello world");
-    expect(execFileSyncSpy).toHaveBeenCalledTimes(1);
-    const [bin, args] = execFileSyncSpy.mock.calls[0];
+    expect(execFileSpy).toHaveBeenCalledTimes(1);
+    const [bin, args] = execFileSpy.mock.calls[0];
     expect(bin).toMatch(/bin\/transcribe$/);
     // Second arg is the argv array — a single element (the tmp path).
     expect(Array.isArray(args)).toBe(true);
@@ -148,10 +170,10 @@ describe("/transcribe extension allowlist (M-4)", () => {
     // Pared-down coverage of the allowlist — one per token.
     const exts = ["wav", "ogg", "webm", "m4a", "flac", "opus", "oga", "mp4", "aac"];
     for (const ext of exts) {
-      execFileSyncSpy.mockClear();
+      execFileSpy.mockClear();
       const { status } = await postTranscribe(`clip.${ext}`);
       expect(status, `ext=${ext}`).toBe(200);
-      expect(execFileSyncSpy, `ext=${ext}`).toHaveBeenCalledTimes(1);
+      expect(execFileSpy, `ext=${ext}`).toHaveBeenCalledTimes(1);
     }
   });
 
