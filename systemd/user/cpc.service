@@ -1,0 +1,19 @@
+[Unit]
+Description=Claude Pocket Console — prod (latest tagged release)
+After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/claude/code/claude-pocket-console-prod
+Environment=PORT=38830
+Environment=NODE_ENV=production
+Environment=PATH=/home/claude/.local/share/fnm/aliases/default/bin:/home/claude/.local/bin:/home/claude/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/claude/.local/share/fnm/aliases/default/bin/node apps/server/dist/index.js
+ExecStartPost=/home/claude/code/toolbox/lib/systemd-wait-port.sh 38830
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
