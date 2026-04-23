@@ -156,6 +156,35 @@ export const db: DatabaseType = new Proxy(rawDb, {
                       throw err;
                     }
                   },
+                  // `throw()` is rarely used but part of the Iterator protocol;
+                  // forward to the inner iterator if it supports throw, otherwise
+                  // record the error, end the span, and re-throw so the caller
+                  // still sees the exception.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  throw(err?: any): IteratorResult<unknown> {
+                    try {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const innerThrow = (innerIter as any).throw as
+                        | ((e?: unknown) => IteratorResult<unknown>)
+                        | undefined;
+                      if (typeof innerThrow === 'function') {
+                        const r = innerThrow.call(innerIter, err);
+                        endOnce();
+                        return r;
+                      }
+                      // No inner throw — simulate protocol by recording +
+                      // rethrowing. Caller gets the error they handed us.
+                      span.recordException(err instanceof Error ? err : String(err));
+                      span.setStatus({ code: SpanStatusCode.ERROR });
+                      endOnce();
+                      throw err;
+                    } catch (thrownErr) {
+                      span.recordException(thrownErr instanceof Error ? thrownErr : String(thrownErr));
+                      span.setStatus({ code: SpanStatusCode.ERROR });
+                      endOnce();
+                      throw thrownErr;
+                    }
+                  },
                 };
                 return wrapper;
               };
