@@ -44,11 +44,11 @@ plugin. Do not try to set or change keyboard buttons from CPC.
 - Call `Telegram.WebApp.enableVerticalSwipes()` on close (cleanup in useEffect).
 - If you skip this, Telegram will minimize the app when users swipe down.
 
-### Git Safety
+### Git Safety + Branching
 
 - **Never `git checkout`/`restore` uncommitted work.** Always commit first.
-- **Always check `git branch` before making changes.** Never commit to `main`.
-- Work on `dev` or `feat/*` branches. Use `/deploy` skill to ship to prod.
+- **Branching:** 4-level hierarchy `feat/###-issue-PR → dev-<group> → dev → main`. Only orch merges to dev. Only Liam merges to main. Full rules: `docs/conventions/gitflow.md` (local) + `~/claudes-world/knowledge/adr/0018-gitflow-light-pr-branching.md` (canonical) + `~/claudes-world/knowledge/sop/feature-group-branching.md` (worked example).
+- Work on `dev` or `feat/*` branches (or `dev-<group>` for grouped features). Use `/deploy` skill to ship to prod.
 
 ### Camera / Media
 
