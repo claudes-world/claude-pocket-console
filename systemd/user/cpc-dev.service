@@ -1,0 +1,18 @@
+[Unit]
+Description=Claude Pocket Console — dev (Vite + tsx watch)
+After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/claude/code/claude-pocket-console
+Environment=PORT=38831
+Environment=PATH=/home/claude/.local/share/fnm/aliases/default/bin:/home/claude/.local/bin:/home/claude/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/claude/.local/bin/pnpm dev
+ExecStartPost=/home/claude/code/toolbox/lib/systemd-wait-port.sh 38831
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

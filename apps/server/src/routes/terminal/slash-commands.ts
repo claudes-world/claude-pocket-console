@@ -2,8 +2,32 @@ import { Hono } from "hono";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { execAsync, sendToTmux, TMUX_SESSION } from "../utils.js";
+import { getTracer } from "../../lib/otel.js";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 const execFileAsync = promisify(execFile);
+
+const tmuxTracer = getTracer('cpc-server-tmux');
+
+async function tracedTmux<T>(
+  spanName: string,
+  session: string,
+  commandType: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const span = tmuxTracer.startSpan(spanName, {
+    attributes: { 'tmux.session': session, 'tmux.command_type': commandType },
+  });
+  try {
+    return await fn();
+  } catch (err) {
+    span.recordException(err instanceof Error ? err : String(err));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw err;
+  } finally {
+    span.end();
+  }
+}
 
 const app = new Hono();
 
@@ -53,11 +77,19 @@ app.post("/send-keys", async (c) => {
         }
       }
       // execFile with argv — no shell, no interpolation.
-      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, ...tokens]);
+      await tracedTmux('tmux.send-keys', TMUX_SESSION, 'raw', () =>
+        execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, ...tokens])
+      );
     } else {
-      // Literal text — use -l to avoid special char issues, then Enter
-      await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(keys)}`);
-      await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+      // Literal text — use execFile (no shell) with `-l` and `--` so user
+      // input cannot inject via $(...) or backticks. The previous execAsync
+      // path spawned /bin/sh -c on an interpolated string; JSON.stringify
+      // only quotes for JS, NOT for shells, so `$(...)` and backticks in the
+      // keys survived the quote and were executed by sh BEFORE tmux saw them.
+      await tracedTmux('tmux.send-keys', TMUX_SESSION, 'literal', async () => {
+        await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys]);
+        await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
+      });
     }
     return c.json({ ok: true, action: "send-keys" });
   } catch (err: any) {
@@ -71,9 +103,12 @@ app.post("/compact", async (c) => {
     const message = body.message as string;
     if (!message) return c.json({ ok: false, error: "message required" }, 400);
 
-    // Send via tmux send-keys
-    await execAsync(`tmux send-keys -t ${TMUX_SESSION} -l ${JSON.stringify(message)}`);
-    await execAsync(`tmux send-keys -t ${TMUX_SESSION} Enter`);
+    // Send via tmux send-keys — execFile (no shell) with -l + -- so the
+    // user-provided message cannot inject via $(...) or backticks.
+    await tracedTmux('tmux.compact', TMUX_SESSION, 'compact', async () => {
+      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", message]);
+      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
+    });
     return c.json({ ok: true, action: "compact" });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
@@ -82,7 +117,9 @@ app.post("/compact", async (c) => {
 
 app.post("/reload-plugins", async (c) => {
   try {
-    await sendToTmux("/reload-plugins");
+    await tracedTmux('tmux.send-keys', TMUX_SESSION, 'reload-plugins', () =>
+      sendToTmux("/reload-plugins")
+    );
     return c.json({ ok: true, action: "reload-plugins" });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
@@ -91,14 +128,16 @@ app.post("/reload-plugins", async (c) => {
 
 app.post("/restart-session", async (c) => {
   try {
-    // Kill existing tmux session, then recreate using the same command as the cw alias
-    await execAsync(`tmux kill-session -t ${TMUX_SESSION} 2>/dev/null || true`, { shell: "/bin/bash" });
-    // Match the cw alias exactly: tmux new-session with the full claude command
-    const cmd = [
-      `tmux new-session -d -s ${TMUX_SESSION}`,
-      `"cd ~/claudes-world && TZ=America/New_York claude --dangerously-skip-permissions --continue --channels plugin:telegram@claude-plugins-official"`,
-    ].join(" ");
-    await execAsync(cmd, { shell: "/bin/bash" });
+    await tracedTmux('tmux.restart-session', TMUX_SESSION, 'restart-session', async () => {
+      // Kill existing tmux session, then recreate using the same command as the cw alias
+      await execAsync(`tmux kill-session -t ${TMUX_SESSION} 2>/dev/null || true`, { shell: "/bin/bash" });
+      // Match the cw alias exactly: tmux new-session with the full claude command
+      const cmd = [
+        `tmux new-session -d -s ${TMUX_SESSION}`,
+        `"cd ~/claudes-world && TZ=America/New_York claude --dangerously-skip-permissions --continue --channels plugin:telegram@claude-plugins-official"`,
+      ].join(" ");
+      await execAsync(cmd, { shell: "/bin/bash" });
+    });
     return c.json({ ok: true, action: "restart-session" });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
@@ -107,7 +146,9 @@ app.post("/restart-session", async (c) => {
 
 app.post("/resize-terminal", async (c) => {
   try {
-    await execAsync(`tmux resize-window -t ${TMUX_SESSION} -A`);
+    await tracedTmux('tmux.resize-terminal', TMUX_SESSION, 'resize-terminal', () =>
+      execAsync(`tmux resize-window -t ${TMUX_SESSION} -A`)
+    );
     return c.json({ ok: true, action: "resize-terminal" });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);

@@ -8,6 +8,8 @@ import {
   ALLOWED_FILE_ROOTS,
   isPathAllowed as isPathAllowedShared,
 } from "../lib/path-allowed.js";
+import { getTracer } from "../lib/otel.js";
+import { SpanStatusCode } from "@opentelemetry/api";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +19,8 @@ loadOpenAIEnv();
 function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_FILE_ROOTS);
 }
+
+const audioTracer = getTracer('cpc-server-audio');
 
 const app = new Hono();
 
@@ -92,26 +96,57 @@ app.post("/generate", async (c) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return c.json({ ok: false, error: "OPENAI_API_KEY not set" }, 500);
 
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+    const ttsInput = content.slice(0, 4096);
+    const ttsVoice = "nova";
+    const ttsSpan = audioTracer.startSpan('audio.tts', {
+      attributes: {
+        'ai.model': 'tts-1',
+        'audio.voice': ttsVoice,
+        'audio.input_length': ttsInput.length,
       },
-      body: JSON.stringify({
-        model: "tts-1",
-        input: content.slice(0, 4096), // API limit
-        voice: "nova",
-        response_format: "mp3",
-      }),
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      return c.json({ ok: false, error: `TTS API error: ${err}` }, 500);
+    let buffer: Buffer;
+    try {
+      let res: Response;
+      try {
+        res = await fetch("https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "tts-1",
+            input: ttsInput,
+            voice: ttsVoice,
+            response_format: "mp3",
+          }),
+        });
+      } catch (err) {
+        ttsSpan.recordException(err instanceof Error ? err : String(err));
+        ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
+        throw err;
+      }
+
+      if (!res.ok) {
+        const err = await res.text();
+        ttsSpan.setAttribute('http.status_code', res.status);
+        ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
+        // Return inside the try block so finally still runs to call ttsSpan.end()
+        return c.json({ ok: false, error: `TTS API error: ${err}` }, 500);
+      }
+
+      ttsSpan.setAttribute('http.status_code', res.status);
+      buffer = Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      ttsSpan.recordException(err instanceof Error ? err : String(err));
+      ttsSpan.setStatus({ code: SpanStatusCode.ERROR });
+      throw err;
+    } finally {
+      ttsSpan.end();
     }
 
-    const buffer = Buffer.from(await res.arrayBuffer());
     writeFileSync(audioPath, buffer);
 
     return c.json({ ok: true, path: audioPath });
