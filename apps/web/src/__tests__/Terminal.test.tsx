@@ -8,7 +8,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
-import { Terminal } from "../components/Terminal";
+import { Terminal, type FitResult } from "../components/Terminal";
+import type { MutableRefObject } from "react";
 
 // ---------------------------------------------------------------------------
 // WebSocket mock
@@ -16,6 +17,14 @@ import { Terminal } from "../components/Terminal";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  // Match the real WebSocket readyState constants — Terminal.tsx compares
+  // readyState against `WebSocket.OPEN` etc., and once the test swaps in
+  // this mock as the global WebSocket, those class statics must exist or
+  // every comparison silently resolves against `undefined`.
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
   url: string;
   onopen: (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
@@ -25,6 +34,7 @@ class MockWebSocket {
   close = vi.fn(() => {
     this.readyState = 3;
   });
+  send = vi.fn();
 
   constructor(url: string) {
     this.url = url;
@@ -61,6 +71,14 @@ const mockTermOpen = vi.fn();
 const mockTermLoadAddon = vi.fn();
 const mockFitFit = vi.fn();
 
+// Mutable so individual tests can simulate an unusually wide/narrow/short
+// viewport (e.g. a desktop browser tab resolving to >500 cols) and assert
+// on the clamped value Terminal.tsx sends. Getters read the current value
+// at access time, matching how the component reads `term.cols`/`term.rows`
+// fresh on every `sendFitRequest()` call.
+let mockTermCols = 80;
+let mockTermRows = 24;
+
 vi.mock("@xterm/xterm", () => {
   function MockXTerm() {
     return {
@@ -69,8 +87,8 @@ vi.mock("@xterm/xterm", () => {
       write: mockTermWrite,
       resize: mockTermResize,
       dispose: mockTermDispose,
-      cols: 80,
-      rows: 24,
+      get cols() { return mockTermCols; },
+      get rows() { return mockTermRows; },
     };
   }
   return { Terminal: MockXTerm };
@@ -121,6 +139,9 @@ beforeEach(() => {
   resizeObserverCallback = null;
   vi.useFakeTimers();
 
+  mockTermCols = 80;
+  mockTermRows = 24;
+
   mockTermWrite.mockClear();
   mockTermResize.mockClear();
   mockTermDispose.mockClear();
@@ -161,6 +182,14 @@ afterEach(() => {
 
 function renderTerminal(onConnectionChange = vi.fn()) {
   return render(<Terminal onConnectionChange={onConnectionChange} />);
+}
+
+function renderTerminalWithFitRef(onConnectionChange = vi.fn(), onFitResult?: (r: FitResult) => void) {
+  const fitScreenRef: MutableRefObject<(() => void) | null> = { current: null };
+  const utils = render(
+    <Terminal onConnectionChange={onConnectionChange} fitScreenRef={fitScreenRef} onFitResult={onFitResult} />,
+  );
+  return { ...utils, fitScreenRef };
 }
 
 function getWs(): MockWebSocket {
@@ -330,6 +359,125 @@ describe("message handling", () => {
     renderTerminal();
     getWs().simulateRawMessage("not-json{{{{");
     expect(mockTermWrite).toHaveBeenCalledWith("not-json{{{{");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fit screen action (manual, via fitScreenRef)
+// ---------------------------------------------------------------------------
+
+describe("fit screen action", () => {
+  it("registers a trigger function on fitScreenRef after mount", () => {
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    expect(typeof fitScreenRef.current).toBe("function");
+  });
+
+  it("does nothing automatically — no 'fit' message is sent without invoking the ref", () => {
+    renderTerminalWithFitRef();
+    const ws = getWs();
+    ws.simulateOpen();
+    const fitSends = ws.send.mock.calls.filter((call: unknown[]) => {
+      try { return JSON.parse(call[0] as string).type === "fit"; } catch { return false; }
+    });
+    expect(fitSends).toHaveLength(0);
+  });
+
+  it("sends a 'fit' message with the current xterm cols/rows when the trigger fires", () => {
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    const ws = getWs();
+    ws.simulateOpen();
+
+    fitScreenRef.current?.();
+
+    expect(mockFitFit).toHaveBeenCalled();
+    const fitSends = ws.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .filter((m: { type: string }) => m.type === "fit");
+    // Mock XTerm reports cols: 80, rows: 24 (see MockXTerm above)
+    expect(fitSends).toEqual([{ type: "fit", cols: 80, rows: 24 }]);
+  });
+
+  it("does not send when the socket isn't open yet", () => {
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    const ws = getWs();
+    // readyState still CONNECTING (0) — never called simulateOpen()
+    fitScreenRef.current?.();
+    expect(ws.send).not.toHaveBeenCalled();
+  });
+
+  it("unregisters the trigger on unmount", () => {
+    const { fitScreenRef, unmount } = renderTerminalWithFitRef();
+    expect(fitScreenRef.current).not.toBeNull();
+    unmount();
+    expect(fitScreenRef.current).toBeNull();
+  });
+
+  it("handles a fit-ack message from the server without throwing", () => {
+    renderTerminalWithFitRef();
+    const ws = getWs();
+    expect(() => ws.simulateMessage({ type: "fit-ack", cols: 92, rows: 40 })).not.toThrow();
+  });
+
+  it("clamps an oversized viewport (e.g. a wide desktop browser tab) to the server's max cols before sending", () => {
+    mockTermCols = 800; // wider than the server's FIT_COLS_MAX (500)
+    mockTermRows = 24;
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    const ws = getWs();
+    ws.simulateOpen();
+
+    fitScreenRef.current?.();
+
+    const fitSends = ws.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .filter((m: { type: string }) => m.type === "fit");
+    expect(fitSends).toEqual([{ type: "fit", cols: 500, rows: 24 }]);
+  });
+
+  it("clamps an undersized viewport to the server's minimum rows before sending", () => {
+    mockTermCols = 80;
+    mockTermRows = 2; // below the server's FIT_ROWS_MIN (5)
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    const ws = getWs();
+    ws.simulateOpen();
+
+    fitScreenRef.current?.();
+
+    const fitSends = ws.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .filter((m: { type: string }) => m.type === "fit");
+    expect(fitSends).toEqual([{ type: "fit", cols: 80, rows: 5 }]);
+  });
+
+  it("calls onFitResult({ ok: true, ... }) when a fit-ack arrives", () => {
+    const onFitResult = vi.fn();
+    renderTerminalWithFitRef(vi.fn(), onFitResult);
+    const ws = getWs();
+
+    ws.simulateMessage({ type: "fit-ack", cols: 92, rows: 40 });
+
+    expect(onFitResult).toHaveBeenCalledWith({ ok: true, cols: 92, rows: 40 });
+  });
+
+  it("calls onFitResult({ ok: false, message }) when a fit-error arrives, distinct from fit-ack", () => {
+    const onFitResult = vi.fn();
+    renderTerminalWithFitRef(vi.fn(), onFitResult);
+    const ws = getWs();
+
+    ws.simulateMessage({ type: "fit-error", message: "cols out of range (20-500)" });
+
+    expect(onFitResult).toHaveBeenCalledWith({ ok: false, message: "cols out of range (20-500)" });
+    expect(onFitResult).not.toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+  });
+
+  it("does not call onFitResult for unrelated messages (dimensions/pane)", () => {
+    const onFitResult = vi.fn();
+    renderTerminalWithFitRef(vi.fn(), onFitResult);
+    const ws = getWs();
+
+    ws.simulateMessage({ type: "dimensions", cols: 80, rows: 24 });
+    ws.simulateMessage({ type: "pane", content: "hello" });
+
+    expect(onFitResult).not.toHaveBeenCalled();
   });
 });
 
