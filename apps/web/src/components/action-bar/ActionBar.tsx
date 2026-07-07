@@ -32,7 +32,7 @@ import { usePreferences } from "../../hooks/usePreferences";
 // for a boolean with a sensible default of ON.
 const SEARCH_SCOPE_PREF = "searchCurrentFolderOnly";
 
-export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
+export function ActionBar({ onReconnect, onFitScreen, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [compactFocus, setCompactFocus] = useState("");
@@ -444,6 +444,12 @@ export function ActionBar({ onReconnect, connected, activeTab, fileShowHidden, s
           onClose={() => setModal(null)}
           onReconnect={() => { onReconnect(); setModal(null); }}
           onRestart={() => void handleRestartSession()}
+          onFitScreen={onFitScreen ? () => {
+            haptic.impact("light");
+            onFitScreen();
+            setModal(null);
+            setStatus("Fit screen requested");
+          } : undefined}
         />
       ) : null;
       break;

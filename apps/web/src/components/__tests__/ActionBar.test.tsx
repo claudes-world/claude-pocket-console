@@ -418,6 +418,30 @@ describe("ActionBar", () => {
     expect(onReconnect).toHaveBeenCalledOnce();
   });
 
+  it("hides Fit Screen button when onFitScreen is not provided", async () => {
+    const onReconnect = vi.fn();
+    render(<ActionBar activeTab="terminal" onReconnect={onReconnect} />);
+    fireEvent.click(screen.getByLabelText("Open reconnect menu"));
+    await waitFor(() => expect(screen.getByText("Reconnect Terminal")).toBeInTheDocument());
+
+    expect(screen.queryByText("Fit Screen")).not.toBeInTheDocument();
+  });
+
+  it("shows Fit Screen button and calls onFitScreen when tapped, then closes the menu", async () => {
+    const onReconnect = vi.fn();
+    const onFitScreen = vi.fn();
+    render(<ActionBar activeTab="terminal" onReconnect={onReconnect} onFitScreen={onFitScreen} />);
+    fireEvent.click(screen.getByLabelText("Open reconnect menu"));
+    await waitFor(() => expect(screen.getByText("Fit Screen")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Fit Screen"));
+
+    expect(onFitScreen).toHaveBeenCalledOnce();
+    // Menu closes and status reflects the action (manual, not automatic).
+    await waitFor(() => expect(screen.queryByTestId("bottom-sheet")).not.toBeInTheDocument());
+    expect(screen.getByText("Fit screen requested")).toBeInTheDocument();
+  });
+
   it("calls restartSession when restart button is clicked", async () => {
     const onReconnect = vi.fn();
     render(<ActionBar activeTab="terminal" onReconnect={onReconnect} />);

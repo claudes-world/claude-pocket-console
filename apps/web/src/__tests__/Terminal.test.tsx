@@ -9,6 +9,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import { Terminal } from "../components/Terminal";
+import type { MutableRefObject } from "react";
 
 // ---------------------------------------------------------------------------
 // WebSocket mock
@@ -16,6 +17,14 @@ import { Terminal } from "../components/Terminal";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  // Match the real WebSocket readyState constants — Terminal.tsx compares
+  // readyState against `WebSocket.OPEN` etc., and once the test swaps in
+  // this mock as the global WebSocket, those class statics must exist or
+  // every comparison silently resolves against `undefined`.
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
   url: string;
   onopen: (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
@@ -25,6 +34,7 @@ class MockWebSocket {
   close = vi.fn(() => {
     this.readyState = 3;
   });
+  send = vi.fn();
 
   constructor(url: string) {
     this.url = url;
@@ -161,6 +171,14 @@ afterEach(() => {
 
 function renderTerminal(onConnectionChange = vi.fn()) {
   return render(<Terminal onConnectionChange={onConnectionChange} />);
+}
+
+function renderTerminalWithFitRef(onConnectionChange = vi.fn()) {
+  const fitScreenRef: MutableRefObject<(() => void) | null> = { current: null };
+  const utils = render(
+    <Terminal onConnectionChange={onConnectionChange} fitScreenRef={fitScreenRef} />,
+  );
+  return { ...utils, fitScreenRef };
 }
 
 function getWs(): MockWebSocket {
@@ -330,6 +348,63 @@ describe("message handling", () => {
     renderTerminal();
     getWs().simulateRawMessage("not-json{{{{");
     expect(mockTermWrite).toHaveBeenCalledWith("not-json{{{{");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fit screen action (manual, via fitScreenRef)
+// ---------------------------------------------------------------------------
+
+describe("fit screen action", () => {
+  it("registers a trigger function on fitScreenRef after mount", () => {
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    expect(typeof fitScreenRef.current).toBe("function");
+  });
+
+  it("does nothing automatically — no 'fit' message is sent without invoking the ref", () => {
+    renderTerminalWithFitRef();
+    const ws = getWs();
+    ws.simulateOpen();
+    const fitSends = ws.send.mock.calls.filter((call: unknown[]) => {
+      try { return JSON.parse(call[0] as string).type === "fit"; } catch { return false; }
+    });
+    expect(fitSends).toHaveLength(0);
+  });
+
+  it("sends a 'fit' message with the current xterm cols/rows when the trigger fires", () => {
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    const ws = getWs();
+    ws.simulateOpen();
+
+    fitScreenRef.current?.();
+
+    expect(mockFitFit).toHaveBeenCalled();
+    const fitSends = ws.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .filter((m: { type: string }) => m.type === "fit");
+    // Mock XTerm reports cols: 80, rows: 24 (see MockXTerm above)
+    expect(fitSends).toEqual([{ type: "fit", cols: 80, rows: 24 }]);
+  });
+
+  it("does not send when the socket isn't open yet", () => {
+    const { fitScreenRef } = renderTerminalWithFitRef();
+    const ws = getWs();
+    // readyState still CONNECTING (0) — never called simulateOpen()
+    fitScreenRef.current?.();
+    expect(ws.send).not.toHaveBeenCalled();
+  });
+
+  it("unregisters the trigger on unmount", () => {
+    const { fitScreenRef, unmount } = renderTerminalWithFitRef();
+    expect(fitScreenRef.current).not.toBeNull();
+    unmount();
+    expect(fitScreenRef.current).toBeNull();
+  });
+
+  it("handles a fit-ack message from the server without throwing", () => {
+    renderTerminalWithFitRef();
+    const ws = getWs();
+    expect(() => ws.simulateMessage({ type: "fit-ack", cols: 92, rows: 40 })).not.toThrow();
   });
 });
 

@@ -3,6 +3,7 @@ import type { SortMode } from "../FileViewer";
 
 export interface ActionBarProps {
   onReconnect?: () => void;
+  onFitScreen?: () => void;
   connected?: boolean;
   activeTab?: string;
   fileShowHidden?: boolean;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -7,6 +7,16 @@ import "@xterm/xterm/css/xterm.css";
 interface TerminalProps {
   onConnectionChange: (connected: boolean) => void;
   isActive?: boolean;
+  /**
+   * Escape hatch for the "Fit screen" action (reconnect menu). The parent
+   * (App.tsx) owns this ref; Terminal populates it with a function that
+   * measures the current xterm.js viewport and sends a one-shot `fit`
+   * request over the live WebSocket. Terminal doesn't use forwardRef
+   * elsewhere in this codebase, so a plain ref-as-prop keeps this consistent
+   * with the rest of the component's imperative surface (wsRef/fitRef stay
+   * internal; only the trigger function is exposed).
+   */
+  fitScreenRef?: MutableRefObject<(() => void) | null>;
 }
 
 /** Build the WebSocket URL with auth params. */
@@ -28,7 +38,7 @@ function buildWsUrl(): string {
   return `${protocol}//${window.location.host}/ws/terminal${authParam}`;
 }
 
-export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
+export function Terminal({ onConnectionChange, isActive, fitScreenRef }: TerminalProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -89,6 +99,11 @@ export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
             term.write(lines[i].trimEnd());
             if (i < lines.length - 1) term.write("\r\n");
           }
+        } else if (msg.type === "fit-ack" || msg.type === "error") {
+          // Server-side confirmation/rejection of a "Fit screen" request.
+          // Nothing to render here — ActionBar shows its own optimistic
+          // status text when the button is tapped. Logged for debugging.
+          console.log(`[fit] ${msg.type}`, msg);
         }
       } catch {
         term.write(event.data);
@@ -107,6 +122,36 @@ export function Terminal({ onConnectionChange, isActive }: TerminalProps) {
 
     wsRef.current = ws;
   }, []);
+
+  /**
+   * "Fit screen" action (reconnect menu, manual only — never auto-fired).
+   * Re-measures the actual xterm.js viewport with the fit addon, then sends
+   * exactly one `fit` request over the live WebSocket so the server can
+   * issue a single bounded `tmux resize-window -x -y` call. No-ops quietly
+   * if the terminal isn't mounted or the socket isn't open — there's no
+   * meaningful fallback for a tap that arrives mid-reconnect.
+   */
+  const sendFitRequest = useCallback(() => {
+    const term = termRef.current;
+    const fit = fitRef.current;
+    const ws = wsRef.current;
+    if (!term || !fit || !ws || ws.readyState !== WebSocket.OPEN) return;
+    fit.fit();
+    const { cols, rows } = term;
+    if (cols > 0 && rows > 0) {
+      ws.send(JSON.stringify({ type: "fit", cols, rows }));
+    }
+  }, []);
+
+  // Register/unregister the fit trigger on the parent-owned ref so
+  // ActionBar -> ReconnectMenu can reach it without forwardRef plumbing.
+  useEffect(() => {
+    if (!fitScreenRef) return;
+    fitScreenRef.current = sendFitRequest;
+    return () => {
+      fitScreenRef.current = null;
+    };
+  }, [fitScreenRef, sendFitRequest]);
 
   // Initialize xterm and open the first WS connection on mount
   useEffect(() => {
