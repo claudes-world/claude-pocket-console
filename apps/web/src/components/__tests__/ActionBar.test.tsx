@@ -442,6 +442,52 @@ describe("ActionBar", () => {
     expect(screen.getByText("Fit screen requested")).toBeInTheDocument();
   });
 
+  it("replaces the optimistic status with 'Fit screen applied' once fitResult resolves ok", async () => {
+    const onReconnect = vi.fn();
+    const onFitScreen = vi.fn();
+    const { rerender } = render(
+      <ActionBar activeTab="terminal" onReconnect={onReconnect} onFitScreen={onFitScreen} fitResult={null} />,
+    );
+    fireEvent.click(screen.getByLabelText("Open reconnect menu"));
+    await waitFor(() => expect(screen.getByText("Fit Screen")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Fit Screen"));
+    expect(screen.getByText("Fit screen requested")).toBeInTheDocument();
+
+    // Server round-trip resolves — App.tsx would pass a fresh fitResult object.
+    rerender(
+      <ActionBar activeTab="terminal" onReconnect={onReconnect} onFitScreen={onFitScreen} fitResult={{ ok: true, ts: Date.now() }} />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Fit screen applied")).toBeInTheDocument());
+    expect(screen.queryByText("Fit screen requested")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a distinct failure status (not the optimistic success text) when fitResult resolves not-ok", async () => {
+    const onReconnect = vi.fn();
+    const onFitScreen = vi.fn();
+    const { rerender } = render(
+      <ActionBar activeTab="terminal" onReconnect={onReconnect} onFitScreen={onFitScreen} fitResult={null} />,
+    );
+    fireEvent.click(screen.getByLabelText("Open reconnect menu"));
+    await waitFor(() => expect(screen.getByText("Fit Screen")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Fit Screen"));
+
+    rerender(
+      <ActionBar
+        activeTab="terminal"
+        onReconnect={onReconnect}
+        onFitScreen={onFitScreen}
+        fitResult={{ ok: false, message: "cols out of range (20-500)", ts: Date.now() }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Fit screen failed: cols out of range (20-500)")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Fit screen requested")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fit screen applied")).not.toBeInTheDocument();
+  });
+
   it("calls restartSession when restart button is clicked", async () => {
     const onReconnect = vi.fn();
     render(<ActionBar activeTab="terminal" onReconnect={onReconnect} />);

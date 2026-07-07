@@ -4,6 +4,28 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
+// Keep in sync with FIT_COLS_MIN/MAX, FIT_ROWS_MIN/MAX in
+// apps/server/src/routes/terminal-ws.ts. Clamping client-side is a UX
+// nicety (avoids a round-trip failure for the common case of a viewport
+// resolving wider/taller than the bound, e.g. a wide desktop browser tab)
+// — the server remains the source of truth and validates independently
+// regardless of what the client sends.
+const FIT_COLS_MIN = 20;
+const FIT_COLS_MAX = 500;
+const FIT_ROWS_MIN = 5;
+const FIT_ROWS_MAX = 300;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.round(Math.max(min, Math.min(max, value)));
+}
+
+export interface FitResult {
+  ok: boolean;
+  cols?: number;
+  rows?: number;
+  message?: string;
+}
+
 interface TerminalProps {
   onConnectionChange: (connected: boolean) => void;
   isActive?: boolean;
@@ -17,6 +39,13 @@ interface TerminalProps {
    * internal; only the trigger function is exposed).
    */
   fitScreenRef?: MutableRefObject<(() => void) | null>;
+  /**
+   * Fired when the server acks (`fit-ack`) or rejects (`fit-error`) a fit
+   * request, so the caller (App.tsx -> ActionBar) can replace the optimistic
+   * "Fit screen requested" status with the real outcome instead of leaving
+   * it looking like unconditional success.
+   */
+  onFitResult?: (result: FitResult) => void;
 }
 
 /** Build the WebSocket URL with auth params. */
@@ -38,7 +67,7 @@ function buildWsUrl(): string {
   return `${protocol}//${window.location.host}/ws/terminal${authParam}`;
 }
 
-export function Terminal({ onConnectionChange, isActive, fitScreenRef }: TerminalProps) {
+export function Terminal({ onConnectionChange, isActive, fitScreenRef, onFitResult }: TerminalProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -48,6 +77,11 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef }: Termina
   // Stable ref for onConnectionChange so connectWs doesn't need it as a dep
   const onConnectionChangeRef = useRef(onConnectionChange);
   onConnectionChangeRef.current = onConnectionChange;
+
+  // Same pattern for onFitResult — connectWs/ws.onmessage is only set up
+  // once per connection and shouldn't need to be a dependency of anything.
+  const onFitResultRef = useRef(onFitResult);
+  onFitResultRef.current = onFitResult;
 
   /** Open a WebSocket and wire it to the current xterm instance.
    *  Closes any existing connection first to prevent duplicates. */
@@ -99,11 +133,19 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef }: Termina
             term.write(lines[i].trimEnd());
             if (i < lines.length - 1) term.write("\r\n");
           }
-        } else if (msg.type === "fit-ack" || msg.type === "error") {
-          // Server-side confirmation/rejection of a "Fit screen" request.
-          // Nothing to render here — ActionBar shows its own optimistic
-          // status text when the button is tapped. Logged for debugging.
-          console.log(`[fit] ${msg.type}`, msg);
+        } else if (msg.type === "fit-ack") {
+          // Server applied the fit request. Distinct from the generic
+          // "error" type (also used for auth failures) so this can't be
+          // confused with an unrelated connection error.
+          console.log(`[fit] applied ${msg.cols}x${msg.rows}`);
+          onFitResultRef.current?.({ ok: true, cols: msg.cols, rows: msg.rows });
+        } else if (msg.type === "fit-error") {
+          // Server rejected or failed to apply the fit request (validation
+          // failure or a tmux resize-window error). Surfaced to the caller
+          // so the UI can replace the optimistic "requested" status with
+          // the real outcome instead of showing false success.
+          console.log(`[fit] rejected: ${msg.message}`);
+          onFitResultRef.current?.({ ok: false, message: msg.message });
         }
       } catch {
         term.write(event.data);
@@ -130,6 +172,11 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef }: Termina
    * issue a single bounded `tmux resize-window -x -y` call. No-ops quietly
    * if the terminal isn't mounted or the socket isn't open — there's no
    * meaningful fallback for a tap that arrives mid-reconnect.
+   *
+   * Dimensions are clamped to the server's own bounds before sending (a
+   * wide desktop browser tab can resolve to well over 500 cols). The
+   * server re-validates independently either way — this just avoids
+   * manufacturing an avoidable `fit-error` round-trip for the common case.
    */
   const sendFitRequest = useCallback(() => {
     const term = termRef.current;
@@ -137,7 +184,8 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef }: Termina
     const ws = wsRef.current;
     if (!term || !fit || !ws || ws.readyState !== WebSocket.OPEN) return;
     fit.fit();
-    const { cols, rows } = term;
+    const cols = clamp(term.cols, FIT_COLS_MIN, FIT_COLS_MAX);
+    const rows = clamp(term.rows, FIT_ROWS_MIN, FIT_ROWS_MAX);
     if (cols > 0 && rows > 0) {
       ws.send(JSON.stringify({ type: "fit", cols, rows }));
     }

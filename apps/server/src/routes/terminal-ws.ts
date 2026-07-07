@@ -218,7 +218,12 @@ export function terminalWsRoute(c: any) {
           const result = validateFitDimensions(msg);
           if (!result.ok) {
             console.log(`[ws] fit rejected: ${result.error}`);
-            ws.send(JSON.stringify({ type: "error", message: result.error }));
+            // Distinct "fit-error" type (not the generic "error" also used
+            // for auth failures) so the client can pair it unambiguously
+            // with "fit-ack" and surface a real failure instead of the
+            // optimistic "requested" status sticking around. (Review
+            // finding: client previously showed success regardless.)
+            ws.send(JSON.stringify({ type: "fit-error", message: result.error }));
             return;
           }
           const { cols, rows } = result;
@@ -229,7 +234,7 @@ export function terminalWsRoute(c: any) {
             })
             .catch((err: Error) => {
               console.error("[tmux] fit resize error:", err.message);
-              ws.send(JSON.stringify({ type: "error", message: "Failed to resize tmux window" }));
+              ws.send(JSON.stringify({ type: "fit-error", message: "Failed to resize tmux window" }));
             });
         } else if (msg.type === "resize") {
           // Legacy/automatic path — intentionally still a no-op. Kept so any

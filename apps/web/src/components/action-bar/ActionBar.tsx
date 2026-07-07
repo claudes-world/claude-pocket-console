@@ -32,7 +32,7 @@ import { usePreferences } from "../../hooks/usePreferences";
 // for a boolean with a sensible default of ON.
 const SEARCH_SCOPE_PREF = "searchCurrentFolderOnly";
 
-export function ActionBar({ onReconnect, onFitScreen, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
+export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [compactFocus, setCompactFocus] = useState("");
@@ -104,6 +104,25 @@ export function ActionBar({ onReconnect, onFitScreen, connected, activeTab, file
     const timer = setTimeout(() => setStatus(null), 4000);
     return () => clearTimeout(timer);
   }, [status]);
+
+  // Replace the optimistic "Fit screen requested" status (set the instant
+  // the button is tapped, in the reconnect-menu case below) with the real
+  // server round-trip result once it arrives. Without this, an oversized
+  // viewport (wide desktop tab) or a tmux resize-window failure would leave
+  // the UI claiming success indefinitely. Depends only on `fitResult` (not
+  // `status`) so a later unrelated status update doesn't get clobbered by a
+  // stale ack arriving after the fact.
+  useEffect(() => {
+    if (!fitResult) return;
+    if (fitResult.ok) {
+      haptic.success();
+      setStatus("Fit screen applied");
+    } else {
+      haptic.error();
+      setStatus(`Fit screen failed: ${fitResult.message || "unknown error"}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitResult]);
 
   const handleAction = async (endpoint: string, label: string) => {
     setStatus(`Running ${label}...`);

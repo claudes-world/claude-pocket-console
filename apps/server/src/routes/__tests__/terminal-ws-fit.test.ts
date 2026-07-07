@@ -11,11 +11,18 @@ import { createSession } from "../../auth.js";
  *   2. `onMessage` wiring — a valid `{ type: "fit", cols, rows }` message
  *      calls `tmux resize-window -t <session> -x <cols> -y <rows>` via
  *      `execFile` (argv array, no shell) and acks over the socket; an
- *      invalid message never reaches `execFile` and gets an error reply
- *      instead; the legacy `resize` message type remains a no-op.
+ *      invalid message never reaches `execFile` and gets a `fit-error`
+ *      reply instead; the legacy `resize` message type remains a no-op.
+ *   3. Auth guard — an unauthenticated (no token) or disallowed-user
+ *      socket must never reach `execFile` even if a well-formed `fit`
+ *      message arrives on it. This is the regression coverage a prior
+ *      review round found missing (PR #284 review, 2026-07-07): the
+ *      `if (!authResult.ok) return;` guard in `onMessage` was correct on
+ *      inspection but had zero test proof.
  */
 
 const TEST_USER_ID = "999222";
+const INTRUDER_ID = "888333";
 
 let savedBotToken: string | undefined;
 let savedAllowed: string | undefined;
@@ -96,6 +103,21 @@ function connectAuthenticatedWs() {
   const handlers = terminalWsRoute(c);
   const ws = makeMockWs();
   handlers.onOpen(new Event("open"), ws as any);
+  return { handlers, ws };
+}
+
+/**
+ * Build a `terminalWsRoute` for a socket that should NOT be authorized —
+ * either no token at all, or a token for a user outside the allowlist.
+ * Deliberately does NOT call `onOpen` (which would close the socket) so
+ * these tests can assert the `onMessage` guard independently catches the
+ * case where a message arrives before (or instead of) that close landing —
+ * exactly the race the guard's own comment describes.
+ */
+function connectUnauthenticatedWs(token = "") {
+  const c = makeMockContext(token ? { token } : {}, { origin: "https://cpc.claude.do" });
+  const handlers = terminalWsRoute(c);
+  const ws = makeMockWs();
   return { handlers, ws };
 }
 
@@ -199,7 +221,7 @@ describe("terminalWsRoute onMessage: fit", () => {
     (ws as any)._cleanup?.();
   });
 
-  it("never calls tmux and replies with an error for an out-of-bounds fit request", async () => {
+  it("never calls tmux and replies with fit-error for an out-of-bounds fit request", async () => {
     const { handlers, ws } = connectAuthenticatedWs();
     ws._sent.length = 0; // drop the initial "dimensions"/"pane" sends from onOpen
 
@@ -207,19 +229,24 @@ describe("terminalWsRoute onMessage: fit", () => {
     await Promise.resolve();
 
     expect(execFileCalls).toHaveLength(0);
-    const errors = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "error");
+    const errors = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-error");
     expect(errors).toHaveLength(1);
 
     (ws as any)._cleanup?.();
   });
 
-  it("never calls tmux for a malformed fit request (non-numeric rows)", async () => {
+  it("never calls tmux and replies with fit-error for a malformed fit request (non-numeric rows)", async () => {
     const { handlers, ws } = connectAuthenticatedWs();
+    ws._sent.length = 0; // drop the initial "dimensions"/"pane" sends from onOpen
 
     handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 80, rows: "24" }) } as any, ws as any);
     await Promise.resolve();
 
     expect(execFileCalls).toHaveLength(0);
+    // Aligned with the out-of-bounds test above (previously only asserted
+    // the execFile-empty half of this, per review finding).
+    const errors = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-error");
+    expect(errors).toHaveLength(1);
 
     (ws as any)._cleanup?.();
   });
@@ -238,6 +265,69 @@ describe("terminalWsRoute onMessage: fit", () => {
   it("ignores non-JSON messages without throwing", () => {
     const { handlers, ws } = connectAuthenticatedWs();
     expect(() => handlers.onMessage({ data: "not-json{{{" } as any, ws as any)).not.toThrow();
+    (ws as any)._cleanup?.();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auth guard on "fit" — the regression coverage the review flagged as
+// missing. `onMessage` reads the same `authResult` closure variable that
+// `onOpen` uses to decide whether to close the socket (4001); these tests
+// prove that even without `onOpen` having run (or having already closed the
+// socket), a `fit` message on an unauthenticated/disallowed connection can
+// never reach `applyFitResize`/`execFile`.
+// ---------------------------------------------------------------------------
+
+describe("terminalWsRoute onMessage: fit auth guard", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    execFileCalls.length = 0;
+  });
+
+  it("drops a fit message with no token at all — never calls tmux", () => {
+    const { handlers, ws } = connectUnauthenticatedWs("");
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+
+    expect(execFileCalls).toHaveLength(0);
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("drops a fit message from a disallowed (non-allowlisted) user's session token — never calls tmux", () => {
+    const token = createSession({ id: Number(INTRUDER_ID), first_name: "Intruder" });
+    const { handlers, ws } = connectUnauthenticatedWs(token);
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+
+    expect(execFileCalls).toHaveLength(0);
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("still drops the fit message even after onOpen has already closed the unauthorized socket", () => {
+    const token = createSession({ id: Number(INTRUDER_ID), first_name: "Intruder" });
+    const { handlers, ws } = connectUnauthenticatedWs(token);
+
+    // Simulate onOpen having run first (the normal case) — it should close
+    // with 4001 and send the auth error, never touching tmux.
+    handlers.onOpen(new Event("open"), ws as any);
+    expect(ws.close).toHaveBeenCalledWith(4001, "Unauthorized");
+
+    // A message that still arrives afterward (the race the guard's comment
+    // describes) must be dropped too.
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+
+    expect(execFileCalls).toHaveLength(0);
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("control case: the same fit message DOES call tmux on an authenticated, allowlisted socket", async () => {
+    const { handlers, ws } = connectAuthenticatedWs();
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(execFileCalls).toHaveLength(1);
     (ws as any)._cleanup?.();
   });
 });

@@ -19,7 +19,7 @@ export function ReconnectMenu({ onClose, onReconnect, onRestart, onFitScreen }: 
         {onFitScreen && (
           <button onClick={onFitScreen} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left", background: "#1a2a3a", color: "var(--color-accent-blue)", border: "1px solid #2d4a5a" }}>
             Fit Screen
-            <div style={{ fontSize: 10, color: "#4a6a8a", marginTop: 2 }}>Resize the terminal to match this screen</div>
+            <div style={{ fontSize: 10, color: "#4a6a8a", marginTop: 2 }}>Resize the terminal to match this screen (also resizes it for anyone else attached, e.g. via SSH)</div>
           </button>
         )}
         <button onClick={onRestart} style={{ ...btnStyle, padding: "10px 14px", textAlign: "left", background: "#3a2020", color: "var(--color-accent-red)", border: "1px solid #5a3030" }}>

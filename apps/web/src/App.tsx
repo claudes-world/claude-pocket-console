@@ -141,6 +141,15 @@ export function App() {
   const onFitScreen = useCallback(() => {
     fitScreenRef.current?.();
   }, []);
+  // The server's fit-ack/fit-error round-trip, forwarded to ActionBar so it
+  // can replace its optimistic "Fit screen requested" status with the real
+  // outcome. `ts` forces a new object identity on every result even if
+  // ok/message are identical to the previous one (e.g. two failed taps in a
+  // row), so ActionBar's effect fires each time rather than only on change.
+  const [fitResult, setFitResult] = useState<{ ok: boolean; message?: string; ts: number } | null>(null);
+  const onFitResult = useCallback((result: { ok: boolean; message?: string }) => {
+    setFitResult({ ...result, ts: Date.now() });
+  }, []);
 
   // Swipe gesture state
   const touchStartX = useRef(0);
@@ -440,7 +449,7 @@ export function App() {
           onTransitionEnd={() => setIsAnimating(false)}
         >
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} isActive={activeTab === "terminal"} fitScreenRef={fitScreenRef} />
+            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} isActive={activeTab === "terminal"} fitScreenRef={fitScreenRef} onFitResult={onFitResult} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
@@ -462,6 +471,7 @@ export function App() {
         <ActionBar
           onReconnect={onReconnect}
           onFitScreen={onFitScreen}
+          fitResult={fitResult}
           connected={connected}
           activeTab={activeTab}
           fileShowHidden={fileShowHidden}

@@ -4,6 +4,13 @@ import type { SortMode } from "../FileViewer";
 export interface ActionBarProps {
   onReconnect?: () => void;
   onFitScreen?: () => void;
+  /**
+   * Result of the most recent "Fit screen" WS round-trip (fit-ack/fit-error
+   * from terminal-ws.ts), forwarded from Terminal.tsx via App.tsx. `ts` is a
+   * fresh timestamp per result so the same ok/message pair still re-triggers
+   * the status effect on repeated taps.
+   */
+  fitResult?: { ok: boolean; message?: string; ts: number } | null;
   connected?: boolean;
   activeTab?: string;
   fileShowHidden?: boolean;
