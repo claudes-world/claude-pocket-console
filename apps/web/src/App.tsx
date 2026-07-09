@@ -11,6 +11,13 @@ import { haptic } from "./lib/haptic";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
+import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
+
+// Client-side mirror of the server's session-name allowlist (SESSION_NAME_RE
+// in apps/server/src/routes/utils.ts). Applied to the hash deep-link value —
+// the server re-validates regardless; this just drops junk before it ever
+// becomes a WS param.
+const SESSION_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
 type Tab = "terminal" | "files" | "links" | "voice" | "prs";
 const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
@@ -103,6 +110,31 @@ export function App() {
     TABS.includes(initialTab as Tab) ? initialTab : "terminal"
   );
   const [reconnectKey, setReconnectKey] = useState(0);
+
+  // Multi-session terminal (world-os#218): which tmux session the terminal
+  // tab views. null = the server's default (writable) session. Deep-linkable
+  // via #terminal&session=<name>, same convention as #files&file=<path>.
+  const initialSessionRaw = hashParams.match(/(?:^|&)session=([^&]+)/)?.[1];
+  let initialSession: string | null = null;
+  if (initialSessionRaw) {
+    try {
+      const decoded = decodeURIComponent(initialSessionRaw);
+      if (SESSION_NAME_RE.test(decoded)) initialSession = decoded;
+    } catch {
+      // Malformed percent-encoding in a hand-typed/truncated deep link
+      // (e.g. "#terminal&session=%") — treat as no session rather than
+      // throwing during initial render.
+    }
+  }
+  const [activeSession, setActiveSession] = useState<string | null>(initialSession);
+  const [sessionList, setSessionList] = useState<TmuxSessionInfo[]>([]);
+  const [defaultSession, setDefaultSession] = useState<string | null>(null);
+  // Non-default session the restricted command palette targets, or null
+  // when viewing the default session. Treated as non-default until the
+  // session list proves a deep-linked name IS the default — targeting the
+  // default explicitly by name is harmless (server resolves both to the
+  // same session), so the pessimistic default is safe either way.
+  const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const [initialFilePath] = useState<string | null>(initialFile);
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
@@ -128,8 +160,56 @@ export function App() {
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
-    fetch("/api/terminal/resize-terminal", { method: "POST" }).catch(() => {});
+    // resize-terminal targets the DEFAULT session on the server — skip it
+    // when viewing another session (it stays default-only by design: the
+    // resize-window manual-size latch side effect, see terminal-ws.ts).
+    if (!paletteSession) {
+      fetch("/api/terminal/resize-terminal", { method: "POST" }).catch(() => {});
+    }
     setReconnectKey((k) => k + 1);
+  }, [paletteSession]);
+
+  // Session list for the terminal's session picker — fetch on mount and
+  // refresh every 30s (same cadence as the cpc-branch poll below). On
+  // failure keep the last known list; an empty list hides the picker and
+  // the terminal falls back to the default session.
+  useEffect(() => {
+    const fetchSessions = async () => {
+      try {
+        const res = await fetch("/api/terminal/sessions", { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.ok) {
+          setSessionList(data.sessions);
+          setDefaultSession(data.default);
+          // Deliberately NOT normalizing activeSession here: a deep link
+          // that names the default session literally keeps its name in
+          // state, because Terminal is keyed on activeSession — mutating it
+          // to null would remount the terminal and tear down a healthy WS
+          // just to clean up the key (codex round-2). paletteSession below
+          // derives the default-vs-not classification on every render, so
+          // the restricted palette still self-corrects the moment this
+          // fetch resolves; the WS carrying an explicit default-session
+          // param is server-side identical to omitting it.
+        }
+      } catch { /* silent — picker just doesn't render */ }
+    };
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const onSelectSession = useCallback((name: string | null) => {
+    setActiveSession(name);
+    // Keep the deep-link honest: rewrite #terminal&session=<name>,
+    // preserving any other hash params (e.g. token from keyboard-button
+    // links). replaceState so session-surfing doesn't pollute history.
+    const raw = window.location.hash.replace(/^#/, "");
+    const rest = raw.includes("&") ? raw.slice(raw.indexOf("&") + 1) : "";
+    const params = new URLSearchParams(rest);
+    if (name) params.set("session", name);
+    else params.delete("session");
+    const qs = params.toString();
+    window.history.replaceState(null, "", `#terminal${qs ? `&${qs}` : ""}`);
   }, []);
 
   // "Fit screen" (reconnect menu) — Terminal registers its trigger function
@@ -433,6 +513,19 @@ export function App() {
         </div>
       )}
 
+      {/* Session picker — terminal tab only, when there's a choice OR a
+          hash deep-link points at a non-default session (even one the
+          roster doesn't know), so a stale deep link always leaves the user
+          a pill to click back to the default instead of stranding them on
+          the error frame. */}
+      {activeTab === "terminal" && (sessionList.length > 1 || activeSession !== null) && sessionList.length > 0 && (
+        <SessionPicker
+          sessions={sessionList}
+          active={activeSession ?? defaultSession ?? ""}
+          onSelect={onSelectSession}
+        />
+      )}
+
       {/* Content area — swipeable viewport */}
       <div
         style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}
@@ -453,7 +546,14 @@ export function App() {
           onTransitionEnd={() => setIsAnimating(false)}
         >
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Terminal key={reconnectKey} onConnectionChange={onConnectionChange} isActive={activeTab === "terminal"} fitScreenRef={fitScreenRef} onFitResult={onFitResult} />
+            <Terminal
+              key={`${reconnectKey}:${activeSession ?? ""}`}
+              session={activeSession}
+              onConnectionChange={onConnectionChange}
+              isActive={activeTab === "terminal"}
+              fitScreenRef={fitScreenRef}
+              onFitResult={onFitResult}
+            />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
@@ -478,6 +578,7 @@ export function App() {
           fitResult={fitResult}
           connected={connected}
           activeTab={activeTab}
+          terminalSession={paletteSession}
           fileShowHidden={fileShowHidden}
           setFileShowHidden={setFileShowHidden}
           fileSortMode={fileSortMode}

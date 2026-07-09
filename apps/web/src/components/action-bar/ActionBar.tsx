@@ -32,7 +32,10 @@ import { usePreferences } from "../../hooks/usePreferences";
 // for a boolean with a sensible default of ON.
 const SEARCH_SCOPE_PREF = "searchCurrentFolderOnly";
 
-export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, activeTab, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
+export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, activeTab, terminalSession, fileShowHidden, setFileShowHidden, fileSortMode, setFileSortMode, viewingFile, currentFolder }: ActionBarProps) {
+  // Viewing a non-default tmux session: the restricted palette targets it;
+  // default-session-only actions are hidden (see ActionBarProps docs).
+  const restrictedSession = terminalSession || null;
   const [status, setStatus] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [compactFocus, setCompactFocus] = useState("");
@@ -124,10 +127,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitResult]);
 
-  const handleAction = async (endpoint: string, label: string) => {
+  const handleAction = async (endpoint: string, label: string, body?: Record<string, unknown>) => {
     setStatus(`Running ${label}...`);
     try {
-      const data = await postAction(endpoint);
+      const data = await postAction(endpoint, body);
       if (!data.ok) {
         haptic.error();
         setStatus(`Failed: ${data.error || "unknown error"}`);
@@ -161,7 +164,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     setModal(null);
     setStatus(`${label}...`);
     try {
-      const data = await sendCompactCommand(message);
+      // Targets the viewed session (restrictedSession null = default). Only
+      // /compact reaches this with a non-default target — the sheet hides
+      // /new and /resume (the other handleCompact callers) when restricted.
+      const data = await sendCompactCommand(message, restrictedSession);
       if (data.ok) {
         haptic.success();
         setStatus(`${label} sent`);
@@ -415,16 +421,17 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       modalNode = (
         <CommandsSheet
           onClose={() => setModal(null)}
-          onEsc={() => { void sendToTmux("Escape", true); setModal(null); setStatus("Sent: Esc"); }}
-          onDigit={(digit) => { void sendToTmux(String(digit)); setModal(null); setStatus(`Sent: ${digit}`); }}
-          onShiftTab={() => { void sendToTmux("BTab", true); setModal(null); setStatus("Sent: \u21e7Tab"); }}
-          onControlB={() => { void sendToTmux("C-b", true); setModal(null); setStatus("Sent: ^B"); }}
+          targetSession={restrictedSession}
+          onEsc={() => { void sendToTmux("Escape", true, restrictedSession); setModal(null); setStatus("Sent: Esc"); }}
+          onDigit={(digit) => { void sendToTmux(String(digit), false, restrictedSession); setModal(null); setStatus(`Sent: ${digit}`); }}
+          onShiftTab={() => { void sendToTmux("BTab", true, restrictedSession); setModal(null); setStatus("Sent: \u21e7Tab"); }}
+          onControlB={() => { void sendToTmux("C-b", true, restrictedSession); setModal(null); setStatus("Sent: ^B"); }}
           onNew={() => setModal("new-confirm")}
           onResume={() => { void loadSessionNames(); setModal("resume"); }}
           onFork={() => { setForkName(""); setModal("fork-name"); }}
           onRename={() => { setRenameName(""); setModal("rename"); }}
           onCompact={() => setModal("compact-confirm")}
-          onReloadPlugins={() => { setModal(null); void handleAction("/api/terminal/reload-plugins", "Reload plugins"); }}
+          onReloadPlugins={() => { setModal(null); void handleAction("/api/terminal/reload-plugins", "Reload plugins", restrictedSession ? { session: restrictedSession } : undefined); }}
         />
       );
       break;
@@ -590,7 +597,29 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
             TODO
           </button>
 
-          {activeTab === "terminal" && <>
+          {/* Restricted terminal row: viewing a non-default session. The
+              command palette targets the viewed session (Liam voice msg
+              1188); default-session-only actions — reconnect-menu's
+              Restart/Fit, git — are hidden so they can never act on the
+              wrong terminal. */}
+          {activeTab === "terminal" && restrictedSession && <>
+            {onReconnect && (
+              <button
+                onClick={() => { haptic.impact("light"); onReconnect(); }}
+                style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d" }}
+              >
+                Reconnect
+              </button>
+            )}
+            <button
+              onClick={() => { haptic.impact("light"); setModal("commands"); }}
+              style={{ ...btnStyle, background: "#2d2a3a", color: "var(--color-accent-purple)", border: "1px solid #4a3d6a" }}
+            >
+              /commands
+            </button>
+          </>}
+
+          {activeTab === "terminal" && !restrictedSession && <>
             {onReconnect && (
               <div style={{ display: "flex", flexShrink: 0 }}>
                 <button

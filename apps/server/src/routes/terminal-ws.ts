@@ -1,4 +1,4 @@
-import { spawn, execSync, execFile } from "node:child_process";
+import { spawn, execFileSync, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { WSContext } from "hono/ws";
 import { checkAuth, validateSession, validateJwtTokenWithTokens, getBotTokens } from "../auth.js";
@@ -8,22 +8,55 @@ import { isAllowedUser } from "../lib/allowed-users.js";
 // Keeping a local unvalidated copy would bypass that fence and leave the
 // execSync call below vulnerable to env-var shell injection. Flagged
 // security-high by cloud Gemini Code Assist on round-2 review of PR #85.
-import { TMUX_SESSION } from "./utils.js";
+import { SESSION_NAME_RE, TMUX_SESSION } from "./utils.js";
 import { ALLOWED_ORIGINS } from "../lib/allowed-origins.js";
 
 const execFileAsync = promisify(execFile);
 
-function getPaneDimensions(): { cols: number; rows: number } {
+// Same cap as the tmux helpers in routes/utils.ts — a wedged tmux server
+// must fail the call after 5s instead of wedging the connection setup.
+const TMUX_TIMEOUT_MS = 5_000;
+
+function getPaneDimensions(session: string): { cols: number; rows: number } {
   try {
-    const out = execSync(
-      `tmux display-message -t ${TMUX_SESSION} -p '#{pane_width}x#{pane_height}'`,
-      { encoding: "utf-8" },
+    // execFileSync argv (no shell) because `session` can come from the
+    // client's ?session= query param — regex-validated upstream, but a
+    // client-controlled string must never be interpolated into a shell
+    // line. Target form `=<name>:` — exact-match session lookup, and the
+    // trailing `:` is REQUIRED: tmux 3.5a rejects bare `=name` for
+    // pane-target commands (display-message/capture-pane/send-keys) with
+    // "can't find pane"; only session-target commands (has-session) take
+    // `=name` alone. Verified live on this host, 2026-07-09.
+    const out = execFileSync(
+      "tmux",
+      ["display-message", "-t", `=${session}:`, "-p", "#{pane_width}x#{pane_height}"],
+      { encoding: "utf-8", timeout: TMUX_TIMEOUT_MS },
     ).trim();
     const [cols, rows] = out.split("x").map(Number);
     return { cols: cols || 80, rows: rows || 24 };
   } catch {
     return { cols: 80, rows: 24 };
   }
+}
+
+export type SessionResolution =
+  | { ok: true; session: string }
+  | { ok: false; error: string };
+
+/**
+ * Resolve the tmux session a WS connection will view. The `?session=` query
+ * param is client-controlled (Telegram WebView — untrusted by definition):
+ * an absent/empty param keeps today's behavior (the configured
+ * TMUX_SESSION); anything else must pass the shared session-name allowlist
+ * before it can ever reach a tmux argv. Existence is checked separately in
+ * onOpen (`tmux has-session -t =<name>`) — this only fences the charset.
+ */
+export function resolveRequestedSession(raw: string): SessionResolution {
+  if (!raw) return { ok: true, session: TMUX_SESSION };
+  if (!SESSION_NAME_RE.test(raw)) {
+    return { ok: false, error: "Invalid session name" };
+  }
+  return { ok: true, session: raw };
 }
 
 // NOTE (original design, still true for the *automatic* path): the mini app
@@ -169,6 +202,11 @@ export function terminalWsRoute(c: any) {
     };
   }
 
+  // Which tmux session this connection views. Client-controlled query
+  // param — charset-fenced here, existence-checked in onOpen. Absent param
+  // = the configured TMUX_SESSION (today's single-session behavior).
+  const sessionResolution = resolveRequestedSession(c.req.query("session") || "");
+
   // Auth check: initData or session token passed as query param
   const initData = c.req.query("auth") || "";
   let authResult = checkAuth(initData);
@@ -206,36 +244,73 @@ export function terminalWsRoute(c: any) {
         ws.close(4001, "Unauthorized");
         return;
       }
-      console.log(`[ws] client connected (user: ${authResult.user?.username || "unknown"})`);
+      if (!sessionResolution.ok) {
+        console.log(`[ws] rejected: ${sessionResolution.error}`);
+        ws.send(JSON.stringify({ type: "error", message: sessionResolution.error }));
+        ws.close(4004, "Invalid session");
+        return;
+      }
+      const session = sessionResolution.session;
+      console.log(
+        `[ws] client connected (user: ${authResult.user?.username || "unknown"}, session: ${session})`,
+      );
 
       let lastContent = "";
       let lastDims = "";
-      let interval: ReturnType<typeof setInterval>;
+      let interval: ReturnType<typeof setInterval> | undefined;
+      // Set by onClose (via _cleanup). Guards the async has-session gate
+      // below: if the client disconnects before the check resolves, we must
+      // not start an interval nobody will ever clear.
+      let closed = false;
+      (ws as any)._cleanup = () => {
+        closed = true;
+        if (interval !== undefined) clearInterval(interval);
+      };
 
       const sendPaneContent = () => {
         // Send updated dimensions whenever they change
-        const dims = getPaneDimensions();
+        const dims = getPaneDimensions(session);
         const dimsKey = `${dims.cols}x${dims.rows}`;
         if (dimsKey !== lastDims) {
           lastDims = dimsKey;
           ws.send(JSON.stringify({ type: "dimensions", cols: dims.cols, rows: dims.rows }));
         }
         // -e preserves ANSI colors and -J joins wrapped lines so they reflow
-        // to the client width.
+        // to the client width. `=<name>:` target (exact-match + trailing
+        // colon required for pane-target commands on tmux 3.5a), since
+        // `session` may originate from the client's ?session= param.
+        // timeout: a wedged tmux server must not accumulate one unbounded
+        // child per 500ms poll tick — same cap as every other tmux call on
+        // these routes (spawn kills with SIGTERM on expiry).
         const capture = spawn("tmux", [
           "capture-pane",
-          "-t", TMUX_SESSION,
+          "-t", `=${session}:`,
           "-p",
           "-e",
           "-J",
-        ]);
+        ], { timeout: TMUX_TIMEOUT_MS });
 
         let output = "";
         capture.stdout.on("data", (data: Buffer) => {
           output += data.toString();
         });
 
-        capture.on("close", () => {
+        capture.on("close", (code: number | null) => {
+          // The capture child resolves asynchronously — the socket may have
+          // closed (and the interval been cleared) while it ran. Never send
+          // on a closed WSContext.
+          if (closed) return;
+          // A non-default session can disappear mid-view (lanes come and
+          // go). Close the connection honestly instead of leaving a frozen
+          // last frame that looks live. The DEFAULT session deliberately
+          // keeps the legacy tolerance: /restart-session kills and
+          // recreates it, and connections are expected to ride that out.
+          if (code !== 0 && session !== TMUX_SESSION) {
+            (ws as any)._cleanup?.();
+            ws.send(JSON.stringify({ type: "error", message: `Session "${session}" ended` }));
+            ws.close(4010, "Session ended");
+            return;
+          }
           if (output !== lastContent) {
             lastContent = output;
             ws.send(JSON.stringify({ type: "pane", content: output }));
@@ -247,12 +322,29 @@ export function terminalWsRoute(c: any) {
         });
       };
 
-      sendPaneContent();
-      interval = setInterval(sendPaneContent, 500);
-
-      (ws as any)._cleanup = () => {
-        clearInterval(interval);
+      const startPolling = () => {
+        if (closed) return;
+        sendPaneContent();
+        interval = setInterval(sendPaneContent, 500);
       };
+
+      if (session === TMUX_SESSION) {
+        // Default session: start immediately, tolerate absence (legacy
+        // behavior — see the capture close handler above).
+        startPolling();
+      } else {
+        // Client-picked session: prove it exists before polling it, so a
+        // bogus (but charset-valid) name gets a crisp error instead of a
+        // silently empty terminal. Exact-match `=` prefix, argv array.
+        execFileAsync("tmux", ["has-session", "-t", `=${session}`], { timeout: TMUX_TIMEOUT_MS })
+          .then(startPolling)
+          .catch(() => {
+            if (closed) return;
+            console.log(`[ws] rejected: unknown session "${session}"`);
+            ws.send(JSON.stringify({ type: "error", message: `Unknown session "${session}"` }));
+            ws.close(4004, "Unknown session");
+          });
+      }
     },
 
     onMessage(event: MessageEvent, ws: WSContext) {
@@ -263,9 +355,24 @@ export function terminalWsRoute(c: any) {
       // sockets, but this closes the gap if a message arrives before the
       // close takes effect.
       if (!authResult.ok) return;
+      if (!sessionResolution.ok) return;
       try {
         const msg = JSON.parse(event.data.toString());
         if (msg.type === "fit") {
+          // Fit resizes the REAL tmux window (a write). Only the default
+          // session — the one the REST write endpoints already target — may
+          // be resized; every client-picked session is view-only, so the
+          // multi-session feature adds zero new write surface. Checked
+          // before validation so applyFitResize (hardwired to TMUX_SESSION)
+          // can never be reached from a view-only connection.
+          if (sessionResolution.session !== TMUX_SESSION) {
+            console.log(`[ws] fit rejected: view-only session "${sessionResolution.session}"`);
+            ws.send(JSON.stringify({
+              type: "fit-error",
+              message: "This session is view-only — fit is only available on the default session",
+            }));
+            return;
+          }
           // Explicit, user-initiated "Fit screen" action only — the client
           // never sends this automatically (see NOTE above). Validate
           // before touching tmux.

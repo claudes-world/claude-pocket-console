@@ -513,7 +513,7 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByText("New"));
 
     await waitFor(() => {
-      expect(mockSendCompactCommand).toHaveBeenCalledWith("/new");
+      expect(mockSendCompactCommand).toHaveBeenCalledWith("/new", null);
     });
   });
 
@@ -536,7 +536,7 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByText("Compact"));
 
     await waitFor(() => {
-      expect(mockSendCompactCommand).toHaveBeenCalledWith("/compact");
+      expect(mockSendCompactCommand).toHaveBeenCalledWith("/compact", null);
     });
   });
 
@@ -554,7 +554,7 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByText("Compact"));
 
     await waitFor(() => {
-      expect(mockSendCompactCommand).toHaveBeenCalledWith("/compact auth refactor");
+      expect(mockSendCompactCommand).toHaveBeenCalledWith("/compact auth refactor", null);
     });
   });
 
@@ -661,5 +661,76 @@ describe("ActionBar", () => {
     render(<ActionBar activeTab="terminal" onReconnect={() => {}} />);
     const reconnectMenuBtn = screen.getByLabelText("Open reconnect menu");
     expect(reconnectMenuBtn).toBeInTheDocument();
+  });
+});
+
+// ─── Restricted palette: viewing a non-default tmux session ─────────────
+// (multi-session terminal, world-os#218 / Liam voice msg 1188)
+
+describe("ActionBar restricted session mode", () => {
+  const SESSION = "do-box--lane-a";
+
+  it("shows Reconnect and /commands but hides Git and the reconnect menu", () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+    expect(screen.getByText("Reconnect")).toBeInTheDocument();
+    expect(screen.getByText("/commands")).toBeInTheDocument();
+    // Default-session-only actions must not be reachable.
+    expect(screen.queryByText("Git")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Open reconnect menu")).not.toBeInTheDocument();
+  });
+
+  it("hides orchestrator-bookkeeping commands in the sheet and names the target", () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+    fireEvent.click(screen.getByText("/commands"));
+    expect(screen.getByTestId("bottom-sheet-title")).toHaveTextContent(`/commands → ${SESSION}`);
+    // Restricted verbs available:
+    expect(screen.getByText("Esc")).toBeInTheDocument();
+    expect(screen.getByText("/compact")).toBeInTheDocument();
+    expect(screen.getByText("/reload-plugins")).toBeInTheDocument();
+    // Default-session-only commands hidden:
+    expect(screen.queryByText("/new")).not.toBeInTheDocument();
+    expect(screen.queryByText("/resume")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/branch/)).not.toBeInTheDocument();
+    expect(screen.queryByText("/rename")).not.toBeInTheDocument();
+  });
+
+  it("threads the viewed session into key sends", () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+    fireEvent.click(screen.getByText("/commands"));
+    fireEvent.click(screen.getByText("Esc"));
+    expect(mockSendToTmux).toHaveBeenCalledWith("Escape", true, SESSION);
+  });
+
+  it("threads the viewed session into digit sends", () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+    fireEvent.click(screen.getByText("/commands"));
+    fireEvent.click(screen.getByText("2"));
+    expect(mockSendToTmux).toHaveBeenCalledWith("2", false, SESSION);
+  });
+
+  it("threads the viewed session into reload-plugins", () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+    fireEvent.click(screen.getByText("/commands"));
+    fireEvent.click(screen.getByText("/reload-plugins"));
+    expect(mockPostAction).toHaveBeenCalledWith(
+      "/api/terminal/reload-plugins",
+      { session: SESSION },
+    );
+  });
+
+  it("threads the viewed session into /compact", async () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+    fireEvent.click(screen.getByText("/commands"));
+    await waitFor(() => expect(screen.getByText("/compact")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("/compact"));
+    await waitFor(() => expect(screen.getByText("Compact Now")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Compact Now"));
+    await waitFor(() => expect(screen.getByText("Compact Focus")).toBeInTheDocument());
+
+    // Submit without focus text sends plain /compact — to the viewed session
+    fireEvent.click(screen.getByText("Compact"));
+    await waitFor(() => {
+      expect(mockSendCompactCommand).toHaveBeenCalledWith("/compact", SESSION);
+    });
   });
 });
