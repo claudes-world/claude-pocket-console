@@ -46,10 +46,24 @@ function getPaneDimensions(): { cols: number; rows: number } {
 // the reconnect menu): the client measures its current xterm.js viewport
 // and sends one `{ type: "fit", cols, rows }` message; we validate the
 // dimensions and issue exactly one bounded `tmux resize-window -x -y` call.
-// Per `man tmux`, `resize-window -x/-y` "automatically sets window-size to
-// manual" for that window, so the size sticks until the user (or another
-// manual resize) changes it again — a deliberate, visible trade-off the
-// user accepts by tapping the button, not something we impose silently.
+//
+// INCIDENT (Liam msg 585, 2026-07-08): `resize-window -x/-y` has a tmux
+// side effect beyond the one-shot resize — it also flips the session's
+// `window-size` option to "manual", which is STICKY: every later client
+// that attaches (e.g. a real Termius SSH session) gets clamped to that
+// exact size forever, instead of tmux auto-fitting to it. Live evidence:
+// `[ws] fit applied: 58x60` in the cpc.service journal, followed by Liam
+// unable to use the TUI from Termius because the window stayed pinned at
+// 58x60 regardless of his actual terminal size.
+//
+// Fix: immediately follow the one-shot resize with a `set-option
+// window-size latest` call that hands sizing back to "whichever client was
+// most recently active" — the resize applies once (for the mini app's
+// current tap) and then releases, so the next real attached client (Termius)
+// drives the size again. Order matters: `resize-window` itself is what sets
+// window-size to manual, so the release call MUST run after it, never
+// before (verified live: running them in the other order left it stuck on
+// "manual").
 const FIT_COLS_MIN = 20;
 const FIT_COLS_MAX = 500;
 const FIT_ROWS_MIN = 5;
@@ -86,10 +100,18 @@ export function validateFitDimensions(msg: unknown): FitValidationResult {
 
 /**
  * Apply a validated fit request: resize the tmux window to exactly
- * cols x rows. `execFile` (no shell) with an argv array — same discipline
+ * cols x rows, then release the manual-size latch that `resize-window -x/-y`
+ * leaves behind. `execFile` (no shell) with an argv array — same discipline
  * as `sendToTmux` in routes/utils.ts — so the numeric strings can never be
  * interpreted as shell metacharacters even though they're already
  * integer-validated above.
+ *
+ * The two tmux calls MUST run in this order: `resize-window` sets
+ * `window-size` to "manual" as a side effect, so the `set-option
+ * window-size latest` release has to come after it — running it before
+ * (or relying on `resize-window -A` alone) leaves the session pinned to
+ * the mini app's small viewport for every later attach (see incident note
+ * above the option constants).
  */
 export async function applyFitResize(cols: number, rows: number): Promise<void> {
   await execFileAsync("tmux", [
@@ -97,6 +119,11 @@ export async function applyFitResize(cols: number, rows: number): Promise<void> 
     "-t", TMUX_SESSION,
     "-x", String(cols),
     "-y", String(rows),
+  ]);
+  await execFileAsync("tmux", [
+    "set-option",
+    "-t", TMUX_SESSION,
+    "window-size", "latest",
   ]);
 }
 

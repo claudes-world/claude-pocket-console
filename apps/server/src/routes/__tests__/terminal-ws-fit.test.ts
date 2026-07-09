@@ -198,11 +198,28 @@ describe("terminalWsRoute onMessage: fit", () => {
     // applyFitResize resolves via a microtask (promisified execFile) — flush it.
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
 
-    expect(execFileCalls).toHaveLength(1);
     expect(execFileCalls[0].cmd).toBe("tmux");
     expect(execFileCalls[0].args).toEqual([
       "resize-window", "-t", "test-session", "-x", "92", "-y", "40",
+    ]);
+
+    (ws as any)._cleanup?.();
+  });
+
+  it("releases the manual-size latch with 'set-option window-size latest' AFTER the resize (incident: Liam msg 585 — resize-window sticks the session on manual, clamping every later attached client)", async () => {
+    const { handlers, ws } = connectAuthenticatedWs();
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(execFileCalls).toHaveLength(2);
+    expect(execFileCalls[1].cmd).toBe("tmux");
+    expect(execFileCalls[1].args).toEqual([
+      "set-option", "-t", "test-session", "window-size", "latest",
     ]);
 
     (ws as any)._cleanup?.();
@@ -212,6 +229,7 @@ describe("terminalWsRoute onMessage: fit", () => {
     const { handlers, ws } = connectAuthenticatedWs();
 
     handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 100, rows: 30 }) } as any, ws as any);
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -326,8 +344,9 @@ describe("terminalWsRoute onMessage: fit auth guard", () => {
     handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
 
-    expect(execFileCalls).toHaveLength(1);
+    expect(execFileCalls).toHaveLength(2);
     (ws as any)._cleanup?.();
   });
 });
