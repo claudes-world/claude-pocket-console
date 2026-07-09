@@ -205,10 +205,12 @@ app.use("/*", serveStatic({ root: webDistRoot }));
 // app shell and let the client router handle the path (e.g. the /console
 // mini-app URL, which 404'd until a host-side Caddy rewrite papered over it).
 // API/WS prefixes still 404 so callers get JSON errors, not HTML.
+// Cached for the process lifetime: every deploy restarts the server
+// (docs/guides/deploying.md), which is what invalidates this.
 let spaIndexHtml: string | null = null;
 app.get("*", (c) => {
   const path = c.req.path;
-  if (path.startsWith("/api/") || path.startsWith("/ws/")) return c.notFound();
+  if (/^\/(api|ws)(\/|$)/.test(path)) return c.notFound();
   if (spaIndexHtml === null) {
     try {
       spaIndexHtml = readFileSync(join(webDistRoot, "index.html"), "utf-8");
