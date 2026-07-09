@@ -217,8 +217,12 @@ export function App() {
       tg.ready();
       tg.expand();
       // Request true full screen (hides Telegram header chrome) — Bot API 8.0+
-      if (typeof (tg as any).requestFullscreen === 'function') {
-        (tg as any).requestFullscreen();
+      if (typeof (tg as any).isVersionAtLeast === "function" && (tg as any).isVersionAtLeast("8.0")) {
+        try {
+          (tg as any).requestFullscreen();
+        } catch (err) {
+          console.debug("Telegram fullscreen request failed:", err);
+        }
       }
     }
   }, []);
