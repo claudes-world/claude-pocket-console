@@ -35,13 +35,39 @@ const realRootCache = new Map<string, Promise<string>>();
 
 const pathTracer = getTracer('cpc-server-security');
 
-export const ALLOWED_FILE_ROOTS = [
+/**
+ * Roots CPC may WRITE into (file upload, paste, audio-generation sidecars).
+ * Deliberately narrower than the read list below: the viewer expansion for
+ * agent workspaces + /tmp (Liam voice 1238) is read-only — /tmp especially
+ * is world-writable shared space that CPC must never write into, and legacy
+ * lane workspaces are other agents' working state. This list is exactly the
+ * pre-expansion allowlist, so the write surface is unchanged.
+ */
+export const ALLOWED_WRITE_ROOTS = [
   "/home/claude/claudes-world",
   "/home/claude/code",
   "/home/claude/bin",
   "/home/claude/.claude",
   "/home/claude/claudes-world/.claude",
   "/home/claude/.world",
+] as const;
+
+/**
+ * Roots the file viewer may READ (list/read/search/download/send-to-chat).
+ * Superset of the write roots plus view-only additions:
+ *  - /home/claude/.worldos/lanes — legacy lane workspaces (current-gen lane
+ *    workspaces live under ~/.world, already covered above)
+ *  - /tmp — agents share artifacts there (tmpfs; whatever the server user
+ *    can read). Symlink escapes are neutralized by isPathAllowed's realpath
+ *    resolution: a /tmp symlink pointing outside the allowlist resolves to
+ *    its real target and is denied.
+ * Keep every entry an explicit absolute path — no globs, no env-derived
+ * wildcards; that property is what makes the traversal guard auditable.
+ */
+export const ALLOWED_FILE_ROOTS = [
+  ...ALLOWED_WRITE_ROOTS,
+  "/home/claude/.worldos/lanes",
+  "/tmp",
 ] as const;
 
 

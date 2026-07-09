@@ -167,6 +167,36 @@ describe("isPathAllowed", () => {
     ).toBe(true);
   });
 
+  it("read roots include the view-only additions; write roots do not (Liam voice 1238)", async () => {
+    const { ALLOWED_FILE_ROOTS, ALLOWED_WRITE_ROOTS } = await import(
+      "../../lib/path-allowed.js"
+    );
+    // View-only roots readable…
+    expect(ALLOWED_FILE_ROOTS).toContain("/tmp");
+    expect(ALLOWED_FILE_ROOTS).toContain("/home/claude/.worldos/lanes");
+    // …but never writable.
+    expect(ALLOWED_WRITE_ROOTS).not.toContain("/tmp");
+    expect(ALLOWED_WRITE_ROOTS).not.toContain("/home/claude/.worldos/lanes");
+    // Write roots are a strict subset of read roots (every writable place
+    // is also viewable), and the write list is exactly the pre-expansion
+    // allowlist so the write surface never widened.
+    for (const root of ALLOWED_WRITE_ROOTS) {
+      expect(ALLOWED_FILE_ROOTS).toContain(root);
+    }
+    expect(ALLOWED_WRITE_ROOTS.length).toBeLessThan(ALLOWED_FILE_ROOTS.length);
+  });
+
+  it("denies a /tmp-style symlink that points outside every allowed root", async () => {
+    // /tmp is world-writable: any local process can plant a symlink there.
+    // The escape-link fixture models exactly that — a link inside an
+    // allowed root targeting a directory outside all roots. realpath
+    // resolution must reject both the link and anything beneath it.
+    expect(await isPathAllowed(join(allowedRoot, "escape-link"), [allowedRoot])).toBe(false);
+    expect(
+      await isPathAllowed(join(allowedRoot, "escape-link", "loot.txt"), [allowedRoot]),
+    ).toBe(false);
+  });
+
   it("memoizes realpath(root) via an on-disk swap of the root target", async () => {
     // Spying on `realpath` in ESM is blocked by vitest (module namespace
     // is not configurable), so we verify memoization by observing a behavior

@@ -647,7 +647,7 @@ describe("POST /paste", () => {
 // GET /list — synthetic home view (/home/claude)
 // ---------------------------------------------------------------------------
 describe("GET /list — synthetic home view", () => {
-  it("returns only allowlisted subdirs of /home/claude, never disallowed siblings", async () => {
+  it("returns only allowlisted top-level roots, never disallowed siblings", async () => {
     const res = await filesRoute.request(
       `/list?path=${encodeURIComponent("/home/claude")}`,
     );
@@ -662,25 +662,36 @@ describe("GET /list — synthetic home view", () => {
     expect(body.parent).toBeNull();
     expect(Array.isArray(body.items)).toBe(true);
 
-    // Every returned item must be a directory whose path starts with /home/claude/
+    // Every returned item must be a directory that IS an allowlisted root —
+    // the view is built purely from the allowlist (which now includes
+    // top-level roots outside /home/claude, e.g. /tmp), never from readdir.
+    const { ALLOWED_FILE_ROOTS } = await vi.importActual<
+      typeof import("../../lib/path-allowed.js")
+    >("../../lib/path-allowed.js");
     for (const item of body.items) {
       expect(item.type).toBe("dir");
-      expect(item.path.startsWith("/home/claude/")).toBe(true);
+      expect(ALLOWED_FILE_ROOTS).toContain(item.path);
     }
 
     const names = body.items.map((i) => i.name);
 
-    // Allowlisted direct children must be present
+    // Allowlisted top-level roots must be present
     expect(names).toContain("claudes-world");
     expect(names).toContain("code");
     expect(names).toContain("bin");
     expect(names).toContain(".claude");
     expect(names).toContain(".world");
+    // View-only roots (Liam voice 1238): labeled home-relative / by real path
+    expect(names).toContain(".worldos/lanes");
+    expect(names).toContain("/tmp");
 
     // Disallowed siblings must never appear
     expect(names).not.toContain(".ssh");
     expect(names).not.toContain(".secrets");
-    expect(names).not.toContain("claudes-world/.claude"); // nested root, not a direct child
+    // Nested root (claudes-world/.claude) is reachable by browsing its
+    // parent, never shown at top level.
+    const paths = body.items.map((i) => i.path);
+    expect(paths).not.toContain("/home/claude/claudes-world/.claude");
   });
 
   it("returns 403 for direct file-read on /home/claude", async () => {

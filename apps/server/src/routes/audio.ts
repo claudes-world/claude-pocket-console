@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { loadOpenAIEnv, getTelegramCreds } from "./utils.js";
 import {
-  ALLOWED_FILE_ROOTS,
+  ALLOWED_WRITE_ROOTS,
   isPathAllowed as isPathAllowedShared,
 } from "../lib/path-allowed.js";
 import { getTracer } from "../lib/otel.js";
@@ -16,8 +16,14 @@ const execFileAsync = promisify(execFile);
 // Load OpenAI env on module init
 loadOpenAIEnv();
 
+// Audio generation WRITES an .mp3 sidecar next to the source markdown, so
+// this whole route is scoped to the WRITE roots — the view-only file roots
+// (/tmp, legacy lane workspaces) must never gain a disk-write path. Using
+// write roots for /check too keeps the feature's surface consistent: audio
+// exists only where audio can be generated (exactly the pre-expansion
+// behavior).
 function isPathAllowed(absPath: string): Promise<boolean> {
-  return isPathAllowedShared(absPath, ALLOWED_FILE_ROOTS);
+  return isPathAllowedShared(absPath, ALLOWED_WRITE_ROOTS);
 }
 
 const audioTracer = getTracer('cpc-server-audio');

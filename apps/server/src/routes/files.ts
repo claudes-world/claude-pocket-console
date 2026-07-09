@@ -14,6 +14,7 @@ import { constants as fsConstants } from "node:fs";
 import { Readable } from "node:stream";
 import {
   ALLOWED_FILE_ROOTS,
+  ALLOWED_WRITE_ROOTS,
   isPathAllowed as isPathAllowedShared,
 } from "../lib/path-allowed.js";
 
@@ -39,6 +40,12 @@ const ALLOWED_ROOTS = ALLOWED_FILE_ROOTS;
 
 function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
+}
+
+/** Write-endpoint gate (upload/paste): the narrower ALLOWED_WRITE_ROOTS —
+ *  the view-only roots (/tmp, legacy lane workspaces) must stay read-only. */
+function isWritePathAllowed(absPath: string): Promise<boolean> {
+  return isPathAllowedShared(absPath, ALLOWED_WRITE_ROOTS);
 }
 
 function pruneExpiredDownloadTickets(now = Date.now()) {
@@ -140,17 +147,25 @@ app.get("/list", async (c) => {
   const dir = c.req.query("path") || BASE_DIR;
   const resolved = resolve(dir);
 
-  // Synthetic home view: construct listing from allowlist, never readdir /home/claude.
+  // Synthetic home view: construct listing from allowlist, never readdir
+  // /home/claude. Shows every TOP-LEVEL allowed root — one that isn't nested
+  // inside another allowed root (nested ones, e.g. claudes-world/.claude,
+  // are reachable by browsing their parent). Roots outside /home/claude
+  // (/tmp, ~/.worldos/lanes) appear here too, labeled by their real path,
+  // so view-only roots are reachable without memorizing paths. Still built
+  // purely from the allowlist, so disallowed siblings can never appear.
   if (resolved === HOME_CLAUDE) {
-    const items = ALLOWED_ROOTS
-      .map((r) => resolve(r))
-      .filter((r) => {
-        // Only include roots whose immediate parent is /home/claude
-        const parentDir = resolve(r, "..");
-        return parentDir === HOME_CLAUDE;
-      })
+    const resolvedRoots = ALLOWED_ROOTS.map((r) => resolve(r));
+    const items = resolvedRoots
+      .filter((r) =>
+        !resolvedRoots.some((other) => other !== r && r.startsWith(other + sep)),
+      )
       .map((r) => ({
-        name: basename(r),
+        name: resolve(r, "..") === HOME_CLAUDE
+          ? basename(r)
+          : r.startsWith(HOME_CLAUDE + sep)
+            ? r.slice(HOME_CLAUDE.length + 1)
+            : r,
         path: r,
         type: "dir" as const,
       }));
@@ -459,7 +474,7 @@ app.post(
   }
 
   const resolved = resolve(dir);
-  if (!await isPathAllowed(resolved)) {
+  if (!await isWritePathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -633,7 +648,7 @@ app.post(
   }
 
   const resolved = resolve(dir);
-  if (!(await isPathAllowed(resolved))) {
+  if (!(await isWritePathAllowed(resolved))) {
     return c.json({ error: "Access denied" }, 403);
   }
 

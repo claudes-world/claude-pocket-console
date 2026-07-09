@@ -572,6 +572,11 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             { label: "code", path: "/home/claude/code" },
             { label: "bin", path: "/home/claude/bin" },
             { label: "\ud83c\udf10 .claude", path: "/home/claude/claudes-world/.claude" },
+            // View-only roots (Liam voice 1238): agent workspaces + shared /tmp.
+            // Current-gen lane workspaces live under .world/groups/<group>/<lane>/workspace.
+            { label: "\ud83d\uddc2 .world", path: "/home/claude/.world" },
+            { label: "lanes", path: "/home/claude/.worldos/lanes" },
+            { label: "/tmp", path: "/tmp" },
           ].map((root) => (
             <button
               key={root.path}
