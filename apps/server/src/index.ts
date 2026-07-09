@@ -200,6 +200,28 @@ app.use("/*", async (c, next) => {
 
 app.use("/*", serveStatic({ root: webDistRoot }));
 
+// SPA fallback (#287): serveStatic calls next() on a miss, so any GET that
+// reached this point is neither an API/WS route nor a real asset. Serve the
+// app shell and let the client router handle the path (e.g. the /console
+// mini-app URL, which 404'd until a host-side Caddy rewrite papered over it).
+// API/WS prefixes still 404 so callers get JSON errors, not HTML.
+// Cached for the process lifetime: every deploy restarts the server
+// (docs/guides/deploying.md), which is what invalidates this.
+let spaIndexHtml: string | null = null;
+app.get("*", (c) => {
+  const path = c.req.path;
+  if (/^\/(api|ws)(\/|$)/.test(path)) return c.notFound();
+  if (spaIndexHtml === null) {
+    try {
+      spaIndexHtml = readFileSync(join(webDistRoot, "index.html"), "utf-8");
+    } catch {
+      // No frontend build present (bare dev server) — behave as before.
+      return c.notFound();
+    }
+  }
+  return c.html(spaIndexHtml);
+});
+
 const port = parseInt(process.env.PORT || "38830");
 const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`CPC server running on http://localhost:${info.port}`);

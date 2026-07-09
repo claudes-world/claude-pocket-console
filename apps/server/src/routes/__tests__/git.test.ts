@@ -31,7 +31,6 @@ let sandbox: string;
 let repoDir: string;
 let evilSibling: string;
 let testAllowedRoots: string[] = [];
-const originalCwd = process.cwd();
 
 vi.mock("../../lib/path-allowed.js", async () => {
   const real = await vi.importActual<typeof import("../../lib/path-allowed.js")>(
@@ -87,11 +86,14 @@ beforeAll(() => {
 
   testAllowedRoots = [repoDir];
   __resetRealRootCacheForTests();
-  process.chdir(repoDir);
+  // PR #288 review follow-up (#287): stub cwd instead of process.chdir() —
+  // chdir mutates global state for every test in the worker; the spy only
+  // affects code that reads process.cwd().
+  vi.spyOn(process, "cwd").mockReturnValue(repoDir);
 });
 
 afterAll(() => {
-  process.chdir(originalCwd);
+  vi.restoreAllMocks();
   rmSync(sandbox, { recursive: true, force: true });
   rmSync(evilSibling, { recursive: true, force: true });
   __resetRealRootCacheForTests();
