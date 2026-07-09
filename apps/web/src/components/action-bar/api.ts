@@ -23,10 +23,13 @@ async function jsonFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promi
   return res.json() as Promise<T>;
 }
 
-export async function postAction(endpoint: string) {
+export async function postAction(endpoint: string, body?: Record<string, unknown>) {
   const res = await fetch(endpoint, {
     method: "POST",
-    headers: getAuthHeaders(),
+    headers: body
+      ? { ...getAuthHeaders(), "Content-Type": "application/json" }
+      : getAuthHeaders(),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await res.json();
   // Derive `ok` explicitly so a JSON `ok` field in the body cannot override
@@ -89,17 +92,24 @@ export async function fetchGitBranch() {
   return data.ok ? ({ branch: data.branch, treeType: data.treeType } as GitBranch) : null;
 }
 
-export async function sendToTmux(keys: string, raw = false) {
+export async function sendToTmux(keys: string, raw = false, session?: string | null) {
   // Most callers fire-and-forget via `void sendToTmux(...)`. Swallow fetch
   // failures here so those call sites don't produce unhandled promise
   // rejections in the browser. The API itself doesn't return a useful
   // success signal — it's best-effort "type this into the tmux pane".
   // (Copilot round-2 review.)
+  // `session` targets the restricted command palette at the tmux session
+  // the terminal tab is viewing (Liam voice msg 1188); omitted/null = the
+  // server's default session, exactly the legacy behavior.
   try {
     await fetch("/api/terminal/send-keys", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify(raw ? { keys, raw: true } : { keys }),
+      body: JSON.stringify({
+        keys,
+        ...(raw ? { raw: true } : {}),
+        ...(session ? { session } : {}),
+      }),
     });
   } catch (err) {
     // Swallowed so fire-and-forget callers don't throw unhandled rejections,
@@ -108,13 +118,14 @@ export async function sendToTmux(keys: string, raw = false) {
   }
 }
 
-export async function sendCompactCommand(message: string) {
+export async function sendCompactCommand(message: string, session?: string | null) {
   return jsonFetch<{ ok?: boolean; error?: string }>("/api/terminal/compact", {
     method: "POST",
     headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, ...(session ? { session } : {}) }),
   });
 }
+
 
 export async function renameSession(name: string) {
   return jsonFetch<{ ok?: boolean; error?: string }>("/api/session/rename", {

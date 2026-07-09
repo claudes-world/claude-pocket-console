@@ -13,6 +13,16 @@ export interface ActionBarProps {
   fitResult?: { ok: boolean; message?: string; ts: number } | null;
   connected?: boolean;
   activeTab?: string;
+  /**
+   * Non-default tmux session the terminal tab is viewing (multi-session
+   * picker), or null/undefined for the default session. When set, the
+   * restricted command palette (Esc / digits / ⇧Tab / ^B, /compact,
+   * /reload-plugins) targets THIS session — Liam's "nudge a stuck lane
+   * past a menu" flow (voice msg 1188) — while default-session-only
+   * actions (restart, fit, git, /new, /resume, /branch, /rename) are
+   * hidden so they can never act on the wrong terminal.
+   */
+  terminalSession?: string | null;
   fileShowHidden?: boolean;
   setFileShowHidden?: (v: boolean) => void;
   fileSortMode?: SortMode;

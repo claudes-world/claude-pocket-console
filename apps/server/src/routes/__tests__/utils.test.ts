@@ -229,13 +229,14 @@ describe("sendToTmux", () => {
     await sendToTmux("hello");
     expect(execFileSpy).toHaveBeenCalledTimes(2);
 
-    // First call: literal text
+    // First call: literal text. Target carries the `=` exact-match prefix
+    // (multi-session support, world-os#218 — no prefix-matching surprises).
     const [cmd1, args1] = execFileSpy.mock.calls[0];
     expect(cmd1).toBe("tmux");
     expect(args1).toContain("send-keys");
     expect(args1).toContain("-l");
     expect(args1).toContain("-t");
-    expect(args1).toContain(TMUX_SESSION);
+    expect(args1).toContain(`=${TMUX_SESSION}:`);
     expect(args1).toContain("--");
     expect(args1).toContain("hello");
 
@@ -245,7 +246,7 @@ describe("sendToTmux", () => {
     expect(args2).toContain("send-keys");
     expect(args2).toContain("Enter");
     expect(args2).toContain("-t");
-    expect(args2).toContain(TMUX_SESSION);
+    expect(args2).toContain(`=${TMUX_SESSION}:`);
   });
 
   it("passes timeout option to both execFile calls", async () => {
