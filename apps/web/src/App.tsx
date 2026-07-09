@@ -181,12 +181,15 @@ export function App() {
         if (data.ok) {
           setSessionList(data.sessions);
           setDefaultSession(data.default);
-          // Normalize a deep link that names the default session explicitly
-          // (#terminal&session=<default>): null IS the default everywhere
-          // else, and leaving the name in place misclassifies the session
-          // as non-default (restricted palette) until this fetch resolves —
-          // and would keep sending a redundant session field afterwards.
-          setActiveSession((cur) => (cur === data.default ? null : cur));
+          // Deliberately NOT normalizing activeSession here: a deep link
+          // that names the default session literally keeps its name in
+          // state, because Terminal is keyed on activeSession — mutating it
+          // to null would remount the terminal and tear down a healthy WS
+          // just to clean up the key (codex round-2). paletteSession below
+          // derives the default-vs-not classification on every render, so
+          // the restricted palette still self-corrects the moment this
+          // fetch resolves; the WS carrying an explicit default-session
+          // param is server-side identical to omitting it.
         }
       } catch { /* silent — picker just doesn't render */ }
     };
