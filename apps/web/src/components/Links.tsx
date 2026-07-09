@@ -28,17 +28,17 @@ interface LinkItem {
  *     current Mini App to switch context;
  *   - `target="_blank"` anchors (the default for every other link on this
  *     tab) are handed to the external browser by the WebView too.
- * SDK access is presence-checked and try/caught (same defensive pattern as
- * the PR #286 fullscreen guard); outside Telegram — plain browser tab —
- * fall back to a new tab so CPC itself stays open.
+ * Outside Telegram — plain browser tab — fall back to a new tab so CPC
+ * itself stays open.
+ *
+ * "Inside Telegram" is decided by `initData` truthiness, NOT by SDK-object
+ * presence: index.html loads telegram-web-app.js unconditionally, so
+ * `window.Telegram.WebApp` exists in every browser and only a genuine
+ * Mini App launch populates initData — the same discriminator `hasAuth()`
+ * uses in lib/telegram.ts. (PR #290 codex review, HIGH.)
  */
 function openInApp(url: string) {
-  let insideTelegram = false;
-  try {
-    insideTelegram = Boolean(getTelegramWebApp());
-  } catch {
-    insideTelegram = false;
-  }
+  const insideTelegram = Boolean(getTelegramWebApp()?.initData);
   if (insideTelegram) {
     window.location.assign(url);
   } else {
@@ -143,10 +143,20 @@ export function Links({ onClose }: LinksProps) {
             key={link.url}
             href={link.url}
             // In-app links navigate the webview itself (see openInApp);
-            // everything else keeps the external-tab behavior.
+            // everything else keeps the external-tab behavior. rel stays on
+            // both: middle-click/context-menu can still open the href
+            // without going through onClick (PR #290 gemini review, MED).
             target={link.inApp ? undefined : "_blank"}
-            rel={link.inApp ? undefined : "noopener noreferrer"}
-            onClick={link.inApp ? (e) => { e.preventDefault(); openInApp(link.url); } : undefined}
+            rel="noopener noreferrer"
+            onClick={link.inApp ? (e) => {
+              // Respect explicit new-tab intent (ctrl/cmd/shift-click,
+              // middle-click) — let the browser's default anchor behavior
+              // handle those instead of hijacking into a same-tab
+              // navigation. (PR #290 codex LOW / gemini MED.)
+              if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              e.preventDefault();
+              openInApp(link.url);
+            } : undefined}
             style={{
               display: "flex",
               alignItems: "center",
