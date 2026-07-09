@@ -115,9 +115,17 @@ export function App() {
   // tab views. null = the server's default (writable) session. Deep-linkable
   // via #terminal&session=<name>, same convention as #files&file=<path>.
   const initialSessionRaw = hashParams.match(/(?:^|&)session=([^&]+)/)?.[1];
-  const initialSession = initialSessionRaw && SESSION_NAME_RE.test(decodeURIComponent(initialSessionRaw))
-    ? decodeURIComponent(initialSessionRaw)
-    : null;
+  let initialSession: string | null = null;
+  if (initialSessionRaw) {
+    try {
+      const decoded = decodeURIComponent(initialSessionRaw);
+      if (SESSION_NAME_RE.test(decoded)) initialSession = decoded;
+    } catch {
+      // Malformed percent-encoding in a hand-typed/truncated deep link
+      // (e.g. "#terminal&session=%") — treat as no session rather than
+      // throwing during initial render.
+    }
+  }
   const [activeSession, setActiveSession] = useState<string | null>(initialSession);
   const [sessionList, setSessionList] = useState<TmuxSessionInfo[]>([]);
   const [defaultSession, setDefaultSession] = useState<string | null>(null);
@@ -173,6 +181,12 @@ export function App() {
         if (data.ok) {
           setSessionList(data.sessions);
           setDefaultSession(data.default);
+          // Normalize a deep link that names the default session explicitly
+          // (#terminal&session=<default>): null IS the default everywhere
+          // else, and leaving the name in place misclassifies the session
+          // as non-default (restricted palette) until this fetch resolves —
+          // and would keep sending a redundant session field afterwards.
+          setActiveSession((cur) => (cur === data.default ? null : cur));
         }
       } catch { /* silent — picker just doesn't render */ }
     };
@@ -496,10 +510,12 @@ export function App() {
         </div>
       )}
 
-      {/* Session picker — terminal tab only, and only when there's a choice.
-          Also rendered when a hash deep-link points at a session the list
-          doesn't know (yet), so the user can navigate back out. */}
-      {activeTab === "terminal" && sessionList.length > 1 && (
+      {/* Session picker — terminal tab only, when there's a choice OR a
+          hash deep-link points at a non-default session (even one the
+          roster doesn't know), so a stale deep link always leaves the user
+          a pill to click back to the default instead of stranding them on
+          the error frame. */}
+      {activeTab === "terminal" && (sessionList.length > 1 || activeSession !== null) && sessionList.length > 0 && (
         <SessionPicker
           sessions={sessionList}
           active={activeSession ?? defaultSession ?? ""}

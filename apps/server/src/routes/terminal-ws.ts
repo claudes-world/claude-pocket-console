@@ -279,13 +279,16 @@ export function terminalWsRoute(c: any) {
         // to the client width. `=<name>:` target (exact-match + trailing
         // colon required for pane-target commands on tmux 3.5a), since
         // `session` may originate from the client's ?session= param.
+        // timeout: a wedged tmux server must not accumulate one unbounded
+        // child per 500ms poll tick — same cap as every other tmux call on
+        // these routes (spawn kills with SIGTERM on expiry).
         const capture = spawn("tmux", [
           "capture-pane",
           "-t", `=${session}:`,
           "-p",
           "-e",
           "-J",
-        ]);
+        ], { timeout: TMUX_TIMEOUT_MS });
 
         let output = "";
         capture.stdout.on("data", (data: Buffer) => {
@@ -293,17 +296,19 @@ export function terminalWsRoute(c: any) {
         });
 
         capture.on("close", (code: number | null) => {
+          // The capture child resolves asynchronously — the socket may have
+          // closed (and the interval been cleared) while it ran. Never send
+          // on a closed WSContext.
+          if (closed) return;
           // A non-default session can disappear mid-view (lanes come and
           // go). Close the connection honestly instead of leaving a frozen
           // last frame that looks live. The DEFAULT session deliberately
           // keeps the legacy tolerance: /restart-session kills and
           // recreates it, and connections are expected to ride that out.
           if (code !== 0 && session !== TMUX_SESSION) {
-            if (!closed) {
-              (ws as any)._cleanup?.();
-              ws.send(JSON.stringify({ type: "error", message: `Session "${session}" ended` }));
-              ws.close(4010, "Session ended");
-            }
+            (ws as any)._cleanup?.();
+            ws.send(JSON.stringify({ type: "error", message: `Session "${session}" ended` }));
+            ws.close(4010, "Session ended");
             return;
           }
           if (output !== lastContent) {
