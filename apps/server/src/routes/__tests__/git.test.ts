@@ -31,7 +31,6 @@ let sandbox: string;
 let repoDir: string;
 let evilSibling: string;
 let testAllowedRoots: string[] = [];
-const originalCwd = process.cwd();
 
 vi.mock("../../lib/path-allowed.js", async () => {
   const real = await vi.importActual<typeof import("../../lib/path-allowed.js")>(
