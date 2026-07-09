@@ -269,6 +269,50 @@ describe("terminalWsRoute onMessage: fit", () => {
     (ws as any)._cleanup?.();
   });
 
+  it("reports a distinct loud fit-error (resized:true) when the resize succeeds but the latch-release call fails — never the generic 'Failed to resize' message (round-1 review finding: silent-latch-stuck incident could reproduce itself)", async () => {
+    const { handlers, ws } = connectAuthenticatedWs();
+    ws._sent.length = 0; // drop the initial "dimensions"/"pane" sends from onOpen
+
+    // First execFile call (resize-window) succeeds; second (set-option
+    // window-size latest) fails, simulating the release call throwing
+    // after the resize already applied.
+    mockExecFile
+      .mockImplementationOnce((cmd: string, args: string[], callback: (err: Error | null) => void) => {
+        execFileCalls.push({ cmd, args });
+        callback(null);
+      })
+      .mockImplementationOnce((cmd: string, args: string[], callback: (err: Error | null) => void) => {
+        execFileCalls.push({ cmd, args });
+        callback(new Error("no server running on /tmp/tmux-0/default"));
+      });
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+    // The extra try/catch wrapping the release call inside applyFitResize
+    // adds one more microtask hop than the plain-success path above —
+    // flush a couple extra ticks to be safe.
+    for (let i = 0; i < 6; i++) {
+      await Promise.resolve();
+    }
+
+    // Both tmux calls were attempted — the resize really did apply.
+    expect(execFileCalls).toHaveLength(2);
+
+    // No fit-ack (the overall fit request did not cleanly succeed)...
+    const acks = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-ack");
+    expect(acks).toHaveLength(0);
+
+    // ...but a distinct fit-error that says the resize DID apply and the
+    // latch may still be engaged, not the generic "Failed to resize tmux
+    // window" message a plain resize-window failure would produce.
+    const errors = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).not.toBe("Failed to resize tmux window");
+    expect(errors[0].message).toMatch(/latch/i);
+    expect(errors[0].resized).toBe(true);
+
+    (ws as any)._cleanup?.();
+  });
+
   it("legacy 'resize' message type remains a no-op (does not call tmux)", async () => {
     const { handlers, ws } = connectAuthenticatedWs();
 

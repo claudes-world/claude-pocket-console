@@ -113,6 +113,22 @@ export function validateFitDimensions(msg: unknown): FitValidationResult {
  * the mini app's small viewport for every later attach (see incident note
  * above the option constants).
  */
+/**
+ * Thrown when `resize-window` itself succeeded but the follow-up
+ * `set-option window-size latest` release call failed. Callers MUST
+ * distinguish this from a plain resize failure: the resize already applied,
+ * and the tmux session is now stuck with `window-size` pinned to "manual" —
+ * i.e. the exact incident this file's INCIDENT note above describes, except
+ * silent instead of logged, if not surfaced distinctly. Never collapse this
+ * into the generic "Failed to resize tmux window" message.
+ */
+export class FitLatchReleaseError extends Error {
+  constructor(message: string, public readonly cause: unknown) {
+    super(message);
+    this.name = "FitLatchReleaseError";
+  }
+}
+
 export async function applyFitResize(cols: number, rows: number): Promise<void> {
   await execFileAsync("tmux", [
     "resize-window",
@@ -120,11 +136,22 @@ export async function applyFitResize(cols: number, rows: number): Promise<void> 
     "-x", String(cols),
     "-y", String(rows),
   ]);
-  await execFileAsync("tmux", [
-    "set-option",
-    "-t", TMUX_SESSION,
-    "window-size", "latest",
-  ]);
+  try {
+    await execFileAsync("tmux", [
+      "set-option",
+      "-t", TMUX_SESSION,
+      "window-size", "latest",
+    ]);
+  } catch (err) {
+    // Resize already succeeded — do NOT let this fall through to the
+    // generic resize-failure handling in onMessage below. Wrap so the
+    // caller can tell "resize applied but latch may still be engaged"
+    // apart from "resize never happened".
+    throw new FitLatchReleaseError(
+      "tmux window-size latch release failed after resize-window succeeded",
+      err,
+    );
+  }
 }
 
 export function terminalWsRoute(c: any) {
@@ -260,6 +287,24 @@ export function terminalWsRoute(c: any) {
               ws.send(JSON.stringify({ type: "fit-ack", cols, rows }));
             })
             .catch((err: Error) => {
+              if (err instanceof FitLatchReleaseError) {
+                // Fail LOUD and distinct: the resize itself already applied,
+                // so "Failed to resize tmux window" would be actively
+                // misleading here, and staying silent would reproduce the
+                // Liam-msg-585 incident (latch stuck on "manual" with no
+                // signal to anyone). Log with full cause + tell the client
+                // resized:true so it doesn't think nothing happened.
+                console.error(
+                  `[tmux] fit resize applied (${cols}x${rows}) but the manual-size latch release FAILED — window-size may remain pinned to ${cols}x${rows} for other clients:`,
+                  err.cause,
+                );
+                ws.send(JSON.stringify({
+                  type: "fit-error",
+                  message: "Resized, but could not release the tmux window-size latch — other terminals may stay pinned to this size until it's cleared manually.",
+                  resized: true,
+                }));
+                return;
+              }
               console.error("[tmux] fit resize error:", err.message);
               ws.send(JSON.stringify({ type: "fit-error", message: "Failed to resize tmux window" }));
             });
