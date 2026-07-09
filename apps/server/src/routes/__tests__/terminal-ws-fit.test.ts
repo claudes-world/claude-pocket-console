@@ -198,11 +198,28 @@ describe("terminalWsRoute onMessage: fit", () => {
     // applyFitResize resolves via a microtask (promisified execFile) — flush it.
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
 
-    expect(execFileCalls).toHaveLength(1);
     expect(execFileCalls[0].cmd).toBe("tmux");
     expect(execFileCalls[0].args).toEqual([
       "resize-window", "-t", "test-session", "-x", "92", "-y", "40",
+    ]);
+
+    (ws as any)._cleanup?.();
+  });
+
+  it("releases the manual-size latch with 'set-option window-size latest' AFTER the resize (incident: Liam msg 585 — resize-window sticks the session on manual, clamping every later attached client)", async () => {
+    const { handlers, ws } = connectAuthenticatedWs();
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(execFileCalls).toHaveLength(2);
+    expect(execFileCalls[1].cmd).toBe("tmux");
+    expect(execFileCalls[1].args).toEqual([
+      "set-option", "-t", "test-session", "window-size", "latest",
     ]);
 
     (ws as any)._cleanup?.();
@@ -212,6 +229,7 @@ describe("terminalWsRoute onMessage: fit", () => {
     const { handlers, ws } = connectAuthenticatedWs();
 
     handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 100, rows: 30 }) } as any, ws as any);
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -247,6 +265,50 @@ describe("terminalWsRoute onMessage: fit", () => {
     // the execFile-empty half of this, per review finding).
     const errors = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-error");
     expect(errors).toHaveLength(1);
+
+    (ws as any)._cleanup?.();
+  });
+
+  it("reports a distinct loud fit-error (resized:true) when the resize succeeds but the latch-release call fails — never the generic 'Failed to resize' message (round-1 review finding: silent-latch-stuck incident could reproduce itself)", async () => {
+    const { handlers, ws } = connectAuthenticatedWs();
+    ws._sent.length = 0; // drop the initial "dimensions"/"pane" sends from onOpen
+
+    // First execFile call (resize-window) succeeds; second (set-option
+    // window-size latest) fails, simulating the release call throwing
+    // after the resize already applied.
+    mockExecFile
+      .mockImplementationOnce((cmd: string, args: string[], callback: (err: Error | null) => void) => {
+        execFileCalls.push({ cmd, args });
+        callback(null);
+      })
+      .mockImplementationOnce((cmd: string, args: string[], callback: (err: Error | null) => void) => {
+        execFileCalls.push({ cmd, args });
+        callback(new Error("no server running on /tmp/tmux-0/default"));
+      });
+
+    handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
+    // The extra try/catch wrapping the release call inside applyFitResize
+    // adds one more microtask hop than the plain-success path above —
+    // flush a couple extra ticks to be safe.
+    for (let i = 0; i < 6; i++) {
+      await Promise.resolve();
+    }
+
+    // Both tmux calls were attempted — the resize really did apply.
+    expect(execFileCalls).toHaveLength(2);
+
+    // No fit-ack (the overall fit request did not cleanly succeed)...
+    const acks = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-ack");
+    expect(acks).toHaveLength(0);
+
+    // ...but a distinct fit-error that says the resize DID apply and the
+    // latch may still be engaged, not the generic "Failed to resize tmux
+    // window" message a plain resize-window failure would produce.
+    const errors = ws._sent.map((s) => JSON.parse(s)).filter((m) => m.type === "fit-error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).not.toBe("Failed to resize tmux window");
+    expect(errors[0].message).toMatch(/latch/i);
+    expect(errors[0].resized).toBe(true);
 
     (ws as any)._cleanup?.();
   });
@@ -326,8 +388,9 @@ describe("terminalWsRoute onMessage: fit auth guard", () => {
     handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
 
-    expect(execFileCalls).toHaveLength(1);
+    expect(execFileCalls).toHaveLength(2);
     (ws as any)._cleanup?.();
   });
 });
