@@ -7,6 +7,7 @@ import { PrTicker } from "../PrTicker";
 // Mock the telegram auth module
 vi.mock("../../lib/telegram", () => ({
   getAuthHeaders: () => ({ Authorization: "tma test-init-data" }),
+  getTelegramWebApp: () => null,
 }));
 
 // Mock localStorage
@@ -111,6 +112,31 @@ describe("PrTicker", () => {
 
     await waitFor(() => {
       expect(screen.getByText("no open PRs")).toBeInTheDocument();
+    });
+  });
+
+  it("renders an org named constructor without a saved repo order", async () => {
+    const repo = makeRepo({
+      name: "repo",
+      org: "constructor",
+      fullName: "constructor/repo",
+      prCount: 0,
+    });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+
+    await waitFor(() => {
+      expect(screen.getByText("constructor")).toBeInTheDocument();
+      expect(screen.getByText("repo")).toBeInTheDocument();
     });
   });
 
@@ -326,5 +352,91 @@ describe("PrTicker", () => {
       expect(screen.getByText("#1")).toBeInTheDocument();
       expect(screen.getByText("#2")).toBeInTheDocument();
     });
+  });
+
+  it("hides a repo from the main list through the manage sheet", async () => {
+    const inboxPr = makePr({ number: 1, title: "Inbox PR", key: "claudes-world/inbox#1" });
+    const cpcPr = makePr({
+      number: 2,
+      title: "CPC PR",
+      repo: "claudes-world/claude-pocket-console",
+      key: "claudes-world/claude-pocket-console#2",
+    });
+    const inbox = makeRepo({ prCount: 1 });
+    const cpc = makeRepo({ name: "claude-pocket-console", fullName: "claudes-world/claude-pocket-console", prCount: 1 });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [inboxPr, cpcPr], repos: [inbox, cpc], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("CPC PR")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage PR view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide repo claudes-world/claude-pocket-console" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("CPC PR")).not.toBeInTheDocument();
+      expect(screen.getByText("Inbox PR")).toBeInTheDocument();
+      expect(screen.getByText("1 hidden")).toBeInTheDocument();
+      expect(screen.getByText("1 repos")).toBeInTheDocument();
+    });
+  });
+
+  it("applies org reordering from the manage sheet to the main list", async () => {
+    const alphaRepo = makeRepo({ name: "one", org: "alpha", fullName: "alpha/one" });
+    const zetaRepo = makeRepo({ name: "two", org: "zeta", fullName: "zeta/two" });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [alphaRepo, zetaRepo], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("alpha")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Manage PR view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move org zeta up" }));
+
+    const mainAlpha = screen.getAllByText("alpha")[0];
+    const mainZeta = screen.getAllByText("zeta")[0];
+    expect(mainZeta.compareDocumentPosition(mainAlpha) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("persists repo collapse across remounts", async () => {
+    const pr = makePr({ number: 7, title: "Persisted collapse", key: "claudes-world/inbox#7" });
+    const repo = makeRepo({ prCount: 1 });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [pr], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    const first = render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("Persisted collapse")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("inbox"));
+    await waitFor(() => expect(screen.queryByText("Persisted collapse")).not.toBeInTheDocument());
+
+    expect(JSON.parse(localStorageMock.getItem("cpc-pr-view-prefs") ?? "{}").collapsedRepos)
+      .toEqual(["claudes-world/inbox"]);
+
+    first.unmount();
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("inbox")).toBeInTheDocument());
+    expect(screen.queryByText("Persisted collapse")).not.toBeInTheDocument();
   });
 });
