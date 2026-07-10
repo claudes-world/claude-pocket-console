@@ -68,6 +68,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   // click handler, so a ref-based lock is the only way to prevent two
   // concurrent backend audio jobs racing each other.
   const audioInFlightRef = useRef(false);
+  // Monotonically versions cache checks so a response from an older sheet
+  // open/file cannot overwrite the state established by a newer check or by
+  // the generate-and-send chain.
+  const audioCheckSeqRef = useRef(0);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -283,6 +287,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   }, [searchCurrentFolderOnly, currentFolder, modal]);
 
   const handleCheckAudio = async (filePath: string) => {
+    const seq = ++audioCheckSeqRef.current;
     // If a generate or send is already in-flight, don't clobber its
     // loading/op state with a check — just show the in-progress panel.
     if (audioInFlightRef.current) return;
@@ -291,14 +296,18 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     setAudioOp("checking");
     try {
       const status = await checkAudio(filePath);
-      // Guard: if generate/send started while check was in-flight, don't
-      // overwrite their loading/op state with a stale check result.
+      // Guards: a newer check (or the generate chain, which bumps the seq)
+      // owns the UI now — a stale result must not overwrite it. Same for a
+      // generate/send that started while this check was in-flight.
+      if (seq !== audioCheckSeqRef.current) return;
       if (!audioInFlightRef.current) setAudioStatus(status);
     } catch {
+      if (seq !== audioCheckSeqRef.current) return;
       if (!audioInFlightRef.current) setAudioStatus(null);
     } finally {
-      // Only clear loading if no generate/send started while we were checking
-      if (!audioInFlightRef.current) {
+      // Only clear loading if this check still owns the UI and no
+      // generate/send started while we were checking.
+      if (seq === audioCheckSeqRef.current && !audioInFlightRef.current) {
         setAudioOp("idle");
         setAudioLoading(false);
       }
@@ -334,6 +343,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     }
   };
   const handleGenerateAudio = async (filePath: string) => {
+    ++audioCheckSeqRef.current;
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
     setAudioStatus(null);
