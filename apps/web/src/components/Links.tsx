@@ -73,7 +73,9 @@ const LINKS: LinkItem[] = [
   },
   {
     title: "Transcription Glossary",
-    url: "https://github.com/claudes-world/toolbox/blob/main/transcribe/glossary.txt",
+    // Canonical glossary moved to world-os (the file the live switchboard STT
+    // actually loads — Liam edits it on GitHub; world-os PR #427, 2026-07-10).
+    url: "https://github.com/claudes-world/world-os/blob/dev/apps/switchboard/src/switchboard/transcribe_glossary.txt",
     icon: "📝",
     description: "Tech terms for STT accuracy",
   },
