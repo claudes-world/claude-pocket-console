@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +12,7 @@ import { join, parse } from "node:path";
 import {
   __resetRealRootCacheForTests,
   isPathAllowed,
+  openAllowedForRead,
 } from "../../lib/path-allowed.js";
 
 /**
@@ -195,6 +197,67 @@ describe("isPathAllowed", () => {
     expect(
       await isPathAllowed(join(allowedRoot, "escape-link", "loot.txt"), [allowedRoot]),
     ).toBe(false);
+  });
+
+  describe("openAllowedForRead (race-safe open+validate)", () => {
+    it("opens a real file inside an allowed root and reports its real path", async () => {
+      const r = await openAllowedForRead(join(allowedRoot, "ok.txt"), [allowedRoot]);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.realPath).toBe(join(allowedRoot, "ok.txt"));
+        expect((await r.handle.readFile()).toString()).toBe("ok");
+        await r.handle.close();
+      }
+    });
+
+    it("follows a symlink whose target is INSIDE an allowed root (legacy semantics preserved)", async () => {
+      const linkInside = join(allowedRoot, "inside-link.txt");
+      symlinkSync(join(allowedRoot, "ok.txt"), linkInside, symlinkType);
+      try {
+        const r = await openAllowedForRead(linkInside, [allowedRoot]);
+        expect(r.ok).toBe(true);
+        if (r.ok) await r.handle.close();
+      } finally {
+        unlinkSync(linkInside);
+      }
+    });
+
+    it("denies (and closes) a symlink whose target is OUTSIDE all roots", async () => {
+      // The fd is opened (following the link) but validated against the
+      // OPENED inode's real path — /proc/self/fd — so the escape is caught
+      // even though open() itself succeeded.
+      const r = await openAllowedForRead(join(allowedRoot, "escape-link", "loot.txt"), [allowedRoot]);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe("denied");
+    });
+
+    it("closes the race: a file swapped for an out-of-root symlink after a name check is still rejected", async () => {
+      // Model the TOCTOU: a path that WOULD pass a by-name check is swapped
+      // for an escape symlink before the read. openAllowedForRead validates
+      // the opened fd's identity, so it can only ever return ok for the file
+      // it actually holds — never the swapped-in secret.
+      const racy = join(allowedRoot, "racy.txt");
+      // State A: legit file → allowed.
+      writeFileSync(racy, "legit");
+      const a = await openAllowedForRead(racy, [allowedRoot]);
+      expect(a.ok).toBe(true);
+      if (a.ok) {
+        expect((await a.handle.readFile()).toString()).toBe("legit");
+        await a.handle.close();
+      }
+      // State B: swapped to a symlink pointing outside → denied, no leak.
+      unlinkSync(racy);
+      symlinkSync(join(outsideDir, "loot.txt"), racy, symlinkType);
+      const b = await openAllowedForRead(racy, [allowedRoot]);
+      expect(b.ok).toBe(false);
+      unlinkSync(racy);
+    });
+
+    it("reports not-found for a missing file (distinct from denied)", async () => {
+      const r = await openAllowedForRead(join(allowedRoot, "nope.txt"), [allowedRoot]);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe("not-found");
+    });
   });
 
   it("memoizes realpath(root) via an on-disk swap of the root target", async () => {

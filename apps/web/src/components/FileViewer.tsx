@@ -572,9 +572,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             { label: "code", path: "/home/claude/code" },
             { label: "bin", path: "/home/claude/bin" },
             { label: "\ud83c\udf10 .claude", path: "/home/claude/claudes-world/.claude" },
-            // View-only roots (Liam voice 1238): agent workspaces + shared /tmp.
-            // Current-gen lane workspaces live under .world/groups/<group>/<lane>/workspace.
+            // .world holds current-gen lane workspaces
+            // (.world/groups/<group>/<lane>/workspace) \u2014 a pre-existing root,
+            // surfaced here as a chip for the first time.
             { label: "\ud83d\uddc2 .world", path: "/home/claude/.world" },
+            // View-only roots added in Liam voice 1238: legacy lane
+            // workspaces + shared /tmp.
             { label: "lanes", path: "/home/claude/.worldos/lanes" },
             { label: "/tmp", path: "/tmp" },
           ].map((root) => (

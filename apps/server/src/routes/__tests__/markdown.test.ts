@@ -15,9 +15,9 @@ import type { ChildProcess } from "node:child_process";
  *
  * Strategy:
  *   - Mock `../../db.js` to stub the prepared-statement cache layer
- *   - Mock `../../lib/path-allowed.js` to control path authorization
+ *   - Mock `../../lib/path-allowed.js` (`openAllowedForRead`) to control
+ *     path authorization AND file I/O via a fake fd handle
  *   - Mock `node:child_process` spawn to simulate the Claude CLI
- *   - Mock `node:fs/promises` readFile/stat to control file I/O
  *   - The route is a standalone Hono sub-app, tested via `app.request()`
  */
 
@@ -41,25 +41,24 @@ vi.mock("../../db.js", () => {
 });
 
 // --- path-allowed mock ---
-let pathAllowedResult = true;
+// The route now reads via openAllowedForRead (race-safe: open+validate the
+// fd, read from the handle). We mock it to return a controllable fake
+// handle whose stat/readFile drive the same states the old fs mock did.
+type OpenState = "ok" | "denied" | "not-found" | "error";
+let openState: OpenState = "ok";
+const fakeHandle = {
+  stat: vi.fn(async () => ({ isFile: () => true, size: 100 }) as any),
+  readFile: vi.fn(async () => "# Hello\n\nSome markdown content."),
+  close: vi.fn(async () => {}),
+};
 vi.mock("../../lib/path-allowed.js", () => ({
   ALLOWED_FILE_ROOTS: ["/allowed"],
-  isPathAllowed: vi.fn(async () => pathAllowedResult),
+  openAllowedForRead: vi.fn(async () =>
+    openState === "ok"
+      ? { ok: true, handle: fakeHandle, realPath: "/allowed/doc.md" }
+      : { ok: false, reason: openState },
+  ),
 }));
-
-// --- fs/promises mock ---
-const statResult = { isFile: () => true, size: 100 };
-const readFileResult = "# Hello\n\nSome markdown content.";
-vi.mock("node:fs/promises", async () => {
-  const actual = await vi.importActual<typeof import("node:fs/promises")>(
-    "node:fs/promises",
-  );
-  return {
-    ...actual,
-    stat: vi.fn(async () => statResult),
-    readFile: vi.fn(async () => readFileResult),
-  };
-});
 
 // --- child_process mock ---
 // We build a fake ChildProcess with controllable stdout/stderr/close events.
@@ -108,9 +107,6 @@ vi.mock("node:child_process", async () => {
 // ---------------------------------------------------------------------------
 const { markdownRoute } = await import("../markdown.js");
 
-// Reimport mocked fs to control per-test return values
-const fsMock = await import("node:fs/promises");
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -149,18 +145,15 @@ function rejectCliWith(code: number, stderr = ""): void {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  pathAllowedResult = true;
+  openState = "ok";
   selectCacheGet.mockReturnValue(null);
   insertCacheRun.mockClear();
   spawnSpy.mockClear();
 
-  // Reset fs mocks to defaults
-  vi.mocked(fsMock.stat).mockResolvedValue(
-    { isFile: () => true, size: 100 } as any,
-  );
-  vi.mocked(fsMock.readFile).mockResolvedValue(
-    "# Hello\n\nSome markdown content.",
-  );
+  // Reset the fake handle to defaults (readable 100-byte .md file)
+  fakeHandle.stat.mockResolvedValue({ isFile: () => true, size: 100 } as any);
+  fakeHandle.readFile.mockResolvedValue("# Hello\n\nSome markdown content.");
+  fakeHandle.close.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -216,7 +209,7 @@ describe("POST /summarize — input validation", () => {
 
 describe("POST /summarize — path security", () => {
   it("returns 403 for a disallowed path", async () => {
-    pathAllowedResult = false;
+    openState = "denied";
     const res = await postSummarize({ path: "/secret/private.md" });
     expect(res.status).toBe(403);
     const body = (await res.json()) as { ok: boolean; error: string };
@@ -226,7 +219,7 @@ describe("POST /summarize — path security", () => {
 
 describe("POST /summarize — file validation", () => {
   it("returns 404 when file does not exist", async () => {
-    vi.mocked(fsMock.stat).mockRejectedValueOnce(new Error("ENOENT"));
+    openState = "not-found";
     const res = await postSummarize({ path: "/allowed/missing.md" });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { ok: boolean; error: string };
@@ -234,7 +227,7 @@ describe("POST /summarize — file validation", () => {
   });
 
   it("returns 400 when path is a directory, not a file", async () => {
-    vi.mocked(fsMock.stat).mockResolvedValueOnce({
+    fakeHandle.stat.mockResolvedValueOnce({
       isFile: () => false,
       size: 0,
     } as any);
@@ -245,7 +238,7 @@ describe("POST /summarize — file validation", () => {
   });
 
   it("returns 413 when file exceeds max size", async () => {
-    vi.mocked(fsMock.stat).mockResolvedValueOnce({
+    fakeHandle.stat.mockResolvedValueOnce({
       isFile: () => true,
       size: 1_000_000,
     } as any);
@@ -256,15 +249,15 @@ describe("POST /summarize — file validation", () => {
   });
 
   it("returns 400 when file is empty", async () => {
-    vi.mocked(fsMock.readFile).mockResolvedValueOnce("   \n  \n  ");
+    fakeHandle.readFile.mockResolvedValueOnce("   \n  \n  ");
     const res = await postSummarize({ path: "/allowed/empty.md" });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { ok: boolean; error: string };
     expect(body.error).toBe("File is empty");
   });
 
-  it("returns 500 when readFile fails", async () => {
-    vi.mocked(fsMock.readFile).mockRejectedValueOnce(new Error("EACCES"));
+  it("returns 500 when read fails", async () => {
+    fakeHandle.readFile.mockRejectedValueOnce(new Error("EACCES"));
     const res = await postSummarize({ path: "/allowed/unreadable.md" });
     expect(res.status).toBe(500);
     const body = (await res.json()) as { ok: boolean; error: string };
@@ -293,7 +286,7 @@ describe("POST /summarize — cache behavior", () => {
     // Don't mock selectCacheGet here — force=true skips the cache lookup
     // entirely, so a mockReturnValueOnce would never be consumed and would
     // leak into the next test.
-    vi.mocked(fsMock.readFile).mockResolvedValueOnce(
+    fakeHandle.readFile.mockResolvedValueOnce(
       "# Force-refresh unique content\n\nBody.",
     );
     const res = postSummarize({ path: "/allowed/doc.md", force: true });
@@ -319,7 +312,7 @@ describe("POST /summarize — CLI happy path", () => {
   it("returns summary from CLI and writes to cache", async () => {
     // Use unique content so the in-flight deduplication map key differs
     // from other tests (keyed by content hash + prompt version + model).
-    vi.mocked(fsMock.readFile).mockResolvedValueOnce(
+    fakeHandle.readFile.mockResolvedValueOnce(
       "# Unique content for cache-write test\n\nBody text.",
     );
     const res = postSummarize({ path: "/allowed/doc.md" });

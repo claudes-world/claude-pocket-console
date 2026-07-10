@@ -289,18 +289,15 @@ describe("GET /read", () => {
     expect(body.error).toBe("Access denied");
   });
 
-  it("returns 500 for a non-existent file inside an allowed dir", async () => {
-    // isPathAllowed requires realpath to succeed, so a non-existent file
-    // is rejected at the isPathAllowed stage (returns false → 403).
-    // However, if the file disappears between the check and the read,
-    // the route would return 500. We test the 403 path since that's the
-    // normal flow for missing files.
+  it("returns 404 for a non-existent file inside an allowed dir", async () => {
+    // The race-safe open (openAllowedForRead) distinguishes ENOENT
+    // (not-found → 404) from an allowlist rejection (denied → 403), which
+    // is a more honest status than the old realpath-fails-so-403 behavior.
     const filePath = join(sandbox, "does-not-exist.txt");
     const res = await filesRoute.request(
       `/read?path=${encodeURIComponent(filePath)}`,
     );
-    // realpath fails for non-existent → isPathAllowed returns false → 403
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("returns 413 for a file larger than 1MB", async () => {

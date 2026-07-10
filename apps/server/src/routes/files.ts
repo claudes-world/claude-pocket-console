@@ -4,7 +4,6 @@ import { randomBytes } from "node:crypto";
 import {
   open,
   readdir,
-  readFile,
   stat,
   unlink,
 } from "node:fs/promises";
@@ -16,6 +15,7 @@ import {
   ALLOWED_FILE_ROOTS,
   ALLOWED_WRITE_ROOTS,
   isPathAllowed as isPathAllowedShared,
+  openAllowedForRead as openAllowedForReadShared,
 } from "../lib/path-allowed.js";
 
 const app = new Hono();
@@ -48,6 +48,13 @@ function isWritePathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_WRITE_ROOTS);
 }
 
+/** Race-safe open+validate against the read roots (see path-allowed.ts).
+ *  Use for every content read of a client-supplied path now that a
+ *  world-writable root (/tmp) is in the allowlist. */
+function openAllowedForRead(absPath: string) {
+  return openAllowedForReadShared(absPath, ALLOWED_ROOTS);
+}
+
 function pruneExpiredDownloadTickets(now = Date.now()) {
   for (const [ticket, record] of downloadTickets) {
     if (record.expiresAt <= now) {
@@ -57,43 +64,54 @@ function pruneExpiredDownloadTickets(now = Date.now()) {
 }
 
 async function getDownloadableFile(filePath: string): Promise<
-  | { ok: true; path: string; size: number; name: string }
+  | { ok: true; handle: import("node:fs/promises").FileHandle; path: string; size: number; name: string }
   | { ok: false; status: 400 | 403 | 404 | 413 | 500; error: string }
 > {
   const resolved = resolve(filePath);
-  if (!await isPathAllowed(resolved)) {
+  // Race-safe: open+validate the fd, then stream from THAT fd (never reopen
+  // by name) so a symlink swapped in after the check can't redirect the
+  // download to a disallowed file. Callers either stream from the handle
+  // (createDownloadResponse) or close it immediately if they only needed the
+  // validation (the ticket POST).
+  const opened = await openAllowedForRead(resolved);
+  if (!opened.ok) {
+    if (opened.reason === "not-found") return { ok: false, status: 404, error: "File not found" };
     return { ok: false, status: 403, error: "Access denied" };
   }
+  const { handle } = opened;
 
   try {
-    const st = await stat(resolved);
+    const st = await handle.stat();
     if (!st.isFile()) {
+      await handle.close();
       return { ok: false, status: 400, error: "Not a file" };
     }
-
     if (st.size > DOWNLOAD_MAX_BYTES) {
+      await handle.close();
       return { ok: false, status: 413, error: `File too large (max ${DOWNLOAD_MAX_BYTES / (1024 * 1024)}MB)` };
     }
-
     return {
       ok: true,
+      handle,
       path: resolved,
       size: st.size,
       name: basename(resolved) || "file",
     };
   } catch (err: any) {
-    if (err?.code === "ENOENT") {
-      return { ok: false, status: 404, error: "File not found" };
-    }
+    await handle.close();
     console.error("[files/download] stat error:", err);
     return { ok: false, status: 500, error: "Failed to read file" };
   }
 }
 
-function createDownloadResponse(file: { path: string; size: number; name: string }) {
+function createDownloadResponse(file: { handle: import("node:fs/promises").FileHandle; size: number; name: string }) {
   const encodedName = encodeURIComponent(file.name);
   const safeName = file.name.replace(/["\r\n]/g, "") || "file";
-  const body = Readable.toWeb(createReadStream(file.path)) as unknown as BodyInit;
+  // Stream from the validated fd (createReadStream adopts and closes it on
+  // end/error via autoClose) — no by-name reopen.
+  const body = Readable.toWeb(
+    createReadStream("", { fd: file.handle.fd, autoClose: true }),
+  ) as unknown as BodyInit;
 
   return new Response(body, {
     status: 200,
@@ -177,12 +195,26 @@ app.get("/list", async (c) => {
     });
   }
 
-  if (!await isPathAllowed(resolved)) {
+  // Race-safe: open the directory, validate the opened fd's real identity,
+  // then readdir THROUGH the pinned fd (its /proc/self/fd path) so a symlink
+  // swapped in after the check can't redirect the listing to, say, ~/.ssh.
+  const openedDir = await openAllowedForRead(resolved);
+  if (!openedDir.ok) {
+    if (openedDir.reason === "not-found") return c.json({ error: "Not found" }, 404);
     return c.json({ error: "Access denied" }, 403);
   }
+  const dirHandle = openedDir.handle;
+  // Entry paths are reported to the client as `resolved/<name>` (a clicked
+  // entry re-runs the full open-and-validate on /read), but every disk touch
+  // here goes through the pinned fd dir so the listing itself is race-safe.
+  const fdDir = `/proc/self/fd/${dirHandle.fd}`;
 
   try {
-    const entries = await readdir(resolved, { withFileTypes: true });
+    const dstat = await dirHandle.stat();
+    if (!dstat.isDirectory()) {
+      return c.json({ error: "Not a directory" }, 400);
+    }
+    const entries = await readdir(fdDir, { withFileTypes: true });
     const items = await Promise.all(
       entries
         .filter((e) => {
@@ -194,7 +226,7 @@ app.get("/list", async (c) => {
         .map(async (e) => {
           const fullPath = join(resolved, e.name);
           try {
-            const st = await stat(fullPath);
+            const st = await stat(join(fdDir, e.name));
             return {
               name: e.name,
               path: fullPath,
@@ -236,6 +268,8 @@ app.get("/list", async (c) => {
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
+  } finally {
+    await dirHandle.close();
   }
 });
 
@@ -251,12 +285,22 @@ app.get("/read", async (c) => {
   if (resolved === HOME_CLAUDE) {
     return c.json({ error: "Access denied" }, 403);
   }
-  if (!await isPathAllowed(resolved)) {
+
+  // Race-safe: open first, then validate the opened fd's real identity. All
+  // reads below go through the handle (never re-open `resolved` by name), so
+  // a symlink swapped in after the check can't redirect the read.
+  const opened = await openAllowedForRead(resolved);
+  if (!opened.ok) {
+    if (opened.reason === "not-found") return c.json({ error: "File not found" }, 404);
     return c.json({ error: "Access denied" }, 403);
   }
+  const { handle } = opened;
 
   try {
-    const st = await stat(resolved);
+    const st = await handle.stat();
+    if (st.isDirectory()) {
+      return c.json({ error: "Not a file" }, 400);
+    }
 
     // Don't read files larger than 1MB
     if (st.size > 1024 * 1024) {
@@ -279,32 +323,24 @@ app.get("/read", async (c) => {
         (n) => baseName.startsWith(n),
       );
 
+    const content = await handle.readFile();
     if (!isText && st.size > 0) {
-      // Try reading first 512 bytes to check for binary
-      const content = await readFile(resolved);
-      const sample = content.subarray(0, 512);
-      if (sample.includes(0)) {
+      // Binary sniff on the first 512 bytes of what we actually read.
+      if (content.subarray(0, 512).includes(0)) {
         return c.json({ error: "Binary file" }, 415);
       }
-      return c.json({
-        path: resolved,
-        name: baseName,
-        content: content.toString("utf-8"),
-        size: st.size,
-        modified: st.mtime.toISOString(),
-      });
     }
-
-    const content = await readFile(resolved, "utf-8");
     return c.json({
       path: resolved,
       name: baseName,
-      content,
+      content: content.toString("utf-8"),
       size: st.size,
       modified: st.mtime.toISOString(),
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
+  } finally {
+    await handle.close();
   }
 });
 
@@ -327,6 +363,10 @@ app.post("/download-ticket", async (c) => {
   if (!file.ok) {
     return c.json({ error: file.error }, file.status);
   }
+  // The ticket POST only validates downloadability; the actual GET re-opens
+  // and re-validates via fd, so release this handle now (don't leak it for
+  // the whole ticket TTL).
+  await file.handle.close();
 
   const ticket = randomBytes(16).toString("hex");
   downloadTickets.set(ticket, {
