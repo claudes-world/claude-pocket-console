@@ -50,6 +50,7 @@ const mockGenerateAudio = vi.fn();
 const mockSendAudioTelegram = vi.fn();
 const mockRestartSession = vi.fn();
 const mockSendFileToChat = vi.fn();
+const mockPublishShared = vi.fn();
 
 vi.mock("../action-bar/api", () => ({
   postAction: (...args: unknown[]) => mockPostAction(...args),
@@ -68,6 +69,7 @@ vi.mock("../action-bar/api", () => ({
   sendAudioTelegram: (...args: unknown[]) => mockSendAudioTelegram(...args),
   restartSession: (...args: unknown[]) => mockRestartSession(...args),
   sendFileToChat: (...args: unknown[]) => mockSendFileToChat(...args),
+  publishShared: (...args: unknown[]) => mockPublishShared(...args),
   summarizeMarkdown: vi.fn().mockResolvedValue({ ok: true, summary: "Test summary", cached: false, ms: 100 }),
 }));
 
@@ -92,6 +94,7 @@ beforeEach(() => {
   mockSendAudioTelegram.mockResolvedValue({ ok: true });
   mockRestartSession.mockResolvedValue({ ok: true });
   mockSendFileToChat.mockResolvedValue({ ok: true });
+  mockPublishShared.mockResolvedValue({ ok: true, url: "https://shared.claude.do/public/test-abc" });
   mockDeleteSessionName.mockResolvedValue(undefined);
 });
 
@@ -143,6 +146,36 @@ describe("ActionBar", () => {
     // Search and Options should be hidden when viewing a file
     expect(screen.queryByText("Search")).not.toBeInTheDocument();
     expect(screen.queryByText("Options")).not.toBeInTheDocument();
+  });
+
+  it("shows Share button when viewing any file", () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    expect(screen.getByText("Share")).toBeInTheDocument();
+  });
+
+  it("publishes with the selected share mode", async () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Private · temp"));
+
+    await waitFor(() => {
+      expect(mockPublishShared).toHaveBeenCalledWith(
+        "/tmp/app.ts",
+        "private",
+        true,
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it("renders the URL returned by a successful publish", async () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => {
+      expect(screen.getByText("https://shared.claude.do/public/test-abc")).toBeInTheDocument();
+    });
   });
 
   it("shows TL;DR and Audio buttons for markdown files", () => {

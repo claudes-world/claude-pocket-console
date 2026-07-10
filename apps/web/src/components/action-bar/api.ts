@@ -179,6 +179,23 @@ export async function sendAudioTelegram(path: string, signal: AbortSignal) {
   });
 }
 
+export async function publishShared(
+  path: string,
+  scope: "public" | "private",
+  tmp: boolean,
+  signal: AbortSignal,
+) {
+  return jsonFetch<{ ok?: boolean; url?: string; destPath?: string; error?: string }>(
+    "/api/share/publish",
+    {
+      method: "POST",
+      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ path, scope, tmp }),
+      signal,
+    },
+  );
+}
+
 export async function summarizeMarkdown(path: string, force: boolean, signal: AbortSignal) {
   return jsonFetch<{ ok?: boolean; summary?: string; cached?: boolean; ms?: number; error?: string }>(
     "/api/markdown/summarize",
