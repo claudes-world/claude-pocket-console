@@ -514,7 +514,12 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           value={compactFocus}
           onChange={setCompactFocus}
           onBack={() => setModal("compact-confirm")}
-          onSubmit={() => void handleCompact(compactFocus.trim() ? `/compact ${compactFocus.trim()}` : "/compact")}
+          // Single-line the free-text focus for the same reason as the
+          // continuity note: a non-default session rejects multi-line payloads.
+          onSubmit={() => {
+            const focus = compactFocus.trim().replace(/\s+/g, " ");
+            void handleCompact(focus ? `/compact ${focus}` : "/compact");
+          }}
         />
       );
       break;
