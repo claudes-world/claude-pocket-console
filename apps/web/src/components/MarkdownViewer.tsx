@@ -15,6 +15,33 @@ interface MarkdownViewerProps {
   fileName: string;
 }
 
+interface FrontmatterResult {
+  body: string;
+  metadata: string | null;
+}
+
+/**
+ * Extract a leading YAML frontmatter block without attempting to parse YAML.
+ * An unterminated opening fence is ordinary markdown and is left untouched.
+ */
+export function extractFrontmatter(content: string): FrontmatterResult {
+  const openingFence = /^---[ \t]*\r?\n/.exec(content);
+  if (!openingFence) return { body: content, metadata: null };
+
+  const closingFencePattern = /^---[ \t]*\r?$/gm;
+  closingFencePattern.lastIndex = openingFence[0].length;
+  const closingFence = closingFencePattern.exec(content);
+  if (!closingFence) return { body: content, metadata: null };
+
+  let bodyStart = closingFence.index + closingFence[0].length;
+  if (content[bodyStart] === "\n") bodyStart += 1;
+
+  return {
+    body: content.slice(bodyStart),
+    metadata: content.slice(openingFence[0].length, closingFence.index),
+  };
+}
+
 export const markdownRemarkPlugins = [remarkGfm, remarkBreaks, remarkAlert];
 
 // rehype-highlight runs first so code blocks get syntax spans before slug/section processing.
@@ -83,6 +110,63 @@ function isMermaidCodeChild(child: ReactNode): boolean {
 
 /** Stop horizontal touch events from bubbling to the app-level tab-swipe handler. */
 const stopTouchPropagation = (e: React.TouchEvent) => e.stopPropagation();
+
+function FrontmatterMetadata({ metadata }: { metadata: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          minHeight: 28,
+          padding: "4px 10px",
+          border: "1px solid var(--color-border)",
+          borderRadius: 999,
+          background: "var(--color-surface)",
+          color: "var(--color-muted)",
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <span aria-hidden="true" style={{ fontSize: 9 }}>
+          {expanded ? "\u25BC" : "\u25B6"}
+        </span>
+        metadata
+      </button>
+      {expanded && (
+        <pre
+          onTouchMove={stopTouchPropagation}
+          style={{
+            margin: "8px 0 0",
+            padding: "10px 12px",
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+            touchAction: "pan-x pan-y",
+            border: "1px solid var(--color-border)",
+            borderRadius: 6,
+            background: "var(--color-surface)",
+            color: "var(--color-fg-muted)",
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            fontSize: 11,
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+            overflowWrap: "break-word",
+          }}
+        >
+          {metadata}
+        </pre>
+      )}
+    </div>
+  );
+}
 
 function PreBlock({ children, node: _node, ...props }: React.ComponentPropsWithoutRef<'pre'> & ExtraProps) {
   const childArray = Children.toArray(children);
@@ -177,6 +261,7 @@ function computeEffectiveHidden(
 
 export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerProps) {
   const [foldedIds, setFoldedIds] = useState<Set<string>>(new Set());
+  const { body, metadata } = useMemo(() => extractFrontmatter(content), [content]);
 
   // Collect heading entries as heading components render (Finding 1 fix).
   // This replaces the fragile regex parser — slugs now come directly from
@@ -532,13 +617,14 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           display: none;
         }
       `}</style>
+      {metadata !== null && <FrontmatterMetadata metadata={metadata} />}
       <div className="md-content">
         <ReactMarkdown
           remarkPlugins={markdownRemarkPlugins}
           rehypePlugins={markdownRehypePlugins}
           components={components}
         >
-          {content}
+          {body}
         </ReactMarkdown>
       </div>
     </div>
