@@ -20,6 +20,24 @@ describe("resolveInitialAppState", () => {
     });
   });
 
+  it("ignores a foreign Telegram hash when resolving the root redirect", () => {
+    expect(resolveInitialAppState("/", "#tgWebAppData=abc&tgWebAppVersion=7")).toEqual({
+      tab: "terminal",
+      session: null,
+      file: null,
+      redirectPath: "/claude_do_bot",
+    });
+  });
+
+  it("ignores a foreign Telegram hash when resolving the bot alias", () => {
+    expect(resolveInitialAppState("/claude_do_bot", "#tgWebAppData=abc&tgWebAppVersion=7")).toEqual({
+      tab: "terminal",
+      session: null,
+      file: null,
+      redirectPath: null,
+    });
+  });
+
   it("lets a file hash deep link win over the alias", () => {
     expect(resolveInitialAppState("/claude_do_bot", "#files&file=%2Ftmp%2Fnotes.md")).toEqual({
       tab: "files",
@@ -48,6 +66,14 @@ describe("resolveInitialAppState", () => {
     });
   });
 
+  it.each([
+    ["#files&file=%2Ftmp%2Fnotes.md", "files"],
+    ["#terminal&session=pm.test-1", "terminal"],
+    ["#voice&token=secret", "voice"],
+  ] as const)("lets the app deep link %s suppress the root redirect", (hash, tab) => {
+    expect(resolveInitialAppState("/", hash)).toMatchObject({ tab, redirectPath: null });
+  });
+
   it("uses current defaults for an unknown path", () => {
     expect(resolveInitialAppState("/unknown", "")).toEqual({
       tab: "terminal",
@@ -66,5 +92,13 @@ describe("buildLandingUrl", () => {
   it("preserves search and hash verbatim", () => {
     expect(buildLandingUrl("/claude_do_bot", "?token=a%2Bb&mode=1", "#voice&token=hash-token"))
       .toBe("/claude_do_bot?token=a%2Bb&mode=1#voice&token=hash-token");
+  });
+
+  it("preserves a foreign Telegram hash during the landing redirect", () => {
+    expect(buildLandingUrl(
+      "/claude_do_bot",
+      "",
+      "#tgWebAppData=abc&tgWebAppVersion=7",
+    )).toBe("/claude_do_bot#tgWebAppData=abc&tgWebAppVersion=7");
   });
 });

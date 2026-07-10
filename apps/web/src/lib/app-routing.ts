@@ -16,6 +16,7 @@ const DEFAULT_STATE: InitialAppState = {
   file: null,
 };
 const TABS: AppTab[] = ["terminal", "files", "links", "voice", "prs"];
+const DEEP_LINK_PARAM_RE = /(?:^|&)(?:file|session|token)=/;
 
 // Client-side mirror of the server's session-name allowlist (SESSION_NAME_RE
 // in apps/server/src/routes/utils.ts). The server re-validates every session;
@@ -61,10 +62,15 @@ function resolveHashState(hashParams: string): InitialAppState {
   };
 }
 
+function isAppDeepLink(hashParams: string): boolean {
+  const firstSegment = hashParams.split("&", 1)[0];
+  return TABS.includes(firstSegment as AppTab) || DEEP_LINK_PARAM_RE.test(hashParams);
+}
+
 /** Resolve the first-render route without reading from or mutating window. */
 export function resolveInitialAppState(pathname: string, hash: string): InitialAppResolution {
   const hashParams = hash.replace(/^#/, "");
-  if (hashParams) {
+  if (isAppDeepLink(hashParams)) {
     return { ...resolveHashState(hashParams), redirectPath: null };
   }
 

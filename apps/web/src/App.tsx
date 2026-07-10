@@ -103,8 +103,8 @@ export function App() {
   const [connected, setConnected] = useState(false);
   const [initialRoute] = useState(() => {
     const route = resolveInitialAppState(window.location.pathname, window.location.hash);
-    const isInitialDev = window.location.hostname.includes("cpc-dev")
-      || window.location.pathname.startsWith("/dev");
+    // Redirects only originate at exact "/", so path-prefixed dev deployments are naturally excluded.
+    const isInitialDev = window.location.hostname.includes("cpc-dev");
     if (route.redirectPath && !isInitialDev) {
       window.history.replaceState(
         null,
