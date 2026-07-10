@@ -12,15 +12,13 @@ import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
+import {
+  buildLandingUrl,
+  resolveInitialAppState,
+  type AppTab as Tab,
+} from "./lib/app-routing";
 import { resolveSessionPickerProps } from "./lib/session-picker";
 
-// Client-side mirror of the server's session-name allowlist (SESSION_NAME_RE
-// in apps/server/src/routes/utils.ts). Applied to the hash deep-link value —
-// the server re-validates regardless; this just drops junk before it ever
-// becomes a WS param.
-const SESSION_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
-
-type Tab = "terminal" | "files" | "links" | "voice" | "prs";
 const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
 const SWIPE_THRESHOLD = 120;
 
@@ -104,30 +102,28 @@ const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc
 export function App() {
   const [authed, setAuthed] = useState(() => hasAuth());
   const [connected, setConnected] = useState(false);
-  const hashParams = window.location.hash.replace("#", "");
-  const initialFile = hashParams.match(/file=([^&]+)/)?.[1] ? decodeURIComponent(hashParams.match(/file=([^&]+)/)![1]) : null;
-  const initialTab = initialFile ? "files" : (hashParams.split("&")[0] || "terminal") as Tab;
-  const [activeTab, setActiveTab] = useState<Tab>(
-    TABS.includes(initialTab as Tab) ? initialTab : "terminal"
-  );
+  const [initialRoute] = useState(() =>
+    resolveInitialAppState(window.location.pathname, window.location.hash));
+
+  useEffect(() => {
+    // Redirects only originate at exact "/", so path-prefixed dev deployments are naturally excluded.
+    const isInitialDev = window.location.hostname.includes("cpc-dev");
+    if (initialRoute.redirectPath && !isInitialDev) {
+      window.history.replaceState(
+        null,
+        "",
+        buildLandingUrl(initialRoute.redirectPath, window.location.search, window.location.hash),
+      );
+    }
+  }, [initialRoute.redirectPath]);
+
+  const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab);
   const [reconnectKey, setReconnectKey] = useState(0);
 
   // Multi-session terminal (world-os#218): which tmux session the terminal
   // tab views. null = the server's default (writable) session. Deep-linkable
   // via #terminal&session=<name>, same convention as #files&file=<path>.
-  const initialSessionRaw = hashParams.match(/(?:^|&)session=([^&]+)/)?.[1];
-  let initialSession: string | null = null;
-  if (initialSessionRaw) {
-    try {
-      const decoded = decodeURIComponent(initialSessionRaw);
-      if (SESSION_NAME_RE.test(decoded)) initialSession = decoded;
-    } catch {
-      // Malformed percent-encoding in a hand-typed/truncated deep link
-      // (e.g. "#terminal&session=%") — treat as no session rather than
-      // throwing during initial render.
-    }
-  }
-  const [activeSession, setActiveSession] = useState<string | null>(initialSession);
+  const [activeSession, setActiveSession] = useState<string | null>(initialRoute.session);
   const [sessionList, setSessionList] = useState<TmuxSessionInfo[]>([]);
   const [defaultSession, setDefaultSession] = useState<string | null>(null);
   // Non-default session the restricted command palette targets, or null
@@ -137,7 +133,7 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
-  const [initialFilePath] = useState<string | null>(initialFile);
+  const [initialFilePath] = useState<string | null>(initialRoute.file);
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
   });

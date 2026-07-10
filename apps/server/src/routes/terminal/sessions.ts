@@ -14,6 +14,11 @@ const TMUX_TIMEOUT_MS = 5_000;
 // never useful to view from the mini app.
 const HIDDEN_SESSION_PREFIX = "_";
 
+// tmux replaces non-printable format characters (including tabs) with "_"
+// under a non-UTF-8 locale. "|" is printable and cannot occur in a session
+// name accepted by SESSION_NAME_RE, so its output is locale-independent.
+const TMUX_FIELD_SEPARATOR = "|";
+
 // A pane whose foreground process is a bare shell means the agent that was
 // running there has exited — same liveness heuristic as the fleet cockpit
 // collector (world-os apps/cpc/cockpit/lib/collector.mjs).
@@ -28,8 +33,11 @@ export interface TmuxSessionInfo {
   command: string;
   /** false when the first pane has dropped to a bare shell */
   alive: boolean;
-  /** true only for the server's configured TMUX_SESSION (the one session
-   *  the REST write endpoints target) — everything else is view-only */
+  /** true only for the server's configured TMUX_SESSION — the implicit
+   *  write target and the one that gets the full command set / pencil. Other
+   *  sessions are still reachable by the restricted palette (Esc/digits/
+   *  /compact/etc.) with an explicit session param; they are "not the default
+   *  writable session", not strictly view-only (Option A, Liam msg 1607). */
   writable: boolean;
 }
 
@@ -49,14 +57,22 @@ export function parseSessions(listOut: string, panesOut: string, defaultSession:
   const firstPaneCommand = new Map<string, string>();
   for (const line of panesOut.split("\n")) {
     if (!line) continue;
-    const [name, command = ""] = line.split("\t");
-    if (name && !firstPaneCommand.has(name)) firstPaneCommand.set(name, command);
+    const separatorIndex = line.indexOf(TMUX_FIELD_SEPARATOR);
+    const name = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+    const command = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+    // tmux sorts `list-panes -a` by session name. Every character allowed by
+    // SESSION_NAME_RE is below "|" (0x7c), so a real session's first pane row
+    // precedes rows from any `real|suffix` impostor; first-wins keeps the real
+    // command even though pane commands must preserve pipes after the first.
+    if (SESSION_NAME_RE.test(name) && !firstPaneCommand.has(name)) firstPaneCommand.set(name, command);
   }
 
   const sessions: TmuxSessionInfo[] = [];
   for (const line of listOut.split("\n")) {
     if (!line) continue;
-    const [name, attached = "0", activity = "0"] = line.split("\t");
+    const fields = line.split(TMUX_FIELD_SEPARATOR);
+    if (fields.length !== 3) continue;
+    const [name, attached, activity] = fields;
     if (!name || name.startsWith(HIDDEN_SESSION_PREFIX) || !SESSION_NAME_RE.test(name)) continue;
     const command = firstPaneCommand.get(name) ?? "";
     sessions.push({
@@ -92,12 +108,12 @@ app.get("/sessions", async (c) => {
     const [list, panes] = await Promise.all([
       execFileAsync(
         "tmux",
-        ["list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{session_activity}"],
+        ["list-sessions", "-F", `#{session_name}${TMUX_FIELD_SEPARATOR}#{session_attached}${TMUX_FIELD_SEPARATOR}#{session_activity}`],
         { timeout: TMUX_TIMEOUT_MS },
       ),
       execFileAsync(
         "tmux",
-        ["list-panes", "-a", "-F", "#{session_name}\t#{pane_current_command}"],
+        ["list-panes", "-a", "-F", `#{session_name}${TMUX_FIELD_SEPARATOR}#{pane_current_command}`],
         { timeout: TMUX_TIMEOUT_MS },
       ),
     ]);
