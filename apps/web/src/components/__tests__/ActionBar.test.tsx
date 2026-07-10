@@ -208,9 +208,12 @@ describe("ActionBar", () => {
     expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
   });
 
-  it("does not lock the next file's Save button while a previous file's save is in flight", async () => {
-    let resolveSave!: (value: { ok: boolean }) => void;
-    mockSaveReadingListItem.mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+  it("keeps B saving through A's refresh and clears it when B settles", async () => {
+    let resolveSaveA!: (value: { ok: boolean }) => void;
+    let resolveSaveB!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveB = resolve; }));
     mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
 
     const { rerender } = render(
@@ -225,13 +228,52 @@ describe("ActionBar", () => {
     rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
-    await waitFor(() => expect(mockSaveReadingListItem).toHaveBeenCalledWith("/tmp/b.ts", "b.ts"));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
 
     await act(async () => {
-      resolveSave({ ok: true });
+      resolveSaveA({ ok: true });
       await Promise.resolve();
     });
+    await waitFor(() => expect(mockCheckReadingListPaths).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    await act(async () => {
+      resolveSaveB({ ok: true });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
     expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows concurrent saves on A and B while blocking a second save on pending A", async () => {
+    let resolveSaveA!: (value: { ok: boolean }) => void;
+    let resolveSaveB!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveB = resolve; }));
+    mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveSaveA({ ok: true });
+      resolveSaveB({ ok: true });
+      await Promise.resolve();
+    });
   });
 
   it("reports a reading-list save failure and leaves Save available", async () => {

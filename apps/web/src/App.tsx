@@ -136,6 +136,11 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialFile, sequence: 0 });
+  // FileViewer is keyed by this request sequence. Keep the latest request in
+  // a ref so callbacks retained by an unmounted viewer cannot publish a late
+  // file/path result over the replacement viewer's state.
+  const fileOpenRequestRef = useRef(fileOpenRequest);
+  fileOpenRequestRef.current = fileOpenRequest;
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
   });
@@ -157,6 +162,14 @@ export function App() {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
   const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
+
+  const fileViewerSequence = fileOpenRequest.sequence;
+  const handleFileViewChange = useCallback((file: { path: string; name: string } | null) => {
+    if (fileViewerSequence === fileOpenRequestRef.current.sequence) setViewingFile(file);
+  }, [fileViewerSequence]);
+  const handleFilePathChange = useCallback((path: string) => {
+    if (fileViewerSequence === fileOpenRequestRef.current.sequence) setCurrentFolder(path);
+  }, [fileViewerSequence]);
 
   const openFileFromReadingList = useCallback((path: string) => {
     setViewingFile(null);
@@ -563,7 +576,7 @@ export function App() {
             />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer key={fileOpenRequest.sequence} onClose={() => setActiveTab("terminal")} initialFile={fileOpenRequest.path} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
+            <FileViewer key={fileOpenRequest.sequence} onClose={() => setActiveTab("terminal")} initialFile={fileOpenRequest.path} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={handleFileViewChange} onPathChange={handleFilePathChange} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <Links onClose={() => setActiveTab("terminal")} onOpenFile={openFileFromReadingList} />

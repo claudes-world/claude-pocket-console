@@ -55,7 +55,6 @@ export function ReadingList({ onOpenFile }: ReadingListProps) {
   }, [loadItems]);
 
   const removeItem = async (item: ReadingListItem) => {
-    const originalIndex = items.findIndex((candidate) => candidate.id === item.id);
     haptic.impact("light");
     setError(null);
     setItems((current) => current.filter((candidate) => candidate.id !== item.id));
@@ -67,9 +66,7 @@ export function ReadingList({ onOpenFile }: ReadingListProps) {
       haptic.error();
       setItems((current) => {
         if (current.some((candidate) => candidate.id === item.id)) return current;
-        const restored = [...current];
-        restored.splice(Math.max(0, Math.min(originalIndex, restored.length)), 0, item);
-        return restored;
+        return [...current, item].sort((a, b) => b.created_at - a.created_at);
       });
       setError(err instanceof Error ? err.message : "Failed to remove item");
     }

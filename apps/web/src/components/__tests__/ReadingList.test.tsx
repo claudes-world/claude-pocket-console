@@ -103,4 +103,34 @@ describe("ReadingList", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Delete failed");
     expect(mockError).toHaveBeenCalled();
   });
+
+  it("restores concurrent failed deletes in newest-first order", async () => {
+    const concurrentItems: ReadingListItem[] = [
+      { id: 3, path: "/tmp/newest.ts", title: "newest.ts", created_at: 3_000 },
+      { id: 2, path: "/tmp/middle.ts", title: "middle.ts", created_at: 2_000 },
+      { id: 1, path: "/tmp/oldest.ts", title: "oldest.ts", created_at: 1_000 },
+    ];
+    let rejectNewest!: (error: Error) => void;
+    let rejectMiddle!: (error: Error) => void;
+    mockFetchReadingList.mockResolvedValue({ items: concurrentItems });
+    mockDeleteReadingListItem
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectNewest = reject; }))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectMiddle = reject; }));
+
+    render(<ReadingList onOpenFile={() => {}} />);
+    await screen.findByText("newest.ts");
+    fireEvent.click(screen.getByRole("button", { name: "Remove newest.ts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove middle.ts" }));
+
+    await act(async () => rejectNewest(new Error("Newest delete failed")));
+    await act(async () => rejectMiddle(new Error("Middle delete failed")));
+
+    const names = screen.getAllByRole("button").filter((button) =>
+      button.textContent?.includes(".ts") && !button.getAttribute("aria-label"),
+    );
+    expect(names).toHaveLength(3);
+    expect(names[0]).toHaveTextContent("newest.ts");
+    expect(names[1]).toHaveTextContent("middle.ts");
+    expect(names[2]).toHaveTextContent("oldest.ts");
+  });
 });

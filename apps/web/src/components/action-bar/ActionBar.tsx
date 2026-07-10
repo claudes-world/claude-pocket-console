@@ -83,15 +83,15 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const [readingListChecking, setReadingListChecking] = useState(false);
   const [readingListSaving, setReadingListSaving] = useState(false);
   const [readingListRefreshVersion, setReadingListRefreshVersion] = useState(0);
-  // Holds the path being saved (not a boolean): navigating to another file
-  // while a save is in flight must not lock that file's Save button — only
-  // a duplicate tap for the SAME path is a no-op.
-  const readingListInFlightRef = useRef<string | null>(null);
+  // Track every path being saved. Navigating to another file must not lock
+  // that file's Save button, while returning to any pending path must still
+  // block a duplicate save.
+  const readingListInFlightRef = useRef(new Set<string>());
   // A check started for the previous file must never mark the newly viewed
   // file as saved. Saving also bumps this token so its success state owns
   // the button over any older GET still in flight.
   const readingListCheckSeqRef = useRef(0);
-  const readingListCheckedPathRef = useRef<string | null>(null);
+  const readingListViewedPathRef = useRef<string | null>(null);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -141,8 +141,8 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   useEffect(() => {
     const seq = ++readingListCheckSeqRef.current;
     const path = viewingFile?.path ?? null;
-    const pathChanged = path !== readingListCheckedPathRef.current;
-    readingListCheckedPathRef.current = path;
+    const pathChanged = path !== readingListViewedPathRef.current;
+    readingListViewedPathRef.current = path;
     // Clear the prior file's result immediately. A same-file refresh (for
     // example the event emitted by a successful save) keeps the confirmed
     // Saved state visible while the authoritative re-check runs. Saving
@@ -500,8 +500,8 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const handleSaveToReadingList = async () => {
     if (!viewingFile || readingListSaved) return;
     const path = viewingFile.path;
-    if (readingListInFlightRef.current === path) return;
-    readingListInFlightRef.current = path;
+    if (readingListInFlightRef.current.has(path)) return;
+    readingListInFlightRef.current.add(path);
     const seq = ++readingListCheckSeqRef.current;
     setReadingListSaving(true);
     try {
@@ -515,8 +515,8 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       haptic.error();
       setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      if (readingListInFlightRef.current === path) readingListInFlightRef.current = null;
-      if (seq === readingListCheckSeqRef.current) setReadingListSaving(false);
+      readingListInFlightRef.current.delete(path);
+      if (readingListViewedPathRef.current === path) setReadingListSaving(false);
     }
   };
   const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {
