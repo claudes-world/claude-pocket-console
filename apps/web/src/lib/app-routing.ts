@@ -5,7 +5,9 @@ type BotPathAlias = Readonly<{
   session: string | null;
 }>;
 
-export const BOT_PATH_ALIASES: Readonly<Record<string, BotPathAlias>> = {
+// Module-private: the only consumer is resolveInitialAppState below. Kept
+// unexported until a phase-2 route surface (#241) actually needs to read it.
+const BOT_PATH_ALIASES: Readonly<Record<string, BotPathAlias>> = {
   "/claude_do_bot": { tab: "terminal", session: null },
   "/pm_dobot": { tab: "terminal", session: "pm-dobot" },
 };
