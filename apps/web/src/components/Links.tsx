@@ -62,11 +62,14 @@ const LINKS: LinkItem[] = [
     url: "https://cockpit.claude.do",
     icon: "🛩️",
     description: "Fleet grid + live lane terminals",
-    // Stays inside the Mini App (Liam voice msg 1185). NOTE: cockpit.claude.do
-    // currently sits behind Cloudflare Access, which a Telegram WebView cannot
-    // pass — the link hits the Access wall until the cockpit auth lift lands
-    // (world-os#218 plan addendum). Shipped anyway per Liam.
-    inApp: true,
+    // In-app navigation (Liam voice msg 1185) is DISABLED until two blockers
+    // clear: (1) cockpit.claude.do sits behind Cloudflare Access, which a
+    // Telegram WebView cannot pass — the link dead-ends at the Access wall;
+    // (2) window.location.assign is a one-way trip — any return to CPC that
+    // isn't a fresh Telegram launch leaves the webview without initData,
+    // stranding the user on the login screen (live incident 2026-07-10,
+    // voice 1565). Re-enable inApp only with the Access lift + BackButton
+    // return wiring (world-os#218 plan addendum).
   },
   {
     title: "Transcription Glossary",
