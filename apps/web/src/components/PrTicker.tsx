@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthHeaders } from "../lib/telegram";
 import { haptic } from "../lib/haptic";
+import { ManagePrsSheet } from "./ManagePrsSheet";
+import {
+  applyOrder,
+  filterHidden,
+  loadPrViewPrefs,
+  savePrViewPrefs,
+  type PrViewPrefs,
+} from "../lib/prViewPrefs";
 
 // --- Types matching server PrRow ---
 
@@ -161,6 +169,8 @@ export function PrTicker() {
   const [prs, setPrs] = useState<PrRow[]>([]);
   const [repos, setRepos] = useState<RepoSummary[]>([]);
   const [collapsedOrgs, setCollapsedOrgs] = useState<Set<string>>(loadCollapsedOrgs);
+  const [prefs, setPrefs] = useState<PrViewPrefs>(loadPrViewPrefs);
+  const [manageOpen, setManageOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastPollAt, setLastPollAt] = useState<number>(0);
   const [pollError, setPollError] = useState<string | null>(null);
@@ -169,6 +179,7 @@ export function PrTicker() {
   const mountedRef = useRef(true);
 
   const toggleOrg = useCallback((org: string) => {
+    haptic.impact("light");
     setCollapsedOrgs((prev) => {
       const next = new Set(prev);
       if (next.has(org)) {
@@ -179,6 +190,23 @@ export function PrTicker() {
       saveCollapsedOrgs(next);
       return next;
     });
+  }, []);
+
+  const toggleRepo = useCallback((repo: string) => {
+    haptic.impact("light");
+    setPrefs((prev) => {
+      const collapsedRepos = prev.collapsedRepos.includes(repo)
+        ? prev.collapsedRepos.filter((item) => item !== repo)
+        : [...prev.collapsedRepos, repo];
+      const next = { ...prev, collapsedRepos };
+      savePrViewPrefs(next);
+      return next;
+    });
+  }, []);
+
+  const handlePrefsChange = useCallback((next: PrViewPrefs) => {
+    savePrViewPrefs(next);
+    setPrefs(next);
   }, []);
 
   const fetchPrs = useCallback(async () => {
@@ -246,9 +274,17 @@ export function PrTicker() {
   }, [fetchPrs]);
 
   const grouped = groupPrs(prs, repos);
-  const orgNames = Object.keys(grouped).sort();
-  const totalPrs = prs.length;
-  const totalRepos = repos.length;
+  const visibleGrouped = filterHidden(grouped, prefs);
+  const orgNames = applyOrder(Object.keys(visibleGrouped), prefs.orgOrder);
+  const totalPrs = orgNames.reduce(
+    (orgTotal, org) => orgTotal + Object.values(visibleGrouped[org]).reduce((repoTotal, repo) => repoTotal + repo.prs.length, 0),
+    0,
+  );
+  const totalRepos = orgNames.reduce((total, org) => total + Object.keys(visibleGrouped[org]).length, 0);
+  const hiddenCount = prefs.hiddenOrgs.length + prefs.hiddenRepos.length;
+  const manageOrgRepos = Object.fromEntries(
+    Object.entries(grouped).map(([org, repoMap]) => [org, Object.keys(repoMap)]),
+  );
 
   const pollAgoSec = lastPollAt ? Math.floor((Date.now() - lastPollAt) / 1000) : 0;
 
@@ -285,9 +321,30 @@ export function PrTicker() {
         <span style={{ fontSize: 12, color: COLORS.textMuted }}>
           {totalRepos} repos
         </span>
+        {hiddenCount > 0 && (
+          <span style={{ fontSize: 10, color: COLORS.textMuted }}>
+            {hiddenCount} hidden
+          </span>
+        )}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <button
-            onClick={() => void handleRefresh()}
+            type="button"
+            aria-label="Manage PR view"
+            onClick={() => { haptic.impact("light"); setManageOpen(true); }}
+            style={{
+              background: "none",
+              border: "none",
+              color: COLORS.textMuted,
+              cursor: "pointer",
+              padding: "2px 4px",
+              fontSize: 14,
+            }}
+            title="Manage PR view"
+          >
+            ⚙
+          </button>
+          <button
+            onClick={() => { haptic.impact("light"); void handleRefresh(); }}
             disabled={refreshing}
             style={{
               background: "none",
@@ -338,7 +395,7 @@ export function PrTicker() {
           }}>
             Loading PRs...
           </div>
-        ) : orgNames.length === 0 ? (
+        ) : Object.keys(grouped).length === 0 ? (
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -351,14 +408,30 @@ export function PrTicker() {
           }}>
             No repos discovered
           </div>
+        ) : orgNames.length === 0 ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: COLORS.textMuted,
+            fontSize: 14,
+            padding: 20,
+            textAlign: "center",
+          }}>
+            No repos visible
+          </div>
         ) : (
           orgNames.map((org) => (
             <OrgSection
               key={org}
               org={org}
-              repoMap={grouped[org]}
+              repoMap={visibleGrouped[org]}
+              repoOrder={prefs.repoOrder[org] ?? []}
               collapsed={collapsedOrgs.has(org)}
+              collapsedRepos={prefs.collapsedRepos}
               onToggle={() => toggleOrg(org)}
+              onToggleRepo={toggleRepo}
               onTapPr={openPr}
             />
           ))
@@ -391,6 +464,15 @@ export function PrTicker() {
           {" "}{pollError ? "degraded" : "live"}
         </span>
       </div>
+
+      {manageOpen && (
+        <ManagePrsSheet
+          orgRepos={manageOrgRepos}
+          prefs={prefs}
+          onChange={handlePrefsChange}
+          onClose={() => setManageOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -400,17 +482,23 @@ export function PrTicker() {
 function OrgSection({
   org,
   repoMap,
+  repoOrder,
   collapsed,
+  collapsedRepos,
   onToggle,
+  onToggleRepo,
   onTapPr,
 }: {
   org: string;
   repoMap: Record<string, { branch: string; prs: PrRow[] }>;
+  repoOrder: string[];
   collapsed: boolean;
+  collapsedRepos: string[];
   onToggle: () => void;
+  onToggleRepo: (repo: string) => void;
   onTapPr: (url: string) => void;
 }) {
-  const repoNames = Object.keys(repoMap).sort();
+  const repoNames = applyOrder(Object.keys(repoMap), repoOrder);
   const totalPrs = repoNames.reduce((sum, r) => sum + repoMap[r].prs.length, 0);
 
   return (
@@ -444,18 +532,27 @@ function OrgSection({
       {!collapsed && repoNames.map((repoFullName) => {
         const { branch, prs } = repoMap[repoFullName];
         const repoShort = repoFullName.split("/")[1] || repoFullName;
+        const repoCollapsed = collapsedRepos.includes(repoFullName);
 
         return (
           <div key={repoFullName}>
             {/* Repo subheading */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 12px 6px 24px",
-              borderBottom: `1px solid ${COLORS.border}`,
-              fontSize: 12,
-            }}>
+            <div
+              onClick={() => onToggleRepo(repoFullName)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 12px 6px 24px",
+                borderBottom: `1px solid ${COLORS.border}`,
+                fontSize: 12,
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              <span style={{ fontSize: 10, color: COLORS.textMuted, width: 10, textAlign: "center" }}>
+                {repoCollapsed ? "\u25b6" : "\u25bc"}
+              </span>
               <span style={{ fontWeight: 600, color: COLORS.text }}>
                 {repoShort}
               </span>
@@ -481,7 +578,7 @@ function OrgSection({
             </div>
 
             {/* PR rows or empty state */}
-            {prs.length === 0 ? (
+            {!repoCollapsed && (prs.length === 0 ? (
               <div style={{
                 padding: "8px 12px 8px 36px",
                 fontSize: 12,
@@ -495,7 +592,7 @@ function OrgSection({
               prs.map((pr) => (
                 <PrRowItem key={pr.key} pr={pr} onTap={onTapPr} />
               ))
-            )}
+            ))}
           </div>
         );
       })}
