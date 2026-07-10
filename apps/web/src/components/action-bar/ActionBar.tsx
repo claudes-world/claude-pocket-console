@@ -83,7 +83,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const [readingListChecking, setReadingListChecking] = useState(false);
   const [readingListSaving, setReadingListSaving] = useState(false);
   const [readingListRefreshVersion, setReadingListRefreshVersion] = useState(0);
-  const readingListInFlightRef = useRef(false);
+  // Holds the path being saved (not a boolean): navigating to another file
+  // while a save is in flight must not lock that file's Save button — only
+  // a duplicate tap for the SAME path is a no-op.
+  const readingListInFlightRef = useRef<string | null>(null);
   // A check started for the previous file must never mark the newly viewed
   // file as saved. Saving also bumps this token so its success state owns
   // the button over any older GET still in flight.
@@ -142,8 +145,13 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     readingListCheckedPathRef.current = path;
     // Clear the prior file's result immediately. A same-file refresh (for
     // example the event emitted by a successful save) keeps the confirmed
-    // Saved state visible while the authoritative re-check runs.
-    if (pathChanged) setReadingListSaved(false);
+    // Saved state visible while the authoritative re-check runs. Saving
+    // state is also per-file: a save still in flight for the previous file
+    // must not show the new file's button as "Saving…".
+    if (pathChanged) {
+      setReadingListSaved(false);
+      setReadingListSaving(false);
+    }
     if (!viewingFile) {
       setReadingListChecking(false);
       return;
@@ -163,6 +171,11 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       .finally(() => {
         if (seq === readingListCheckSeqRef.current) setReadingListChecking(false);
       });
+    // Invalidate the in-flight check on unmount so it can't setState after
+    // teardown (same defensive bump ReadingList's loadSeqRef does).
+    return () => {
+      ++readingListCheckSeqRef.current;
+    };
   }, [viewingFile?.path, readingListRefreshVersion]);
 
   // Replace the optimistic "Fit screen requested" status (set the instant
@@ -485,9 +498,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     }
   };
   const handleSaveToReadingList = async () => {
-    if (!viewingFile || readingListSaved || readingListInFlightRef.current) return;
-    readingListInFlightRef.current = true;
+    if (!viewingFile || readingListSaved) return;
     const path = viewingFile.path;
+    if (readingListInFlightRef.current === path) return;
+    readingListInFlightRef.current = path;
     const seq = ++readingListCheckSeqRef.current;
     setReadingListSaving(true);
     try {
@@ -501,8 +515,8 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       haptic.error();
       setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      readingListInFlightRef.current = false;
-      setReadingListSaving(false);
+      if (readingListInFlightRef.current === path) readingListInFlightRef.current = null;
+      if (seq === readingListCheckSeqRef.current) setReadingListSaving(false);
     }
   };
   const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {

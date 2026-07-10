@@ -208,6 +208,32 @@ describe("ActionBar", () => {
     expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
   });
 
+  it("does not lock the next file's Save button while a previous file's save is in flight", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem.mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+    mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    // Navigate to another file while A's save is still pending: B's button
+    // must be enabled and tappable, not stuck on "Saving…".
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    await waitFor(() => expect(mockSaveReadingListItem).toHaveBeenCalledWith("/tmp/b.ts", "b.ts"));
+
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+    expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+  });
+
   it("reports a reading-list save failure and leaves Save available", async () => {
     mockSaveReadingListItem.mockRejectedValue(new Error("Access denied"));
     render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
