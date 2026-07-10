@@ -463,6 +463,47 @@ describe("ActionBar", () => {
     expect(mockSendAudioTelegram).toHaveBeenCalledTimes(1);
   });
 
+  it("restores a pending audio generation after navigating away and back", async () => {
+    let resolveGenerate!: (value: { ok: true; path: string }) => void;
+    let resolveSend!: (value: { ok: true }) => void;
+    mockCheckAudio.mockResolvedValue({ exists: false });
+    mockGenerateAudio.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve; }));
+    mockSendAudioTelegram.mockImplementation(() => new Promise((resolve) => { resolveSend = resolve; }));
+
+    const fileA = { path: "/tmp/a.md", name: "a.md" };
+    const fileB = { path: "/tmp/b.md", name: "b.md" };
+    const { rerender } = render(<ActionBar activeTab="files" viewingFile={fileA} />);
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+    await waitFor(() => expect(mockGenerateAudio).toHaveBeenCalledTimes(1));
+
+    rerender(<ActionBar activeTab="files" viewingFile={fileB} />);
+    await waitFor(() => expect(screen.getByText("No audio file found")).toBeInTheDocument());
+    rerender(<ActionBar activeTab="files" viewingFile={fileA} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: "Audio operation in progress" })).toBeInTheDocument();
+      expect(screen.getByText("Generating audio…")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("No audio file found")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate Audio" })).not.toBeInTheDocument();
+    expect(mockGenerateAudio).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveGenerate({ ok: true, path: "/tmp/a.ogg" });
+    });
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/a.ogg", expect.any(AbortSignal));
+      expect(screen.getByText("Sending to Telegram…")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveSend({ ok: true });
+    });
+    await waitFor(() => expect(screen.getByText("Audio file exists")).toBeInTheDocument());
+  });
+
   it("does not auto-send generated audio after navigating away and exposes it on return", async () => {
     let resolveGenerate!: (value: { ok: true; path: string }) => void;
     let generated = false;

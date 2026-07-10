@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
-import { createWriteStream, promises as fs } from "node:fs";
+import { constants, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { Hono } from "hono";
 import { ALLOWED_FILE_ROOTS, openAllowedForRead } from "../lib/path-allowed.js";
 
@@ -129,14 +128,21 @@ app.post("/publish", async (c) => {
 
       stagingDir = await fs.mkdtemp(join(tmpdir(), "cpc-share-"));
       const stagedPath = join(stagingDir, basename(resolvedPath));
-      await pipeline(
-        opened.handle.createReadStream({ autoClose: false }),
-        createWriteStream(stagedPath),
+      stagedHandle = await fs.open(
+        stagedPath,
+        constants.O_CREAT | constants.O_EXCL | constants.O_RDWR,
+        0o600,
       );
+      // Write through the handle directly instead of createWriteStream: a
+      // FileHandle-backed write stream with autoClose:false keeps a ref on
+      // the handle that pipeline never releases, deadlocking the later
+      // handle.close(). The read side is unaffected (it closes pre-spawn).
+      for await (const chunk of opened.handle.createReadStream({ autoClose: false })) {
+        await stagedHandle.write(chunk as Buffer);
+      }
+      await stagedHandle.sync();
       await opened.handle.close();
       handleClosed = true;
-
-      stagedHandle = await fs.open(stagedPath, "r");
 
       // A fixed executable and literal argv tokens keep user-controlled path
       // data out of shell parsing and prevent command substitution. Passing an

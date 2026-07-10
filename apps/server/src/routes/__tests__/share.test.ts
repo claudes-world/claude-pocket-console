@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  constants,
   existsSync,
   fstatSync,
   mkdtempSync,
@@ -7,6 +8,7 @@ import {
   readlinkSync,
   rmSync,
   writeFileSync,
+  promises as fs,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -24,11 +26,12 @@ let spawnFailure: Error | undefined;
 let spawnStdout: string;
 const handleCloseSpies: Array<ReturnType<typeof vi.fn>> = [];
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+let fsOpenSpy: ReturnType<typeof vi.spyOn>;
 
 function capturePublishedFile(options: any) {
   publishedFd = options.stdio[3];
   stagedPath = readlinkSync(`/proc/self/fd/${publishedFd}`);
-  publishedContent = readFileSync(publishedFd!, "utf8");
+  publishedContent = readFileSync(`/proc/self/fd/${publishedFd}`, "utf8");
 }
 
 const openAllowedForReadSpy = vi.fn(async (path: string, roots: readonly string[]) => {
@@ -120,11 +123,13 @@ beforeEach(() => {
   handleCloseSpies.length = 0;
   openAllowedForReadSpy.mockClear();
   spawnSpy.mockClear();
+  fsOpenSpy = vi.spyOn(fs, "open");
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  fsOpenSpy.mockRestore();
   consoleErrorSpy.mockRestore();
 });
 
@@ -207,6 +212,14 @@ describe("POST /publish", () => {
       }),
     );
     expect(publishedContent).toBe("# Example\n");
+    const stagedOpenCalls = fsOpenSpy.mock.calls.filter(
+      ([path]) => path === stagedPath,
+    );
+    expect(stagedOpenCalls).toEqual([[
+      stagedPath,
+      constants.O_CREAT | constants.O_EXCL | constants.O_RDWR,
+      0o600,
+    ]]);
     expect(handleCloseSpies).toHaveLength(1);
     expect(handleCloseSpies[0]).toHaveBeenCalledTimes(1);
     expect(basename(stagedPath!)).toBe(basename(allowedFile));

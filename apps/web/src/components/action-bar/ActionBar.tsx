@@ -63,7 +63,8 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   searchScopeRef.current = searchCurrentFolderOnly && currentFolder ? currentFolder : null;
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
-  const [audioOp, setAudioOp] = useState<"idle" | "checking" | "generating" | "sending">("idle");
+  type AudioOp = "idle" | "checking" | "generating" | "sending";
+  const [audioOp, setAudioOp] = useState<AudioOp>("idle");
   // Synchronous in-flight guard for audio generation/send. Mirrors the
   // TldrModal pattern (PR #121): React hasn't necessarily committed
   // setAudioLoading(true) by the time a fast double-tap fires the second
@@ -74,6 +75,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   // still prevents duplicate backend jobs, while this path prevents a late
   // completion from painting (or auto-sending from) a different file's UI.
   const audioOpPathRef = useRef<string | null>(null);
+  const audioOpStageRef = useRef<AudioOp>("idle");
   const viewedFilePathRef = useRef<string | null>(viewingFile?.path ?? null);
   // Monotonically versions cache checks so a response from an older sheet
   // open/file cannot overwrite the state established by a newer check or by
@@ -154,7 +156,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       // may finish, but its guarded completion must not alter these values.
       ++audioCheckSeqRef.current;
       setAudioStatus(null);
-      if (audioOpPathRef.current !== path) {
+      if (audioInFlightRef.current && audioOpPathRef.current === path) {
+        setAudioLoading(true);
+        setAudioOp(audioOpStageRef.current);
+      } else {
         setAudioLoading(false);
         setAudioOp("idle");
       }
@@ -378,7 +383,11 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       audioInFlightRef.current && audioOpPathRef.current === filePath;
     // If a generate or send is already in-flight, don't clobber its
     // loading/op state with a check — just show the in-progress panel.
-    if (hasInFlightOpForFile()) return;
+    if (hasInFlightOpForFile()) {
+      setAudioLoading(true);
+      setAudioOp(audioOpStageRef.current);
+      return;
+    }
     setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("checking");
@@ -404,6 +413,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const sendAudio = async (audioPath: string, filePath: string, pendingStatus = "Sending to Telegram...") => {
     const ownsViewedFile = () =>
       audioOpPathRef.current === filePath && viewedFilePathRef.current === filePath;
+    audioOpStageRef.current = "sending";
     if (ownsViewedFile()) {
       setAudioOp("sending");
       setStatus(pendingStatus);
@@ -441,6 +451,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
     audioOpPathRef.current = filePath;
+    audioOpStageRef.current = "generating";
     setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("generating");
@@ -481,6 +492,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       if (audioOpPathRef.current === filePath) {
         audioInFlightRef.current = false;
         audioOpPathRef.current = null;
+        audioOpStageRef.current = "idle";
       }
       if (viewedFilePathRef.current === filePath) {
         setAudioOp("idle");
@@ -492,6 +504,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
     audioOpPathRef.current = filePath;
+    audioOpStageRef.current = "sending";
     setAudioLoading(true);
     try {
       await sendAudio(audioPath, filePath);
@@ -499,6 +512,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       if (audioOpPathRef.current === filePath) {
         audioInFlightRef.current = false;
         audioOpPathRef.current = null;
+        audioOpStageRef.current = "idle";
       }
       if (viewedFilePathRef.current === filePath) {
         setAudioOp("idle");
