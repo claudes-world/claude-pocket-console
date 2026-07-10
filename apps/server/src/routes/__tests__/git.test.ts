@@ -75,6 +75,8 @@ beforeAll(() => {
     { encoding: "utf-8" },
   );
   if (commit.status !== 0) throw new Error(`git commit failed: ${commit.stderr}`);
+  const tag = spawnSync("git", ["-C", repoDir, "tag", "v-test.1"], { encoding: "utf-8" });
+  if (tag.status !== 0) throw new Error(`git tag failed: ${tag.stderr}`);
   // Sibling-prefix directory — shares the sandbox string prefix but is a
   // separate path segment. Must NOT be reachable even though startsWith() would
   // say yes.
@@ -84,15 +86,24 @@ beforeAll(() => {
 
   testAllowedRoots = [repoDir];
   __resetRealRootCacheForTests();
+  // PR #288 review follow-up (#287): stub cwd instead of process.chdir() —
+  // chdir mutates global state for every test in the worker; the spy only
+  // affects code that reads process.cwd().
+  vi.spyOn(process, "cwd").mockReturnValue(repoDir);
 });
 
 afterAll(() => {
+  vi.restoreAllMocks();
   rmSync(sandbox, { recursive: true, force: true });
   rmSync(evilSibling, { recursive: true, force: true });
   __resetRealRootCacheForTests();
 });
 
 beforeEach(() => {
+  const checkout = spawnSync("git", ["-C", repoDir, "checkout", "-q", "main"], {
+    encoding: "utf-8",
+  });
+  if (checkout.status !== 0) throw new Error(`git checkout main failed: ${checkout.stderr}`);
   __resetRealRootCacheForTests();
 });
 
@@ -108,6 +119,37 @@ async function getDirBranch(path: string | null) {
   };
   return { status: res.status, body };
 }
+
+async function getCpcBranch() {
+  const res = await gitRoute.request("/cpc-branch");
+  const body = (await res.json()) as {
+    ok: boolean;
+    error?: string;
+    branch?: string;
+  };
+  return { status: res.status, body };
+}
+
+describe("/cpc-branch deployment version", () => {
+  it("returns the running repo branch from process.cwd()", async () => {
+    const { status, body } = await getCpcBranch();
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.branch).toBe("main");
+  });
+
+  it("returns describe output when the running repo is detached at a tag", async () => {
+    const checkout = spawnSync("git", ["-C", repoDir, "checkout", "-q", "v-test.1"], {
+      encoding: "utf-8",
+    });
+    if (checkout.status !== 0) throw new Error(`git checkout tag failed: ${checkout.stderr}`);
+
+    const { status, body } = await getCpcBranch();
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.branch).toBe("v-test.1");
+  });
+});
 
 describe("/dir-branch path validation (M-3)", () => {
   it("rejects a path containing a double-quote shell break-out with 403", async () => {

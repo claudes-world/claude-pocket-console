@@ -96,9 +96,33 @@ app.get("/git-branch", async (c) => {
 
 app.get("/cpc-branch", async (c) => {
   try {
-    const cpcDir = join(process.env.HOME || "/home/claude", "code/claude-pocket-console");
-    const { stdout: branch } = await execAsync(`git -C ${cpcDir} rev-parse --abbrev-ref HEAD`);
-    return c.json({ ok: true, branch: branch.trim() });
+    let cpcDir: string;
+    try {
+      cpcDir = process.cwd();
+    } catch {
+      cpcDir = join(process.env.HOME || "/home/claude", "code/claude-pocket-console");
+    }
+
+    const { stdout: branch } = await execFileAsync("git", [
+      "-C",
+      cpcDir,
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ]);
+    const branchName = branch.trim();
+    if (branchName !== "HEAD") {
+      return c.json({ ok: true, branch: branchName });
+    }
+
+    const { stdout: version } = await execFileAsync("git", [
+      "-C",
+      cpcDir,
+      "describe",
+      "--tags",
+      "--always",
+    ]);
+    return c.json({ ok: true, branch: version.trim() });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
   }

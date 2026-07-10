@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { execAsync, sendToTmux, TMUX_SESSION } from "../utils.js";
+import { execAsync, resolveTargetSession, sendToTmux, tmuxSessionExists, TMUX_SESSION } from "../utils.js";
 import { getTracer } from "../../lib/otel.js";
 import { SpanStatusCode } from "@opentelemetry/api";
 
@@ -53,6 +53,34 @@ const app = new Hono();
  */
 const RAW_KEY_TOKEN = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
+/**
+ * Resolve the optional `session` body field shared by the restricted
+ * command palette endpoints (send-keys / compact / reload-plugins — the
+ * fixed verb set Liam wants usable against ANY fleet session, voice msg
+ * 1188). Returns the validated target session name, or a Response already
+ * sent to the client (400 bad name / 404 unknown session).
+ *
+ * The default session skips the existence probe on purpose — legacy
+ * behavior lets commands race a /restart-session recreate, and tmux's own
+ * error still surfaces as a 500 if it's truly gone. A client-picked
+ * session, by contrast, must exist before we send keys anywhere near it.
+ *
+ * NOT wired into /restart-session or /resize-terminal: those stay
+ * default-session-only by design (restart recreates the orchestrator
+ * launch command; resize has the window-size latch side effect) — the
+ * palette never offers them for other sessions.
+ */
+async function resolvePaletteTarget(c: any, body: any): Promise<{ session: string } | { response: Response }> {
+  const target = resolveTargetSession(body?.session);
+  if (!target.ok) {
+    return { response: c.json({ ok: false, error: target.error }, 400) };
+  }
+  if (target.session !== TMUX_SESSION && !(await tmuxSessionExists(target.session))) {
+    return { response: c.json({ ok: false, error: "unknown session" }, 404) };
+  }
+  return { session: target.session };
+}
+
 app.post("/send-keys", async (c) => {
   try {
     const body = await c.req.json();
@@ -60,6 +88,9 @@ app.post("/send-keys", async (c) => {
     if (!keys || typeof keys !== "string") {
       return c.json({ ok: false, error: "keys required" }, 400);
     }
+    const resolved = await resolvePaletteTarget(c, body);
+    if ("response" in resolved) return resolved.response;
+    const session = resolved.session;
     if (body.raw) {
       // Split on whitespace and validate each token against the allowlist.
       // Reject empty-after-split (e.g. all whitespace input) so we never call
@@ -76,9 +107,10 @@ app.post("/send-keys", async (c) => {
           );
         }
       }
-      // execFile with argv — no shell, no interpolation.
-      await tracedTmux('tmux.send-keys', TMUX_SESSION, 'raw', () =>
-        execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, ...tokens])
+      // execFile with argv — no shell, no interpolation. `=` prefix:
+      // exact-match session lookup (the target can be client-picked).
+      await tracedTmux('tmux.send-keys', session, 'raw', () =>
+        execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, ...tokens])
       );
     } else {
       // Literal text — use execFile (no shell) with `-l` and `--` so user
@@ -86,9 +118,9 @@ app.post("/send-keys", async (c) => {
       // path spawned /bin/sh -c on an interpolated string; JSON.stringify
       // only quotes for JS, NOT for shells, so `$(...)` and backticks in the
       // keys survived the quote and were executed by sh BEFORE tmux saw them.
-      await tracedTmux('tmux.send-keys', TMUX_SESSION, 'literal', async () => {
-        await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys]);
-        await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
+      await tracedTmux('tmux.send-keys', session, 'literal', async () => {
+        await execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, "-l", "--", keys]);
+        await execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, "Enter"]);
       });
     }
     return c.json({ ok: true, action: "send-keys" });
@@ -102,12 +134,15 @@ app.post("/compact", async (c) => {
     const body = await c.req.json();
     const message = body.message as string;
     if (!message) return c.json({ ok: false, error: "message required" }, 400);
+    const resolved = await resolvePaletteTarget(c, body);
+    if ("response" in resolved) return resolved.response;
+    const session = resolved.session;
 
     // Send via tmux send-keys — execFile (no shell) with -l + -- so the
     // user-provided message cannot inject via $(...) or backticks.
-    await tracedTmux('tmux.compact', TMUX_SESSION, 'compact', async () => {
-      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", message]);
-      await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"]);
+    await tracedTmux('tmux.compact', session, 'compact', async () => {
+      await execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, "-l", "--", message]);
+      await execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, "Enter"]);
     });
     return c.json({ ok: true, action: "compact" });
   } catch (err: any) {
@@ -117,8 +152,13 @@ app.post("/compact", async (c) => {
 
 app.post("/reload-plugins", async (c) => {
   try {
-    await tracedTmux('tmux.send-keys', TMUX_SESSION, 'reload-plugins', () =>
-      sendToTmux("/reload-plugins")
+    // Body is optional here (legacy clients POST with no body at all).
+    const body = await c.req.json().catch(() => ({}));
+    const resolved = await resolvePaletteTarget(c, body);
+    if ("response" in resolved) return resolved.response;
+    const session = resolved.session;
+    await tracedTmux('tmux.send-keys', session, 'reload-plugins', () =>
+      sendToTmux("/reload-plugins", session)
     );
     return c.json({ ok: true, action: "reload-plugins" });
   } catch (err: any) {

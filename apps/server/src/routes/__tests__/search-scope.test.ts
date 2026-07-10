@@ -48,6 +48,12 @@ vi.mock("../../lib/path-allowed.js", async () => {
     isPathAllowed: async (candidate: string, _ignoredAllowedRoots: string[]) => {
       return real.isPathAllowed(candidate, testAllowedRoots);
     },
+    // /search now validates the scope + every walked dir via the race-safe
+    // openAllowedForRead; delegate to the real impl against the test roots so
+    // the same security semantics are exercised against the sandbox.
+    openAllowedForRead: async (candidate: string, _ignoredAllowedRoots: string[]) => {
+      return real.openAllowedForRead(candidate, testAllowedRoots);
+    },
   };
 });
 
@@ -156,13 +162,12 @@ describe("/search?scope= (Search UX C3)", () => {
     expect(body.error).toBe("Access denied");
   });
 
-  it("rejects a non-existent scope under an allowed root with 403 (realpath fails)", async () => {
-    // isPathAllowed canonicalizes the candidate via realpath; a non-existent
-    // path resolves to false, which the route translates into 403. This
-    // documents the current behavior so a future "create-on-demand" change
-    // has to update the assertion deliberately.
+  it("returns 404 for a non-existent scope under an allowed root", async () => {
+    // The race-safe openAllowedForRead distinguishes a missing scope
+    // (open ENOENT → not-found → 404) from an allowlist rejection (403) —
+    // a more honest status than the old realpath-fails-so-403 behavior.
     const { status } = await callSearch(TOKEN, join(sandbox, "does-not-exist"));
-    expect(status).toBe(403);
+    expect(status).toBe(404);
   });
 
   it("returns an empty results array when q is shorter than 2 chars (unchanged minimum-length guard)", async () => {

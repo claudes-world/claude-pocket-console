@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +15,29 @@ vi.mock("../../lib/path-allowed.js", async () => {
     ...real,
     isPathAllowed: async (candidate: string, _ignoredAllowedRoots: string[]) => {
       return real.isPathAllowed(candidate, testAllowedRoots);
+    },
+  };
+});
+
+// `vi.spyOn` can't redefine a named ESM export in place ("Cannot redefine
+// property: open" — the module namespace is frozen). Intercept at
+// `vi.mock` time instead: wrap the real `open()` so every FileHandle it
+// hands back has its `close()` instrumented, before files.ts ever imports
+// the module. Every other export passes through untouched (files.ts also
+// uses readFile/stat/unlink/etc from this module).
+let closeCalls: number[] = [];
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      const originalClose = handle.close.bind(handle);
+      handle.close = async (...closeArgs: unknown[]) => {
+        closeCalls.push(Date.now());
+        return (originalClose as (...a: unknown[]) => Promise<void>)(...closeArgs);
+      };
+      return handle;
     },
   };
 });
@@ -58,5 +81,36 @@ describe("download tickets", () => {
     const reuseRes = await filesRoute.request(`/download?ticket=${ticket}`);
     expect(reuseRes.status).toBe(403);
     expect(await reuseRes.json()).toEqual({ error: "invalid or expired ticket" });
+  });
+
+  // H2 (server #299): createDownloadResponse used to extract the raw fd
+  // (`createReadStream("", { fd: handle.fd, autoClose: true })`) while the
+  // FileHandle itself stayed open — two competing owners of one fd, so the
+  // FileHandle's own close (GC finalizer) could double-close it or, worse,
+  // close an unrelated already-reused fd from a later request. The fix
+  // streams via `handle.createReadStream()` so the FileHandle is the sole
+  // owner and closes the fd itself exactly once when the stream ends.
+  it("closes the underlying FileHandle exactly once per direct-path download (single fd ownership)", async () => {
+    closeCalls.length = 0;
+
+    const filePath = join(sandbox, "sample.html");
+    const res = await filesRoute.request(`/download?path=${encodeURIComponent(filePath)}`);
+    expect(res.status).toBe(200);
+
+    // Fully drain the response body — this is what triggers the
+    // FileHandle-owned stream's end-of-stream close.
+    const text = await res.text();
+    expect(text).toBe("<h1>download me</h1>");
+
+    // Give the stream's close event a tick to fire.
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Exactly one FileHandle should have been closed exactly once — no
+    // double-close, no leaked (never-closed) handle.
+    expect(closeCalls.length).toBe(1);
+  });
+
+  afterEach(() => {
+    closeCalls.length = 0;
   });
 });

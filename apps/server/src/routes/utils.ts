@@ -6,6 +6,15 @@ import { join } from "node:path";
 export const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
+// Canonical session-name allowlist, shared by every place a tmux session
+// name crosses a trust boundary: the boot-time TMUX_SESSION env validation
+// below, the `?session=` WS query param (terminal-ws.ts), and the
+// /api/terminal/sessions listing (terminal/sessions.ts). Same charset and
+// length bound as the cockpit's cockpit-attach wrapper — alphanumerics,
+// hyphens, underscores, dots, 1-64 chars. A name that fails this regex must
+// never reach a tmux argv.
+export const SESSION_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+
 // TMUX_SESSION is consumed by execAsync (shell) in several helpers, so a
 // malicious `process.env.TMUX_SESSION` would break the fence. Validate
 // once at module load against the canonical tmux session-name charset
@@ -18,10 +27,10 @@ const execFileAsync = promisify(execFile);
 // rather than reading process.env directly so the validation is
 // unbypassable.
 const _rawTmuxSession = process.env.TMUX_SESSION || "claudes-world";
-if (!/^[A-Za-z0-9_.-]+$/.test(_rawTmuxSession)) {
+if (!SESSION_NAME_RE.test(_rawTmuxSession)) {
   throw new Error(
     `Invalid TMUX_SESSION name: ${JSON.stringify(_rawTmuxSession)}. ` +
-      `Only alphanumerics, hyphens, underscores, and dots are allowed.`,
+      `Only alphanumerics, hyphens, underscores, and dots are allowed (max 64 chars).`,
   );
 }
 export const TMUX_SESSION = _rawTmuxSession;
@@ -55,14 +64,58 @@ export const SESSION_NAMES_FILE = join(CLAUDES_WORLD, ".cpc-session-names");
 // path and returns a non-OK JSON response to the client.
 const TMUX_TIMEOUT_MS = 5_000;
 
-export async function sendToTmux(keys: string) {
+export type TargetSessionResult =
+  | { ok: true; session: string }
+  | { ok: false; error: string };
+
+/**
+ * Resolve the optional `session` field of a terminal REST body (the
+ * restricted command palette targets the session the terminal tab is
+ * viewing — Liam voice msg 1188). Absent/empty = the configured
+ * TMUX_SESSION, exactly today's behavior. Anything else is
+ * client-controlled input and must pass the shared allowlist before it can
+ * reach a tmux argv. Existence is the caller's concern (`tmux has-session`)
+ * — this only fences type and charset.
+ */
+export function resolveTargetSession(raw: unknown): TargetSessionResult {
+  if (raw === undefined || raw === null || raw === "") {
+    return { ok: true, session: TMUX_SESSION };
+  }
+  if (typeof raw !== "string" || !SESSION_NAME_RE.test(raw)) {
+    return { ok: false, error: "invalid session name" };
+  }
+  return { ok: true, session: raw };
+}
+
+/** True when the (already charset-validated) session exists on the tmux
+ *  server. Exact-match `=` prefix — no prefix-matching surprises. */
+export async function tmuxSessionExists(session: string): Promise<boolean> {
+  try {
+    await execFileAsync("tmux", ["has-session", "-t", `=${session}`], {
+      timeout: TMUX_TIMEOUT_MS,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function sendToTmux(keys: string, session: string = TMUX_SESSION) {
   // The `--` separator stops tmux from interpreting `keys` as an option
   // if the first character is a hyphen. execFile already prevents shell
   // injection but this also prevents tmux-level argument confusion.
-  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", keys], {
+  //
+  // Target form `=<name>:` — the `=` forces exact-match session lookup
+  // (`session` may originate from a request body; exactness also protects
+  // against prefix collisions between real session names), and the trailing
+  // `:` is REQUIRED on pane-target commands: tmux 3.5a rejects a bare
+  // `=name` for send-keys/capture-pane/display-message with "can't find
+  // pane" (verified live on this host 2026-07-09); only session-target
+  // commands like has-session accept `=name` alone.
+  await execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, "-l", "--", keys], {
     timeout: TMUX_TIMEOUT_MS,
   });
-  await execFileAsync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"], {
+  await execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, "Enter"], {
     timeout: TMUX_TIMEOUT_MS,
   });
 }

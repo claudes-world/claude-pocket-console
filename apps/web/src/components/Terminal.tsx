@@ -46,15 +46,22 @@ interface TerminalProps {
    * it looking like unconditional success.
    */
   onFitResult?: (result: FitResult) => void;
+  /**
+   * tmux session to view (multi-session picker). null/undefined = the
+   * server's default session (today's behavior). App.tsx keys this
+   * component by session, so each mount views exactly one session for its
+   * whole lifetime.
+   */
+  session?: string | null;
 }
 
-/** Build the WebSocket URL with auth params. */
-function buildWsUrl(): string {
+/** Build the WebSocket URL with auth (and optional session) params. */
+function buildWsUrl(session?: string | null): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const params = new URLSearchParams();
   const initData = window.Telegram?.WebApp?.initData || "";
-  let authParam = "";
   if (initData) {
-    authParam = `?auth=${encodeURIComponent(initData)}`;
+    params.set("auth", initData);
   } else {
     // Fallback: URL token from keyboard button, then saved session token
     const urlParams = new URLSearchParams(window.location.search);
@@ -62,12 +69,14 @@ function buildWsUrl(): string {
     const urlToken = urlParams.get("token") || hashParams.get("token") || "";
     const savedToken = localStorage.getItem("cpc-session-token") || "";
     const token = urlToken || savedToken;
-    if (token) authParam = `?token=${encodeURIComponent(token)}`;
+    if (token) params.set("token", token);
   }
-  return `${protocol}//${window.location.host}/ws/terminal${authParam}`;
+  if (session) params.set("session", session);
+  const qs = params.toString();
+  return `${protocol}//${window.location.host}/ws/terminal${qs ? `?${qs}` : ""}`;
 }
 
-export function Terminal({ onConnectionChange, isActive, fitScreenRef, onFitResult }: TerminalProps) {
+export function Terminal({ onConnectionChange, isActive, fitScreenRef, onFitResult, session }: TerminalProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -83,6 +92,12 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef, onFitResu
   const onFitResultRef = useRef(onFitResult);
   onFitResultRef.current = onFitResult;
 
+  // Ref so connectWs (stable useCallback) always reads the current session
+  // without needing it as a dependency. In practice App.tsx remounts this
+  // component when the session changes, so the value is fixed per mount.
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
   /** Open a WebSocket and wire it to the current xterm instance.
    *  Closes any existing connection first to prevent duplicates. */
   const connectWs = useCallback(() => {
@@ -95,7 +110,7 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef, onFitResu
       wsRef.current.close();
     }
 
-    const ws = new WebSocket(buildWsUrl());
+    const ws = new WebSocket(buildWsUrl(sessionRef.current));
 
     // Guard all handlers against stale sockets: if connectWs is called again
     // before the previous socket finishes closing, the old socket's events
@@ -146,6 +161,14 @@ export function Terminal({ onConnectionChange, isActive, fitScreenRef, onFitResu
           // the real outcome instead of showing false success.
           console.log(`[fit] rejected: ${msg.message}`);
           onFitResultRef.current?.({ ok: false, message: msg.message });
+        } else if (msg.type === "error") {
+          // Server-initiated close reasons (unknown session, session ended
+          // mid-view, auth failure). Render the reason into the terminal so
+          // the user sees WHY the view stopped instead of a silent freeze —
+          // the server closes the socket right after sending this, which
+          // flips the header dot to "offline" via onclose below.
+          console.log(`[ws] server error: ${msg.message}`);
+          term.write(`\r\n\x1b[31m[${msg.message}]\x1b[0m\r\n`);
         }
       } catch {
         term.write(event.data);
