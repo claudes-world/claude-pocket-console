@@ -95,10 +95,7 @@ export function discoverRepos(): RepoInfo[] {
     return repos;
   }
 
-  for (const dirName of dirNames) {
-    const repoPath = join(codeDir, dirName);
-    if (!existsSync(join(repoPath, ".git"))) continue;
-
+  const pushRepoIfValid = (repoPath: string, displayName: string) => {
     try {
       // Get remote URL.
       // execFileSync is intentional: discoverRepos() runs at most once per 5-min TTL,
@@ -110,7 +107,7 @@ export function discoverRepos(): RepoInfo[] {
       }).trim();
 
       const parsed = parseGitRemote(remoteUrl);
-      if (!parsed) continue; // skip repos without a parseable GitHub remote
+      if (!parsed) return; // skip repos without a parseable GitHub remote
 
       // Get current branch
       const branch = execFileSync("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD"], {
@@ -120,7 +117,7 @@ export function discoverRepos(): RepoInfo[] {
 
       repos.push({
         path: repoPath,
-        name: dirName,
+        name: displayName,
         owner: parsed.owner,
         repoName: parsed.repoName,
         fullName: `${parsed.owner}/${parsed.repoName}`,
@@ -128,7 +125,29 @@ export function discoverRepos(): RepoInfo[] {
       });
     } catch {
       // Skip repos where git commands fail (no remote, detached HEAD, etc.)
+      return;
+    }
+  };
+
+  for (const dirName of dirNames) {
+    const repoPath = join(codeDir, dirName);
+    if (existsSync(join(repoPath, ".git"))) {
+      pushRepoIfValid(repoPath, dirName);
       continue;
+    }
+
+    let childNames: string[];
+    try {
+      childNames = readdirSync(repoPath);
+    } catch {
+      continue;
+    }
+
+    for (const childName of childNames) {
+      const childPath = join(repoPath, childName);
+      if (existsSync(join(childPath, ".git"))) {
+        pushRepoIfValid(childPath, `${dirName}/${childName}`);
+      }
     }
   }
 

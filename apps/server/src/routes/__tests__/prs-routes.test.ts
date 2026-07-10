@@ -1,22 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { PrRow, RepoInfo } from "../prs.js";
 
 /**
- * Tests for the HTTP route handlers in `prs.ts`:
+ * Tests for repository discovery and the HTTP route handlers in `prs.ts`:
+ *   - discoverRepos() — depth-1 repos and depth-2 namespace repos
  *   - GET /           — snapshot of PRs + repo summary
  *   - POST /refresh   — force-poll and return diff counts
  *   - GET /current-branch-scope — list active branches
  *
  * The pure-logic tests (parseGitRemote, diffSnapshots, PrPoller backoff,
  * getSnapshot sorting) already live in pr-poller.test.ts. This file covers
- * the Hono HTTP layer exclusively.
+ * discovery plus the Hono HTTP layer.
  *
  * Strategy:
  *   - Use the exported __setPollerForTests() to inject a mock PrPoller so
  *     no real `gh` CLI or `git` commands run.
  *   - Use __resetScopeCacheForTests() to clear the scope cache between tests.
+ *   - Mock filesystem and child-process calls for repository discovery.
  *   - Drive routes via Hono `app.request()`.
  */
 
@@ -91,6 +94,7 @@ const {
   __setPollerForTests,
   __resetScopeCacheForTests,
   __resetRepoCacheForTests,
+  discoverRepos,
 } = await import("../prs.js");
 
 // ---------------------------------------------------------------------------
@@ -110,6 +114,118 @@ beforeEach(() => {
 afterEach(() => {
   __setPollerForTests(null);
   vi.clearAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// Repo discovery
+// ---------------------------------------------------------------------------
+describe("discoverRepos", () => {
+  const codeDir = join(process.env.HOME || "/home/claude", "code");
+
+  function mockGitRepo(repoPath: string, remote: string, branch: string) {
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C" || args[1] !== repoPath) {
+        throw new Error("unexpected git command");
+      }
+      if (args[2] === "remote") return remote as any;
+      if (args[2] === "rev-parse") return `${branch}\n` as any;
+      throw new Error("unexpected git arguments");
+    });
+  }
+
+  it("discovers depth-1 and namespace repos without walking past depth 2", () => {
+    const directPath = join(codeDir, "direct-repo");
+    const namespacePath = join(codeDir, "omnipass-world");
+    const nestedPath = join(namespacePath, "clan-world");
+    const deeperParentPath = join(namespacePath, "not-a-repo");
+    const deeperRepoPath = join(deeperParentPath, "too-deep");
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir
+        || value === join(directPath, ".git")
+        || value === join(nestedPath, ".git")
+        || value === join(deeperRepoPath, ".git");
+    });
+    vi.mocked(readdirSync).mockImplementation(((path: string) => {
+      if (path === codeDir) return ["direct-repo", "omnipass-world"];
+      if (path === namespacePath) return ["clan-world", "not-a-repo"];
+      throw new Error(`unexpected readdir: ${path}`);
+    }) as any);
+
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
+      if (args[2] === "remote") {
+        if (args[1] === directPath) return "git@github.com:claudes-world/direct.git" as any;
+        if (args[1] === nestedPath) return "https://github.com/omnipass-world/clan-world.git" as any;
+      }
+      if (args[2] === "rev-parse") return "dev\n" as any;
+      throw new Error("unexpected git arguments");
+    });
+
+    expect(discoverRepos()).toEqual([
+      {
+        path: directPath,
+        name: "direct-repo",
+        owner: "claudes-world",
+        repoName: "direct",
+        fullName: "claudes-world/direct",
+        branch: "dev",
+      },
+      {
+        path: nestedPath,
+        name: "omnipass-world/clan-world",
+        owner: "omnipass-world",
+        repoName: "clan-world",
+        fullName: "omnipass-world/clan-world",
+        branch: "dev",
+      },
+    ]);
+    expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(directPath);
+    expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(deeperParentPath);
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining([deeperRepoPath]),
+      expect.anything(),
+    );
+  });
+
+  it("skips plain files and unreadable namespace directories", () => {
+    const validNamespacePath = join(codeDir, "valid-namespace");
+    const nestedPath = join(validNamespacePath, "nested-repo");
+    const plainFilePath = join(codeDir, "README.txt");
+    const unreadablePath = join(codeDir, "unreadable-namespace");
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir || value === join(nestedPath, ".git");
+    });
+    vi.mocked(readdirSync).mockImplementation(((path: string) => {
+      if (path === codeDir) {
+        return ["README.txt", "unreadable-namespace", "valid-namespace"];
+      }
+      if (path === plainFilePath) throw new Error("ENOTDIR");
+      if (path === unreadablePath) throw new Error("EACCES");
+      if (path === validNamespacePath) return ["nested-repo"];
+      throw new Error(`unexpected readdir: ${path}`);
+    }) as any);
+    mockGitRepo(
+      nestedPath,
+      "git@github.com:claudes-world/nested-repo.git",
+      "main",
+    );
+
+    expect(discoverRepos()).toEqual([
+      {
+        path: nestedPath,
+        name: "valid-namespace/nested-repo",
+        owner: "claudes-world",
+        repoName: "nested-repo",
+        fullName: "claudes-world/nested-repo",
+        branch: "main",
+      },
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
