@@ -48,6 +48,19 @@ const spawnCalls: { cmd: string; args: string[] }[] = [];
 /** Session names `tmux has-session` should report as existing. */
 let existingSessions = new Set<string>();
 
+/**
+ * Fake capture-pane child processes, one per spawn() call, so tests can
+ * drive the "close" handler directly (simulating a normal exit, a
+ * SIGTERM-from-timeout null code, or a real nonzero failure) without
+ * shelling out to a real tmux. Mirrors the H3 (server #299) poll shape:
+ * `capture.stdout.on("data", ...)` then `capture.on("close", (code) => ...)`.
+ */
+type FakeCaptureChild = {
+  emitData: (chunk: string) => void;
+  emitClose: (code: number | null) => void;
+};
+let spawnedCaptures: FakeCaptureChild[] = [];
+
 const mockExecFile = vi.fn((...fnArgs: any[]) => {
   const cmd = fnArgs[0] as string;
   const args = fnArgs[1] as string[];
@@ -70,10 +83,23 @@ vi.mock("node:child_process", async (importOriginal) => {
     ...actual,
     spawn: vi.fn((cmd: string, args: string[]) => {
       spawnCalls.push({ cmd, args });
-      return {
-        stdout: { on: vi.fn() },
-        on: vi.fn(),
+      const dataHandlers: ((chunk: Buffer) => void)[] = [];
+      const closeHandlers: ((code: number | null) => void)[] = [];
+      const child = {
+        stdout: {
+          on: vi.fn((event: string, cb: (chunk: Buffer) => void) => {
+            if (event === "data") dataHandlers.push(cb);
+          }),
+        },
+        on: vi.fn((event: string, cb: (code: number | null) => void) => {
+          if (event === "close") closeHandlers.push(cb);
+        }),
       };
+      spawnedCaptures.push({
+        emitData: (chunk: string) => dataHandlers.forEach((cb) => cb(Buffer.from(chunk))),
+        emitClose: (code: number | null) => closeHandlers.forEach((cb) => cb(code)),
+      });
+      return child;
     }),
     execFileSync: vi.fn(() => "80x24"),
     execFile: mockExecFile,
@@ -125,6 +151,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 afterEach(() => {
   execFileCalls.length = 0;
   spawnCalls.length = 0;
+  spawnedCaptures = [];
   existingSessions = new Set();
   vi.clearAllMocks();
 });
@@ -188,6 +215,59 @@ describe("terminalWsRoute onOpen: session targeting", () => {
     await flush();
     expect(execFileCalls.find((c) => c.args[0] === "has-session")).toBeUndefined();
     expect(spawnCalls[0].args).toEqual(["capture-pane", "-t", "=test-session:", "-p", "-e", "-J"]);
+    handlers.onClose(new Event("close"), ws as any);
+  });
+});
+
+describe("terminalWsRoute capture-pane poll: null (timeout) exit code is transient (server #299 H3)", () => {
+  it("does NOT disconnect a non-default session on a null (SIGTERM/timeout) exit code", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { handlers, ws } = connectWs("do-box--lane-a");
+    await flush();
+    expect(spawnedCaptures).toHaveLength(1);
+
+    // Simulate the TMUX_TIMEOUT_MS SIGTERM path: spawn's `timeout` option
+    // kills the child and Node reports a null exit code, not a real tmux
+    // failure signaling the session is gone.
+    spawnedCaptures[0].emitData("partial, truncated frame");
+    spawnedCaptures[0].emitClose(null);
+    await flush();
+
+    expect(ws.close).not.toHaveBeenCalled();
+    // The truncated partial output must NOT be sent as a real frame.
+    expect(ws._sent.some((m) => JSON.parse(m).type === "pane")).toBe(false);
+    handlers.onClose(new Event("close"), ws as any);
+  });
+
+  it("still disconnects a non-default session on a real nonzero exit code", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { handlers, ws } = connectWs("do-box--lane-a");
+    await flush();
+    expect(spawnedCaptures).toHaveLength(1);
+
+    spawnedCaptures[0].emitClose(1);
+    await flush();
+
+    expect(ws.close).toHaveBeenCalledWith(4010, "Session ended");
+    expect(ws._sent.some((m) => {
+      const msg = JSON.parse(m);
+      return msg.type === "error" && /session .* ended/i.test(msg.message);
+    })).toBe(true);
+  });
+
+  it("sends a real frame and never disconnects on a normal code 0 exit", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { handlers, ws } = connectWs("do-box--lane-a");
+    await flush();
+    expect(spawnedCaptures).toHaveLength(1);
+
+    spawnedCaptures[0].emitData("hello pane");
+    spawnedCaptures[0].emitClose(0);
+    await flush();
+
+    expect(ws.close).not.toHaveBeenCalled();
+    const paneMsg = ws._sent.map((m) => JSON.parse(m)).find((m) => m.type === "pane");
+    expect(paneMsg?.content).toBe("hello pane");
     handlers.onClose(new Event("close"), ws as any);
   });
 });

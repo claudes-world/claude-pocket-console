@@ -305,12 +305,24 @@ export function terminalWsRoute(c: any) {
           // last frame that looks live. The DEFAULT session deliberately
           // keeps the legacy tolerance: /restart-session kills and
           // recreates it, and connections are expected to ride that out.
-          if (code !== 0 && session !== TMUX_SESSION) {
+          //
+          // `code` is null (not 0) when the TMUX_TIMEOUT_MS timeout SIGTERMs
+          // the child instead of it exiting normally — a transient tmux
+          // slowdown, not proof the session is gone. Treating null as
+          // `!== 0` force-disconnected live non-default-session viewers on
+          // a single slow poll tick (server HIGH #299 H3); skip this tick
+          // instead and let the next poll re-check.
+          if (code !== 0 && code !== null && session !== TMUX_SESSION) {
             (ws as any)._cleanup?.();
             ws.send(JSON.stringify({ type: "error", message: `Session "${session}" ended` }));
             ws.close(4010, "Session ended");
             return;
           }
+          // A timed-out capture's `output` is a partial read cut off by
+          // SIGTERM, not a real frame — skip this tick entirely (don't
+          // overwrite lastContent with truncated data) and let the next
+          // 500ms poll retry cleanly.
+          if (code === null) return;
           if (output !== lastContent) {
             lastContent = output;
             ws.send(JSON.stringify({ type: "pane", content: output }));
