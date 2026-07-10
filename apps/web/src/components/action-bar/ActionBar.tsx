@@ -69,6 +69,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   // click handler, so a ref-based lock is the only way to prevent two
   // concurrent backend audio jobs racing each other.
   const audioInFlightRef = useRef(false);
+  // Monotonically versions cache checks so a response from an older sheet
+  // open/file cannot overwrite the state established by a newer check or by
+  // the generate-and-send chain.
+  const audioCheckSeqRef = useRef(0);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
@@ -289,6 +293,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   }, [searchCurrentFolderOnly, currentFolder, modal]);
 
   const handleCheckAudio = async (filePath: string) => {
+    const seq = ++audioCheckSeqRef.current;
     // If a generate or send is already in-flight, don't clobber its
     // loading/op state with a check — just show the in-progress panel.
     if (audioInFlightRef.current) return;
@@ -297,42 +302,78 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     setAudioOp("checking");
     try {
       const status = await checkAudio(filePath);
-      // Guard: if generate/send started while check was in-flight, don't
-      // overwrite their loading/op state with a stale check result.
+      // Guards: a newer check (or the generate chain, which bumps the seq)
+      // owns the UI now — a stale result must not overwrite it. Same for a
+      // generate/send that started while this check was in-flight.
+      if (seq !== audioCheckSeqRef.current) return;
       if (!audioInFlightRef.current) setAudioStatus(status);
     } catch {
+      if (seq !== audioCheckSeqRef.current) return;
       if (!audioInFlightRef.current) setAudioStatus(null);
     } finally {
-      // Only clear loading if no generate/send started while we were checking
-      if (!audioInFlightRef.current) {
+      // Only clear loading if this check still owns the UI and no
+      // generate/send started while we were checking.
+      if (seq === audioCheckSeqRef.current && !audioInFlightRef.current) {
         setAudioOp("idle");
         setAudioLoading(false);
       }
     }
   };
+  const sendAudio = async (audioPath: string, pendingStatus = "Sending to Telegram...") => {
+    setAudioOp("sending");
+    setStatus(pendingStatus);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const data = await sendAudioTelegram(audioPath, controller.signal);
+        if (data.ok) {
+          haptic.success();
+          setStatus("Sent to Telegram");
+        } else {
+          haptic.error();
+          setStatus(`Failed: ${data.error || "unknown error"}`);
+        }
+      } finally {
+        // clearTimeout in finally so a thrown fetch doesn't leave the
+        // 30s timeout dangling and accumulating. (Copilot round-3 review.)
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      haptic.error();
+      setStatus(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Timed out"
+          : `Error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
   const handleGenerateAudio = async (filePath: string) => {
+    ++audioCheckSeqRef.current;
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
+    setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("generating");
     setStatus("Generating audio...");
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
+      let data: Awaited<ReturnType<typeof generateAudio>>;
       try {
-        const data = await generateAudio(filePath, controller.signal);
-        if (data.ok) {
-          haptic.success();
-          setAudioStatus({ exists: true, path: data.path });
-          setStatus("Audio generated");
-        } else {
-          haptic.error();
-          setStatus(`Failed: ${data.error}`);
-        }
+        data = await generateAudio(filePath, controller.signal);
       } finally {
         // clearTimeout in finally so a thrown fetch doesn't leave the
         // 60s timeout dangling and accumulating. (Copilot round-3 review.)
         clearTimeout(timeout);
+      }
+      if (data.ok && data.path) {
+        haptic.success();
+        setAudioStatus({ exists: true, path: data.path });
+        await sendAudio(data.path, "Audio generated — sending to Telegram…");
+      } else {
+        haptic.error();
+        setStatus(`Failed: ${data.error || (data.ok ? "Missing audio path" : "unknown error")}`);
       }
     } catch (err) {
       haptic.error();
@@ -351,32 +392,8 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
     setAudioLoading(true);
-    setAudioOp("sending");
-    setStatus("Sending to Telegram...");
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      try {
-        const data = await sendAudioTelegram(audioPath, controller.signal);
-        if (data.ok) {
-          haptic.success();
-          setStatus("Sent to Telegram");
-        } else {
-          haptic.error();
-          setStatus(`Failed: ${data.error}`);
-        }
-      } finally {
-        // clearTimeout in finally so a thrown fetch doesn't leave the
-        // 30s timeout dangling and accumulating. (Copilot round-3 review.)
-        clearTimeout(timeout);
-      }
-    } catch (err) {
-      haptic.error();
-      setStatus(
-        err instanceof DOMException && err.name === "AbortError"
-          ? "Timed out"
-          : `Error: ${err instanceof Error ? err.message : String(err)}`
-      );
+      await sendAudio(audioPath);
     } finally {
       audioInFlightRef.current = false;
       setAudioOp("idle");
