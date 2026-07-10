@@ -12,13 +12,14 @@ import { FileOptionsSheet } from "./FileOptionsSheet";
 import { FileSearchSheet } from "./FileSearchSheet";
 import { TldrModal } from "./TldrModal";
 import { AudioGenModal } from "./AudioGenModal";
+import { ShareSheet } from "./ShareSheet";
 import { StatusLine } from "./StatusLine";
 import { btnStyle, type ActionBarProps, type AudioStatus, type GitBranch, type Modal, type SearchResult, type SessionName } from "./types";
 import {
   checkAudio, deleteSessionName, fetchGitBranch, fetchGitStatus,
   fetchSessionNames, fetchTodo, generateAudio, postAction,
   renameSession, restartSession, runGitCommand, searchFiles,
-  sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux,
+  publishShared, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux,
 } from "./api";
 import { haptic } from "../../lib/haptic";
 import { usePreferences } from "../../hooks/usePreferences";
@@ -72,6 +73,11 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   // open/file cannot overwrite the state established by a newer check or by
   // the generate-and-send chain.
   const audioCheckSeqRef = useRef(0);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const shareInFlightRef = useRef(false);
+  const shareSeqRef = useRef(0);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -431,6 +437,79 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       setStatus("Failed");
     }
   };
+  const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {
+    if (!viewingFile || shareInFlightRef.current) return;
+    shareInFlightRef.current = true;
+    const seq = ++shareSeqRef.current;
+    setShareLoading(true);
+    setShareUrl(null);
+    setShareError(null);
+    setStatus("Publishing...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const data = await publishShared(viewingFile.path, scope, tmp, controller.signal);
+        if (seq !== shareSeqRef.current) return;
+        if (data.ok && data.url) {
+          haptic.success();
+          setShareUrl(data.url);
+          setStatus("Published");
+        } else {
+          const message = data.error || "Publish failed";
+          haptic.error();
+          setShareError(message);
+          setStatus(`Failed: ${message}`);
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      if (seq !== shareSeqRef.current) return;
+      const message = err instanceof DOMException && err.name === "AbortError"
+        ? "Timed out"
+        : err instanceof Error ? err.message : String(err);
+      haptic.error();
+      setShareError(message);
+      setStatus(`Failed: ${message}`);
+    } finally {
+      shareInFlightRef.current = false;
+      if (seq === shareSeqRef.current) setShareLoading(false);
+    }
+  };
+  const handleCopyShareLink = async () => {
+    if (!shareUrl) return;
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        copied = true;
+      }
+    } catch {
+      // Fall through to the selected-text fallback for restricted WebViews.
+    }
+    if (!copied) {
+      const textarea = document.createElement("textarea");
+      textarea.value = shareUrl;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        copied = false;
+      }
+      document.body.removeChild(textarea);
+    }
+    if (copied) {
+      haptic.success();
+      setStatus("Link copied");
+    } else {
+      haptic.error();
+      setStatus("Copy failed — long-press the link to copy manually");
+    }
+  };
 
   let modalNode: ReactNode = null;
   switch (modal) {
@@ -598,6 +677,20 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
         />
       ) : null;
       break;
+    case "share":
+      modalNode = viewingFile ? (
+        <ShareSheet
+          viewingFile={viewingFile}
+          loading={shareLoading}
+          url={shareUrl}
+          error={shareError}
+          onClose={() => setModal(null)}
+          onPublish={(scope, tmp) => void handlePublishShared(scope, tmp)}
+          onCopy={() => void handleCopyShareLink()}
+          onOpen={() => { if (shareUrl) window.open(shareUrl, "_blank", "noopener,noreferrer"); }}
+        />
+      ) : null;
+      break;
   }
 
   const isViewingMd = viewingFile?.name.toLowerCase().endsWith(".md");
@@ -690,12 +783,27 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           </>}
 
           {activeTab === "files" && viewingFile && (
-            <button
-              onClick={() => { haptic.impact("light"); void handleSendToChat(); }}
-              style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}
-            >
-              Send to Chat
-            </button>
+            <>
+              <button
+                onClick={() => { haptic.impact("light"); void handleSendToChat(); }}
+                style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}
+              >
+                Send to Chat
+              </button>
+              <button
+                onClick={() => {
+                  haptic.impact("light");
+                  ++shareSeqRef.current;
+                  setShareLoading(false);
+                  setShareUrl(null);
+                  setShareError(null);
+                  setModal("share");
+                }}
+                style={{ ...btnStyle, background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}
+              >
+                Share
+              </button>
+            </>
           )}
 
           {activeTab === "files" && isViewingMd && (

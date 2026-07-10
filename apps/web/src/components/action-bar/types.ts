@@ -47,6 +47,7 @@ export type Modal =
   | "file-options"
   | "file-search"
   | "audio-gen"
+  | "share"
   | "tldr"
   | "confirm-delete"
   | "reconnect-menu";
