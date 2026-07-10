@@ -208,6 +208,30 @@ describe("/send-telegram path allowlist (M-2)", () => {
     expect(cmd).toBe("curl");
     expect(args).toContain(`audio=@${audioPath}`);
   });
+
+  it("deep-links the sibling markdown doc when it exists", async () => {
+    const audioPath = join(sandbox, "note.mp3");
+    const docPath = join(sandbox, "note.md");
+    const { status } = await postJson("/send-telegram", { path: audioPath });
+    expect(status).toBe(200);
+
+    const [, args] = execFileSpy.mock.calls[0];
+    const replyMarkup = args.find((arg: string) => arg.startsWith("reply_markup="));
+    expect(replyMarkup).toContain(encodeURIComponent(docPath));
+    expect(replyMarkup).not.toContain(encodeURIComponent(audioPath));
+  });
+
+  it("falls back to deep-linking the audio when no sibling markdown doc exists", async () => {
+    const audioPath = join(sandbox, "standalone.mp3");
+    writeFileSync(audioPath, "standalone-audio-bytes");
+
+    const { status } = await postJson("/send-telegram", { path: audioPath });
+    expect(status).toBe(200);
+
+    const [, args] = execFileSpy.mock.calls[0];
+    const replyMarkup = args.find((arg: string) => arg.startsWith("reply_markup="));
+    expect(replyMarkup).toContain(encodeURIComponent(audioPath));
+  });
 });
 
 describe("/check path allowlist (M-5 adjacent)", () => {

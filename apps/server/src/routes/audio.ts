@@ -180,7 +180,10 @@ app.post("/send-telegram", async (c) => {
     const { botToken, chatId } = await getTelegramCreds();
     const fileName = audioPath.split("/").pop() || "audio.mp3";
     const shortPath = audioPath.replace(/^\/home\/claude\//, "~/");
-    const encodedPath = encodeURIComponent(audioPath);
+    const docPath = audioPath.replace(/\.mp3$/i, ".md");
+    // Deep-link the source doc because the doc view exposes its sidecar audio.
+    const deepLinkPath = existsSync(docPath) ? docPath : audioPath;
+    const encodedPath = encodeURIComponent(deepLinkPath);
     const deepUrl = `https://cpc.claude.do/#file=${encodedPath}`;
 
     // Shell out via execFile — argv array, no /bin/bash interpolation. The
