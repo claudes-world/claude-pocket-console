@@ -55,6 +55,25 @@ function openAllowedForRead(absPath: string) {
   return openAllowedForReadShared(absPath, ALLOWED_ROOTS);
 }
 
+/**
+ * Race-safe directory listing: open+validate the dir's fd identity, then
+ * readdir THROUGH the pinned fd. Returns null if the dir isn't within an
+ * allowed root or can't be read. Used by /search's BFS so a symlink swapped
+ * onto any walked directory (including a client `?scope=` over world-writable
+ * /tmp) can't redirect the listing outside the allowlist.
+ */
+async function readdirAllowedEntries(dir: string) {
+  const opened = await openAllowedForRead(dir);
+  if (!opened.ok) return null;
+  try {
+    return await readdir(`/proc/self/fd/${opened.handle.fd}`, { withFileTypes: true });
+  } catch {
+    return null;
+  } finally {
+    await opened.handle.close();
+  }
+}
+
 function pruneExpiredDownloadTickets(now = Date.now()) {
   for (const [ticket, record] of downloadTickets) {
     if (record.expiresAt <= now) {
@@ -433,16 +452,30 @@ app.get("/search", async (c) => {
 
   const scopeRaw = c.req.query("scope");
   let roots: readonly string[] = ALLOWED_ROOTS;
+  // Canonical scope path (from the validated fd) used for both BFS seeding
+  // and the scope-prefix filter, so a `?scope=` symlink can't skew either.
+  let scopeMatchRoot: string | null = null;
   if (scopeRaw) {
-    const scopeResolved = resolve(scopeRaw);
-    // Reject scopes that aren't inside an allowed root. Same check as every
-    // other file route — realpath-canonicalizing both sides and enforcing a
-    // true path-segment boundary — so a symlink escape or sibling-prefix
-    // bypass can't smuggle an out-of-tree path in via `?scope=`.
-    if (!(await isPathAllowed(scopeResolved))) {
-      return c.json({ error: "Access denied" }, 403);
+    // Race-safe: validate the scope by opening it and checking the OPENED
+    // fd's real identity (not the name), so a symlink escape or a mid-request
+    // swap over world-writable /tmp can't smuggle an out-of-tree path in.
+    const opened = await openAllowedForRead(resolve(scopeRaw));
+    if (!opened.ok) {
+      return c.json(
+        { error: opened.reason === "not-found" ? "Not found" : "Access denied" },
+        opened.reason === "not-found" ? 404 : 403,
+      );
     }
-    roots = [scopeResolved];
+    try {
+      const st = await opened.handle.stat();
+      if (!st.isDirectory()) {
+        return c.json({ error: "Scope is not a directory" }, 400);
+      }
+      scopeMatchRoot = opened.realPath;
+    } finally {
+      await opened.handle.close();
+    }
+    roots = [scopeMatchRoot];
   }
 
   const results: { name: string; path: string; type: string; relPath: string }[] = [];
@@ -454,7 +487,6 @@ app.get("/search", async (c) => {
   // Pre-compute the scope prefix (with trailing separator so we get a true
   // path-segment boundary and `/a/b-evil` can't match scope `/a/b`). The
   // scope itself is also a valid match, so we check for equality separately.
-  const scopeMatchRoot = scopeRaw ? resolve(scopeRaw) : null;
   const scopeMatchPrefix = scopeMatchRoot
     ? (scopeMatchRoot.endsWith(sep) ? scopeMatchRoot : scopeMatchRoot + sep)
     : null;
@@ -463,7 +495,10 @@ app.get("/search", async (c) => {
     const [dir, depth] = queue.shift()!;
     if (depth > 8) continue;
     try {
-      const entries = await readdir(dir, { withFileTypes: true });
+      // Validate + list every walked dir by its fd identity (race-safe),
+      // never a bare readdir(dir) that a symlink swap could redirect.
+      const entries = await readdirAllowedEntries(dir);
+      if (!entries) continue;
       for (const e of entries) {
         if (results.length >= MAX) break;
         if (e.name.startsWith(".") && !e.name.startsWith(".claude")) continue;
