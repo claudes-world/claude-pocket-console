@@ -10,9 +10,10 @@ vi.mock("../../lib/telegram", () => ({
 
 // Stub BottomSheet to render children directly
 vi.mock("../BottomSheet", () => ({
-  BottomSheet: ({ children, title }: { children: React.ReactNode; title?: string }) => (
+  BottomSheet: ({ children, title, onClose }: { children: React.ReactNode; title?: string; onClose?: () => void }) => (
     <div data-testid="bottom-sheet">
       {title && <div data-testid="bottom-sheet-title">{title}</div>}
+      {onClose && <button aria-label="Close sheet" onClick={onClose}>Close</button>}
       {children}
     </div>
   ),
@@ -176,6 +177,61 @@ describe("ActionBar", () => {
     await waitFor(() => {
       expect(screen.getByText("https://shared.claude.do/public/test-abc")).toBeInTheDocument();
     });
+  });
+
+  it("drops a stale publish result after Share is reopened for another file", async () => {
+    let resolveFirst!: (value: { ok: true; url: string }) => void;
+    mockPublishShared.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveFirst = resolve;
+    }));
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => expect(mockPublishShared).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("Close sheet"));
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+
+    expect(screen.getByText("b.ts")).toBeInTheDocument();
+    expect(screen.getByText("Public")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirst({ ok: true, url: "https://shared.claude.do/public/a-stale" });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("https://shared.claude.do/public/a-stale")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Public"));
+    await waitFor(() => {
+      expect(mockPublishShared).toHaveBeenLastCalledWith(
+        "/tmp/b.ts",
+        "public",
+        false,
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it("opens a published URL without granting window.opener", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => {
+      expect(screen.getByText("https://shared.claude.do/public/test-abc")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Open"));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://shared.claude.do/public/test-abc",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("shows TL;DR and Audio buttons for markdown files", () => {

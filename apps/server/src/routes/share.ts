@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 const PUBLISH_SHARED = "/home/claude/bin/publish-shared";
 const DEFAULT_PUBLIC_BASE_URL = "https://shared.claude.do/public";
 const DEFAULT_PRIVATE_BASE_URL = "https://shared.claude.do/private";
+const MAX_SHARE_BYTES = 50 * 1024 * 1024;
 
 const app = new Hono();
 
@@ -49,6 +50,14 @@ app.post("/publish", async (c) => {
     let stagingDir: string | undefined;
     let handleClosed = false;
     try {
+      const stats = await opened.handle.stat();
+      if (!stats.isFile()) {
+        return c.json({ ok: false, error: "not a regular file" }, 400);
+      }
+      if (stats.size > MAX_SHARE_BYTES) {
+        return c.json({ ok: false, error: "file too large" }, 413);
+      }
+
       stagingDir = await fs.mkdtemp(join(tmpdir(), "cpc-share-"));
       const stagedPath = join(stagingDir, basename(resolvedPath));
       await pipeline(
@@ -80,7 +89,8 @@ app.post("/publish", async (c) => {
       const url = output.match(/^URL: (.+)$/m)?.[1]?.trim();
       if (!url) {
         const tail = output.slice(-1_000).trim();
-        throw new Error(`publish-shared returned no URL${tail ? `: ${tail}` : ""}`);
+        console.error("publish-shared returned no URL", { stdoutTail: tail });
+        throw new Error("publish-shared returned no URL");
       }
 
       const destPath = output.match(/^Published: (.+)$/m)?.[1]?.trim();
@@ -97,8 +107,9 @@ app.post("/publish", async (c) => {
         await fs.rm(stagingDir, { recursive: true, force: true });
       }
     }
-  } catch (err: any) {
-    return c.json({ ok: false, error: err.message }, 500);
+  } catch (err) {
+    console.error("Failed to publish shared file:", err);
+    return c.json({ ok: false, error: "publish failed" }, 500);
   }
 });
 

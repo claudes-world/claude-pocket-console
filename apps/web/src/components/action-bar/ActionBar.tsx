@@ -73,6 +73,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const shareInFlightRef = useRef(false);
+  const shareSeqRef = useRef(0);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -422,6 +423,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {
     if (!viewingFile || shareInFlightRef.current) return;
     shareInFlightRef.current = true;
+    const seq = ++shareSeqRef.current;
     setShareLoading(true);
     setShareUrl(null);
     setShareError(null);
@@ -431,6 +433,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const data = await publishShared(viewingFile.path, scope, tmp, controller.signal);
+        if (seq !== shareSeqRef.current) return;
         if (data.ok && data.url) {
           haptic.success();
           setShareUrl(data.url);
@@ -445,6 +448,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
         clearTimeout(timeout);
       }
     } catch (err) {
+      if (seq !== shareSeqRef.current) return;
       const message = err instanceof DOMException && err.name === "AbortError"
         ? "Timed out"
         : err instanceof Error ? err.message : String(err);
@@ -453,7 +457,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       setStatus(`Failed: ${message}`);
     } finally {
       shareInFlightRef.current = false;
-      setShareLoading(false);
+      if (seq === shareSeqRef.current) setShareLoading(false);
     }
   };
   const handleCopyShareLink = async () => {
@@ -666,7 +670,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           onClose={() => setModal(null)}
           onPublish={(scope, tmp) => void handlePublishShared(scope, tmp)}
           onCopy={() => void handleCopyShareLink()}
-          onOpen={() => { if (shareUrl) window.open(shareUrl, "_blank"); }}
+          onOpen={() => { if (shareUrl) window.open(shareUrl, "_blank", "noopener,noreferrer"); }}
         />
       ) : null;
       break;
@@ -770,7 +774,14 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
                 Send to Chat
               </button>
               <button
-                onClick={() => { haptic.impact("light"); setShareUrl(null); setShareError(null); setModal("share"); }}
+                onClick={() => {
+                  haptic.impact("light");
+                  ++shareSeqRef.current;
+                  setShareLoading(false);
+                  setShareUrl(null);
+                  setShareError(null);
+                  setModal("share");
+                }}
                 style={{ ...btnStyle, background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}
               >
                 Share
