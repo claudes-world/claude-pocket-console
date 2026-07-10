@@ -1,4 +1,4 @@
-import React, { Children, isValidElement, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import React, { Children, isValidElement, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -33,12 +33,22 @@ export function extractFrontmatter(content: string): FrontmatterResult {
   const closingFence = closingFencePattern.exec(content);
   if (!closingFence) return { body: content, metadata: null };
 
+  const metadata = content.slice(openingFence[0].length, closingFence.index);
+  const metadataLines = metadata.split(/\r?\n/);
+  const nonEmptyLines = metadataLines.filter((line) => line.length > 0);
+  const hasYamlShape = nonEmptyLines.every((line) =>
+    /^\s|^#|^[A-Za-z0-9_.$-]+\s*:(\s|$)/.test(line),
+  );
+  if (metadata !== "" && (nonEmptyLines.length === 0 || !hasYamlShape)) {
+    return { body: content, metadata: null };
+  }
+
   let bodyStart = closingFence.index + closingFence[0].length;
   if (content[bodyStart] === "\n") bodyStart += 1;
 
   return {
     body: content.slice(bodyStart),
-    metadata: content.slice(openingFence[0].length, closingFence.index),
+    metadata,
   };
 }
 
@@ -113,6 +123,10 @@ const stopTouchPropagation = (e: React.TouchEvent) => e.stopPropagation();
 
 function FrontmatterMetadata({ metadata }: { metadata: string }) {
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [metadata]);
 
   return (
     <div style={{ marginBottom: 12 }}>

@@ -205,6 +205,64 @@ describe("MarkdownViewer — YAML frontmatter", () => {
     expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
     expect(container.querySelector(".md-content")!.textContent).toBe("Body only.");
   });
+
+  it("leaves a horizontal rule followed by a setext heading unchanged", () => {
+    const content = "---\nTitle\n---\nbody";
+    const { container } = renderMd(content);
+
+    expect(extractFrontmatter(content)).toEqual({ body: content, metadata: null });
+    expect(screen.queryByRole("button", { name: "metadata" })).toBeNull();
+    expect(container.querySelector(".md-content hr")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Title" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toContain("body");
+  });
+
+  it("leaves adjacent horizontal rules unchanged", () => {
+    const content = "---\n\n---\n\nBody after rules.";
+    const { container } = renderMd(content);
+
+    expect(extractFrontmatter(content)).toEqual({ body: content, metadata: null });
+    expect(screen.queryByRole("button", { name: "metadata" })).toBeNull();
+    expect(container.querySelectorAll(".md-content hr")).toHaveLength(2);
+    expect(container.querySelector(".md-content")!.textContent).toContain(
+      "Body after rules.",
+    );
+  });
+
+  it("strips frontmatter containing an indented nested list", () => {
+    const content = "---\nkey:\n  - item\n---\nNested body.";
+    const { container } = renderMd(content);
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Nested body.");
+  });
+
+  it("strips frontmatter containing a comment", () => {
+    const content = "---\n# metadata comment\nkey: value\n---\nComment body.";
+    const { container } = renderMd(content);
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Comment body.");
+  });
+
+  it("collapses metadata when its contents change", () => {
+    const { rerender } = renderMd("---\ntitle: First\n---\nFirst body.");
+    const metadataButton = screen.getByRole("button", { name: "metadata" });
+
+    fireEvent.click(metadataButton);
+    expect(metadataButton.getAttribute("aria-expanded")).toBe("true");
+
+    rerender(
+      <MarkdownViewer
+        content={"---\ntitle: Second\n---\nSecond body."}
+        fileName="second.md"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "metadata" }).getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
 });
 
 // ---------------------------------------------------------------------------
