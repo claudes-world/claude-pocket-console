@@ -22,12 +22,43 @@ export function middleTruncatePath(path: string, maxLength = FILE_PATH_MAX_LENGT
   const suffixBudget = Math.floor(visibleLength / 2);
   const boundaryPrefixEnd = path.lastIndexOf("/", prefixBudget - 1) + 1;
   const boundarySuffixStart = path.indexOf("/", path.length - suffixBudget);
-  const prefixEnd = boundaryPrefixEnd > 1 ? boundaryPrefixEnd : prefixBudget;
-  const suffixStart = boundarySuffixStart >= 0 ? boundarySuffixStart : path.length - suffixBudget;
+  const minPrefixSnapLength = Math.ceil(prefixBudget / 2);
+  const minSuffixSnapLength = Math.ceil(suffixBudget / 2);
+  let prefixEnd =
+    boundaryPrefixEnd > 1 && boundaryPrefixEnd >= minPrefixSnapLength
+      ? boundaryPrefixEnd
+      : prefixBudget;
+  let suffixStart =
+    boundarySuffixStart >= 0 &&
+    path.length - boundarySuffixStart >= minSuffixSnapLength
+      ? boundarySuffixStart
+      : path.length - suffixBudget;
 
   if (prefixEnd >= suffixStart) {
-    return `${path.slice(0, prefixBudget)}\u2026${path.slice(-suffixBudget)}`;
+    prefixEnd = prefixBudget;
+    suffixStart = path.length - suffixBudget;
   }
+
+  // Hard cuts use UTF-16 indices. Move a cut inward if it would leave one
+  // half of a surrogate pair visible; moving inward also preserves the
+  // maxLength guarantee.
+  if (
+    prefixEnd > 0 &&
+    prefixEnd < path.length &&
+    /[\uD800-\uDBFF]/.test(path[prefixEnd - 1]) &&
+    /[\uDC00-\uDFFF]/.test(path[prefixEnd])
+  ) {
+    prefixEnd -= 1;
+  }
+  if (
+    suffixStart > 0 &&
+    suffixStart < path.length &&
+    /[\uD800-\uDBFF]/.test(path[suffixStart - 1]) &&
+    /[\uDC00-\uDFFF]/.test(path[suffixStart])
+  ) {
+    suffixStart += 1;
+  }
+
   return `${path.slice(0, prefixEnd)}\u2026${path.slice(suffixStart)}`;
 }
 
@@ -696,6 +727,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             textAlign: "center",
             whiteSpace: filePathExpanded ? "normal" : "nowrap",
             overflowWrap: filePathExpanded ? "anywhere" : undefined,
+            maxHeight: filePathExpanded ? 72 : undefined,
+            overflow: filePathExpanded ? undefined : "hidden",
+            overflowX: filePathExpanded ? "hidden" : undefined,
+            overflowY: filePathExpanded ? "auto" : undefined,
+            WebkitOverflowScrolling: filePathExpanded ? "touch" : undefined,
+            textOverflow: filePathExpanded ? undefined : "ellipsis",
             flexShrink: 0,
           }}
         >
