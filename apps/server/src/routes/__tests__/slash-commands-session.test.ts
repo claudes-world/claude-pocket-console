@@ -143,6 +143,37 @@ describe("/compact session targeting", () => {
     expect(status).toBe(404);
     expect(sendKeysCalls()).toHaveLength(0);
   });
+
+  it("accepts a /compact-prefixed message for a non-default session", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { status } = await post("/compact", {
+      message: "/compact keep context on X",
+      session: "do-box--lane-a",
+    });
+    expect(status).toBe(200);
+    expect(sendKeysCalls()[0]?.args).toEqual([
+      "send-keys", "-t", "=do-box--lane-a:", "-l", "--", "/compact keep context on X",
+    ]);
+  });
+
+  it("rejects non-/compact free text for a non-default session 400 without sending", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { status, body } = await post("/compact", {
+      message: "echo pwned",
+      session: "do-box--lane-a",
+    });
+    expect(status).toBe(400);
+    expect(body.ok).toBe(false);
+    expect(sendKeysCalls()).toHaveLength(0);
+  });
+
+  it("still accepts non-/compact verbs (/new, /resume) for the default session", async () => {
+    const { status } = await post("/compact", { message: "/new" });
+    expect(status).toBe(200);
+    expect(sendKeysCalls()[0]?.args).toEqual([
+      "send-keys", "-t", `=${TMUX_SESSION}:`, "-l", "--", "/new",
+    ]);
+  });
 });
 
 describe("/reload-plugins session targeting", () => {

@@ -138,6 +138,14 @@ app.post("/compact", async (c) => {
     if ("response" in resolved) return resolved.response;
     const session = resolved.session;
 
+    // Fixed-verb doctrine, enforced at the trust boundary (PR #306 R2): the
+    // web client assembles the "/compact ..." prefix, but a non-default
+    // target must not accept arbitrary text as keystrokes. Deliberately
+    // relaxable when phase-2 confirmation-gated steering lands (#241).
+    if (session !== TMUX_SESSION && !/^\/compact(\s|$)/.test(message)) {
+      return c.json({ ok: false, error: "non-default sessions accept /compact commands only" }, 400);
+    }
+
     // Send via tmux send-keys — execFile (no shell) with -l + -- so the
     // user-provided message cannot inject via $(...) or backticks.
     await tracedTmux('tmux.compact', session, 'compact', async () => {

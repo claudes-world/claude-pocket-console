@@ -1,76 +1,81 @@
-# Phase Super-Swarm Synthesis — PR #306 (head d707da8)
+# Phase Super-Swarm Synthesis — PR #306 (head 9e1b505, R1 verification pass)
 
-**Models run:** Codex 5.4 ✓ | Codex 5.5 ✓ | Codex 5.6-sol ✓ | Codex 5.6-terra ✓ | Opus 4.6 ✗ (Claude MAX monthly spend limit) | Opus 4.7 ✗ (same) | Opus 4.8 ✗ (same) | Sonnet 5 ✗ (same) | Gemini 3.1 Pro ✓ | Cursor gpt-5.3-codex ✓
+**Models run — R0 (head d707da8):** Codex 5.4 ✓ | Codex 5.5 ✓ | Codex 5.6-sol ✓ | Codex 5.6-terra ✓ | Gemini 3.1 Pro ✓ | Cursor gpt-5.3-codex ✓ | Opus 4.6 ✗ | Opus 4.7 ✗ | Opus 4.8 ✗ | Sonnet 5 ✗ (Claude MAX monthly spend limit)
+**Models run — R1 (head 9e1b505, this pass):** Opus 4.6 ✓ | Opus 4.7 ✓ | Opus 4.8 ✓ | Sonnet 5 ✓ (subscription re-logged ~12:00 ET; all 4 completed cleanly, ~4 min total)
 
-**Note on this run:** the Claude Code process restarted mid-dispatch on the first attempt; no PR306 artifacts existed on disk or in the process table afterward, so this is a full fresh dispatch (not a resume). All 10 reviewers were re-dispatched with `disown` for restart-resilience. The 4 Claude-MAX reviewers (Opus 4.6/4.7/4.8, Sonnet 5) each failed **immediately and identically** with `You've hit your monthly spend limit · raise it at claude.ai/settings/usage` — this is an account-level hard stop, not a transient error, so no retry was attempted. 6/10 reviewers completed; synthesis proceeds on that basis per swarm doctrine (never block on a single reviewer, let alone a whole-family outage).
-
-**Phase:** dev-cpc-ui (world-os#218) — 6 member PRs (#295, #296, #297, #298, #303, #304), 17 commits, 11 files, +1031/-70
-**Diff size:** 1467 lines
+**Phase:** dev-cpc-ui (world-os#218) — 6 member PRs (#295, #296, #297, #298, #303, #304), 17 commits, +1 fix-review commit (9e1b505)
+**Diff size (R0, full phase diff):** 1467 lines · **Diff size (R1 fix commit alone):** ~640 lines across 6 files (verified directly via `gh api repos/.../commits/9e1b505`)
 
 ## Summary
 
-**Verdict: NEEDS_FIXES** — 5 of 6 completed reviewers flagged at least one real issue; only cursor-gpt-5-3 came back fully CLEAN. No reviewer found auth bypass, command injection, or data corruption. The two recurring cross-model findings are (1) an unguarded `decodeURIComponent` on the `file=` hash param that can white-screen the app on a malformed deep link (3/6), and (2) a silent 50-item cap on namespace repo discovery that drops repos with no diagnostic signal (4/6). A third, more consequential item is a **direct disagreement between reviewers** over whether `/pm_dobot` actually honors its PR-stated "phase 1, read-only view" invariant — Codex 5.4 says no (HIGH, mutating slash-commands reachable), while Codex 5.5 and Cursor 5.3 both explicitly reviewed the same command surface and call it safe/intentional. This needs Liam's read since it's a stated-goal-vs-implementation question, not a pure code bug.
+**Verdict: NEEDS_FIXES** — downgraded from the R0 read but NOT clean. The R1 fix commit correctly and completely resolves 5 of the 6 items from the R0 synthesis (H1 decode guard, H2 scan-cap-after-filter, M1 async repo discovery, M3 poll coalescing, M4 render-phase side effect) — this is confirmed both by direct diff inspection and by independent trace from all 4 fresh Claude reviewers; no new races or regressions were introduced by the concurrency refactor.
 
-Recommended action: fix the 2 consensus items (decode guard + truncation diagnostic) in a light R1 pass, and get Liam's explicit call on the `/pm_dobot` read-only disagreement before merge to `dev`.
+However, the R0 synthesis's disputed H3 item (`/pm_dobot`'s "read-only" claim) was **not actually resolved** by the PR-body wording change that landed alongside R1. Two of the four fresh reviewers (Opus 4.8 MEDIUM, Sonnet 5 HIGH) independently traced the actual compact-modal code path and found a real, concrete gap — **and I verified it myself directly against source at head 9e1b505**: `/pm_dobot`'s "Prompt for Continuity" flow sends a fully free-text, user-authored message (with no `/compact` prefix at all) as literal keystrokes into the pm-dobot tmux session, and the server's `/compact` route (`slash-commands.ts`) performs **zero content validation** on `body.message` — it isn't a "fixed verb," it's an arbitrary string. This means the newly-added PR-body language ("fleet-wide fixed-verb palette ... reachable by design") does not match the shipped implementation. This is bounded by Telegram-allowlist auth (not an external vuln), but it is a genuine invariant break, not a documentation nitpick, and it deserves Liam's explicit decision before merge — likely with a small code fix, not just a wording confirmation.
 
-## MUST FIX — multi-model consensus
+M2 (MarkdownViewer frontmatter heuristic, both directions) remains unresolved — confirmed untouched by the R1 diff and independently reproduced by 3 of 4 fresh reviewers with concrete before/after examples.
 
-| # | File:line | Models | Severity | Finding |
+## MUST FIX / NEEDS LIAM'S DECISION
+
+| # | File:line | Status | Models | Finding |
 |---|---|---|---|---|
-| H1 | `apps/web/src/lib/app-routing.ts:43` | 3/6 (codex-5.6-sol MED, codex-5.6-terra MED, cursor-5.3 MED) | MEDIUM (crash-class) | `resolveHashState()` calls `decodeURIComponent(fileMatch)` unguarded. A malformed hash (e.g. `#files&file=%`) throws `URIError` during initial render → white-screens the app before auth/session UI mounts. The adjacent `session=` param already has this guard; `file=` doesn't. Fix: wrap in try/catch, treat as absent on failure, add a `resolveInitialAppState()` regression test. |
-| H2 | `apps/server/src/routes/prs.ts:155` | 4/6 (codex-5.6-sol LOW, codex-5.6-terra LOW, gemini-3.1-pro MED, cursor-5.3 LOW) | LOW-MED (ops visibility) | `NAMESPACE_SCAN_CAP` caps the first 50 raw directory entries **before** filtering to actual repos, so non-repo entries eat the budget and later real repos silently vanish from PR-poller and branch-scope views with zero diagnostic signal. Fix: cap after filtering candidates, or emit a warning/metric + expose a `truncated: true` diagnostics flag. |
-| H3 | `apps/web/src/components/action-bar/ActionBar.tsx:422`, `CommandsSheet.tsx:16`, `apps/server/src/routes/terminal/slash-commands.ts:73` | 1/6 flagged as bug (codex-5.4 HIGH) — but **contradicted** by 2/6 (codex-5.5, cursor-5.3) who reviewed the same surface and called it "intentionally narrow by design" | DISPUTED — needs Liam's call | The PR body states `/pm_dobot` is "phase 1, read-only view." Codex 5.4 finds the palette still wires `Esc`/digits/`^B`/`/compact`/`/reload-plugins` to the viewed session, and the backend's `/send-keys`, `/compact`, `/reload-plugins` accept a client-picked session — i.e. `/pm_dobot` can actively drive the pm-dobot tmux session, not just view it. Codex 5.5 and Cursor 5.3 independently characterize the exact same surface as an intentional narrow write allowlist (keys/compact/reload-plugins only; restart/resize/git/rename/new/resume stay default-session-only) and call it safe. **This is a genuine cross-model split on the same code, not noise** — resolve by confirming with Liam whether "read-only phase 1" was meant literally (in which case H3 is a real scope bug) or whether the narrow allowlist was always the intended phase-1 scope (in which case the PR body wording is what's wrong, not the code). |
+| **H3-revised** | `apps/web/src/components/action-bar/{ActionBar,CommandsSheet,CompactModals}.tsx`, `apps/server/src/routes/terminal/slash-commands.ts:132-151` | **NOT resolved — verified real, code-confirmed** | R0: codex-5.4 HIGH vs codex-5.5/cursor-5.3 "safe by design". R1: opus-4.8 MEDIUM, sonnet-5 HIGH (both independently re-found it); opus-4.6/opus-4.7 still read it as safe (did not trace the modal payload path) | **Verified directly against source, not just reviewer claims.** `CommandsSheet.tsx`'s `/compact` button renders unconditionally regardless of `restricted` (unlike `/new`/`/resume`/`/branch`/`/rename`, which are correctly hidden). Tapping it → `CompactConfirmModal` → either (a) `CompactFocusModal`, which prefixes `/compact ` client-side (bounded), or (b) `ContinuityNotesModal`, whose `onSubmit` sends `continuityMsg` — a hardcoded template string plus an **unprefixed, unbounded** `Additional context from user: "<free text>"` fragment — straight to `handleCompact()` → `sendCompactCommand()` → `POST /api/terminal/compact`. Server-side, `slash-commands.ts`'s `/compact` handler takes `body.message` as a bare string with **no shape/prefix/length validation whatsoever** and sends it verbatim via `tmux send-keys -l -- message` + Enter to the resolved session (any existing session, by design, per the file's own doc comment referencing "Liam voice msg 1188"). Net effect: an authenticated Telegram user viewing `/pm_dobot` can type arbitrary free text that gets delivered, keystroke-for-keystroke, as an instruction-shaped message into the pm-dobot tmux session — not a "fixed verb," a genuine free-text channel. The terminal WS render itself stays correctly read-only (`disableStdin: true`, no keyboard input) — the gap is specifically in the REST-side compact/continuity flow. **This resolves the R0 dispute in favor of codex-5.4's original HIGH; the R1 wording change did not fix the underlying code.** **Needs Liam's decision:** (a) if "phase 1 read-only/fixed-verb" is meant literally, fix by constraining `body.message` server-side (e.g. reject anything not exactly `/compact` or `/compact <template>` for non-default sessions) and/or removing the free-text `ContinuityNotesModal` path when `targetSession` is set, plus an integration test that `/pm_dobot` cannot deliver attacker-chosen text; (b) if the narrow-UI + trusted-Telegram-auth model is the actually-intended phase-1 scope, no code change is needed, but the PR-body "fixed-verb palette" language should be corrected to something accurate (e.g. "restricted command palette, content not currently constrained server-side, gated by Telegram auth only"). |
+| M2 | `apps/web/src/components/MarkdownViewer.tsx:39-41` | **NOT resolved** — confirmed untouched by the R1 diff (file not in the commit's changed-file list) | R0: 2/6 (codex-5.4 over-strip direction, codex-5.6-sol+gemini under-recognize direction). R1: 3/4 (opus-4.7, opus-4.8, sonnet-5) independently reproduce the under-recognize direction with the concrete repro `extractFrontmatter("---\ntags:\n- cpc\n---\nBody")` → `{ metadata: null, body: "---\ntags:\n- cpc\n---\nBody" }` (raw frontmatter leaks into rendered doc). Opus 4.6 examined a narrower single-line variant and called that instance "not a bug," but did not test the exact mixed `key:`+`- item` repro the other 3 reproduced. | `hasYamlShape`'s regex accepts `key:` lines, `#comment` lines, and any whitespace-indented continuation, but rejects root-level indentless YAML sequence entries (`- cpc`) — and since the check requires *every* non-empty line to match, one such line anywhere in the block causes the *entire* frontmatter (including valid `key:` lines) to be left unstripped. Separately (over-strip direction, not retested this round but not touched by R1 either) a doc opening with `---\n  indented non-YAML\n---\n# Heading` gets wrongly swallowed as metadata via the bare `^\s` branch. Fix: replace the partial-grammar heuristic with a minimal real frontmatter/YAML-shape check (accept `^- ` sequence lines; require ≥1 top-level `key:` line before accepting continuation-only lines), with regression tests for both directions. Deferred is reasonable given display-only impact (no crash), but flagging as still-open, not silently dropped. |
 
-## SHOULD FIX (MEDIUM)
+## CONFIRMED FIXED — verified against the R1 diff, not just reviewer claims
 
-| # | Models | Finding |
+| # | Prior finding (R0) | Verification |
 |---|---|---|
-| M1 | 2/6 (codex-5.6-sol, gemini-3.1-pro), disagree on severity (MED vs HIGH) | `apps/server/src/routes/prs.ts` `discoverRepos()` uses synchronous `execFileSync`/git subprocess calls (up to ~100 per full namespace scan) on the same Node event loop that services the terminal WebSockets. Gemini rates this HIGH (real-time latency/stutter risk); codex-5.6-sol rates it MEDIUM. Fix: convert to `execFileAsync` + bounded `Promise.all` concurrency, and share one in-flight scan promise across `repoCache` so concurrent triggers await the same scan (also closes part of the M3 poll-race below). |
-| M2 | 2/6 (codex-5.4 over-permissive direction, codex-5.6-sol + gemini under-permissive direction — same function, opposite-direction bugs) | `MarkdownViewer.tsx` frontmatter heuristic (`extractFrontmatter`/`hasYamlShape`) has edge cases on both sides: codex-5.4 shows it over-strips (a doc starting with `---\n  npm install\n---\n# Heading` gets wrongly treated as frontmatter); codex-5.6-sol/gemini show it under-recognizes (root-level indentless YAML sequences like `tags:\n- cpc` fail the regex and leak raw frontmatter to the user). Both point at the same partial-grammar heuristic — worth replacing with a real minimal frontmatter parser rather than patching both directions individually. |
-| M3 | 1/6 (codex-5.6-sol) | `apps/server/src/routes/prs.ts:309` — `start()` and `POST /refresh` can both invoke `pollOnce()` concurrently with no in-flight guard, multiplying `gh` API traffic and risking out-of-order snapshot publication. Fix: coalesce concurrent calls behind one promise, or gate next poll on prior completion. (Same root cause/fix family as M1's shared-scan-promise suggestion.) |
-| M4 | 1/6 (gemini-3.1-pro) | `apps/web/src/App.tsx` — `window.history.replaceState` is called inside the `useState` initializer for `initialRoute`, a render-phase side effect. Not spec-pure; can misbehave under Strict Mode/Concurrent Mode double-invocation. Fix: move to a `useEffect` keyed on `initialRoute.redirectPath`. |
+| H1 | Unguarded `decodeURIComponent(fileMatch)` in `app-routing.ts:43` (3/6 R0) | **Fixed.** Diff shows a `try { file = decodeURIComponent(fileMatch); } catch { /* treat as absent */ }` wrapper (app-routing.ts). Regression test added: `"treats a malformed file hash value as absent"`. Independently confirmed by all 4 R1 reviewers. |
+| H2 | Namespace scan cap applied before filtering to real repos, silent truncation (4/6 R0) | **Fixed.** Diff shows `childRepos` is now filtered via `existsSync(.git)` *before* the `NAMESPACE_SCAN_CAP` slice, with `console.warn` naming the namespace + dropped count when truncation actually occurs. New test asserts the warning fires with `dropped 1` and the correct namespace path. Independently confirmed by all 4 R1 reviewers. |
+| M1 | Sync `execFileSync` blocking the Node event loop in `discoverRepos` (2/6 R0, severity split MED/HIGH) | **Fixed.** `discoverRepos`/`scanRepos` now use a promisified `execGit` wrapper over `execFile`, batched at `GIT_SCAN_CONCURRENCY = 8` via `Promise.all`. No more sync subprocess calls on the WS event loop. |
+| M3 | Concurrent `pollOnce()` / repo-scan race, no in-flight guard (1/6 R0) | **Fixed.** Both `discoverRepos()` (`repoScanInFlight`) and `PrPoller.pollOnce()` (`pollInFlight`) now coalesce concurrent callers behind one shared promise, cleared via `.finally()` on both success and failure paths. New tests explicitly exercise the coalescing behavior for both. All 4 R1 reviewers independently traced the microtask ordering and found no stale-cache/lost-update race. |
+| M4 | React render-phase side effect (`window.history.replaceState` in `useState` initializer) (1/6 R0) | **Fixed.** Moved into a `useEffect` keyed on `initialRoute.redirectPath`; `resolveInitialAppState` in the initializer is now pure. |
 
-## DEFER (LOW)
+## DEFER (LOW) — carried forward + new this round
 
-- `apps/web/src/lib/app-routing.ts:72` (codex-5.4, 1/6) — alias resolution is exact-path only; `/dev/pm_dobot` and `/pm_dobot/` both silently fall back to default terminal session instead of resolving the alias. Low real-world impact (dev-only prefix + trailing slash), fine as a follow-up.
+- `apps/web/src/lib/app-routing.ts` alias resolution exact-path-only (`/pm_dobot/`, `/dev/pm_dobot` fall back to default) — R0: codex-5.4; R1: opus-4.7, opus-4.8 confirm still present. Low real-world impact, follow-up.
+- **New (opus-4.8):** `apps/server/src/routes/prs.ts` depth-2 child-symlink guard asymmetry — namespace-level symlinks are correctly skipped via `lstatSync().isSymbolicLink()`, but the child-repo filter doesn't mirror that check, so a symlinked child inside a real namespace could get scanned. Trusted local filesystem, output still gated by `parseGitRemote` (github.com-only) — no data escapes. Worth a one-line comment or symmetry fix.
+- **New (opus-4.7, sonnet-5):** `PrPoller.start()` calls `void this.pollOnce()` with no `.catch()`. Latent only — `runPollOnce` cannot currently reject (every internal path is caught) — but worth a defensive top-level `.catch()` so a future edit can't introduce an unhandled rejection.
+- **New (opus-4.7):** the >50-repo namespace-cap slice order is `readdirSync` order (not sorted), so which 50 repos survive is filesystem/host-dependent. Cosmetic-only; sort before slicing if determinism matters.
 
 ## SKIP (false positive / out of scope)
 
-- None identified — no reviewer raised anything judged to be a false positive or clearly out-of-scope architecture drift in this run.
+- None identified across either round.
 
 ## Per-model verdicts
 
-- **codex-5.4**: NEEDS_FIXES — 1 HIGH (/pm_dobot mutation surface), 1 MED (frontmatter over-strip), 1 LOW (alias routing).
-- **codex-5.5**: CLEAN — no findings; cross-cutting notes explicitly assert the /pm_dobot write surface is intentionally narrow and safe (directly disagrees with codex-5.4's HIGH).
-- **codex-5.6-sol**: NEEDS_FIXES — 0 HIGH, 4 MED (decode guard, frontmatter under-recognition, sync git-subprocess event-loop block, poll race), 1 LOW (cap-before-filter truncation).
-- **codex-5.6-terra**: NEEDS_FIXES — 0 HIGH, 1 MED (decode guard), 1 LOW (truncation).
-- **gemini-3.1-pro**: NEEDS_FIXES — 1 HIGH (sync execFileSync event-loop block), 3 MED (render-phase side effect, frontmatter under-recognition, truncation-visibility).
-- **cursor-gpt-5.3**: CLEAN — no findings; cross-cutting notes match codex-5.5's language on /pm_dobot almost verbatim (independent confirmation the write surface is by-design-narrow).
-- **opus-4.6 / opus-4.7 / opus-4.8 / sonnet-5**: ✗ FAILED — Claude MAX subscription monthly spend limit reached before any output was produced (`claude.ai/settings/usage`). Zero signal from this family this run.
+**R0 (head d707da8):**
+- codex-5.4: NEEDS_FIXES — 1 HIGH (/pm_dobot), 1 MED (frontmatter over-strip), 1 LOW (alias routing).
+- codex-5.5: CLEAN — asserted /pm_dobot safe-by-design (now shown incomplete — didn't trace the compact-modal payload).
+- codex-5.6-sol: NEEDS_FIXES — 4 MED (decode guard, frontmatter, sync event-loop block, poll race), 1 LOW.
+- codex-5.6-terra: NEEDS_FIXES — 1 MED (decode guard), 1 LOW.
+- gemini-3.1-pro: NEEDS_FIXES — 1 HIGH (sync event-loop block), 3 MED.
+- cursor-gpt-5.3: CLEAN — asserted /pm_dobot safe-by-design (same gap as codex-5.5).
 
-## Cross-model overlap stats
+**R1 (head 9e1b505):**
+- **opus-4.6**: CLEAN (soft) — confirmed all 5 R1 fixes correct; 1 LOW (frontmatter over-strip only). Read `/pm_dobot` at the target-session-validation level and called it matching design — **did not trace the compact-modal free-text payload**, so missed H3-revised.
+- **opus-4.7**: NEEDS_FIXES (1 MEDIUM: frontmatter) — confirmed all 5 R1 fixes correct via deep concurrency trace; 3 LOW. Also read `/pm_dobot` as matching the now-stated design — **did not trace the compact-modal free-text payload**, so also missed H3-revised.
+- **opus-4.8**: NEEDS_FIXES (1 MEDIUM: H3-revised, correctly identified) — confirmed all 5 R1 fixes correct; explicitly re-surfaced the R0 dispute and traced it to `body.message` being unvalidated free text, but capped severity at MEDIUM given the trusted-Telegram-auth bound. 5 LOW.
+- **sonnet-5**: NEEDS_FIXES (1 HIGH: H3-revised) — confirmed all 5 R1 fixes correct; did the deepest trace of the four, citing exact modal component names/lines and an ActionBar.tsx code comment that self-acknowledges the non-default-target reachability, explicitly declaring the R0 dispute resolved in codex-5.4's favor. Also flagged M2 as unresolved (confirmed untouched by R1 diff). 1 MEDIUM (M2), 3 LOW.
 
-- Namespace scan cap silently truncating repos: **4/6**
-- Unguarded `decodeURIComponent` on `file=` hash: **3/6**
-- Sync git-subprocess event-loop block in `discoverRepos`: **2/6** (severity split MED/HIGH)
-- Frontmatter heuristic edge cases (opposite directions, same function): **2/6** distinct bugs, both real
-- `/pm_dobot` read-only-invariant disagreement: **1/6 flags HIGH bug vs 2/6 explicitly assert safe-by-design** — the most consequential split in this run
-- Concurrent poll race: **1/6**
-- React render-phase side effect: **1/6**
-- Alias exact-path brittleness: **1/6**
+## Cross-model overlap stats (combined R0+R1)
+
+- H1 (decode guard): flagged 3/6 in R0, confirmed-fixed 4/4 in R1.
+- H2 (scan-cap truncation): flagged 4/6 in R0, confirmed-fixed 4/4 in R1.
+- M1 (sync event-loop block): flagged 2/6 in R0, confirmed-fixed 4/4 in R1.
+- M3 (poll race): flagged 1/6 in R0, confirmed-fixed 4/4 in R1.
+- M4 (render-phase side effect): flagged 1/6 in R0, confirmed-fixed 4/4 in R1.
+- **H3-revised (/pm_dobot free-text gap): 1/6 in R0 (codex-5.4) → 2/4 in R1 independently re-find the identical underlying mechanism (opus-4.8, sonnet-5), 2/4 still miss it (opus-4.6, opus-4.7) → verified directly against source by this orchestrator as real. Net: 3 independent reviewers (across two rounds) plus direct source verification, vs. 4 reviewers who read it as safe without tracing the actual payload path.**
+- M2 (frontmatter, under-recognize direction): 2/6 in R0 → 3/4 in R1 reproduce it; untouched by R1 diff, confirmed still open.
 
 ## Decision
 
-Recommend a light **R1 fix-round** before merge to `dev`, scoped to the 2 true multi-model-consensus items plus the disputed `/pm_dobot` item resolved by Liam's read (not by more code):
+**Recommend a small, targeted R2 fix-round before merge to `dev`, gated on Liam's read of H3-revised:**
 
-1. Guard `decodeURIComponent(fileMatch)` in `resolveHashState()` (app-routing.ts:43) with try/catch + regression test — H1.
-2. Fix namespace-scan cap to apply after filtering to real repos, or add a truncation diagnostic — H2.
-3. Liam decision on H3 (`/pm_dobot`): is the current narrow write-allowlist (keys/compact/reload-plugins only) the intended phase-1 scope, or does "read-only" mean literally no session-mutating commands? If the latter, scope a follow-up fix; if the former, correct the PR body wording only (no code change needed).
-4. Optional same-pass cleanup (cheap, same root cause as H2/M3): convert `discoverRepos`'s sync git calls to async + shared in-flight promise, which also closes the M3 poll-race and M1 event-loop-block concerns in one change.
-5. M2 (frontmatter heuristic) and M4 (render-phase side effect) are real but lower urgency — can ride in the same R1 pass if cheap, otherwise file as fast follow-ups.
+1. **H3-revised — Liam's decision first, code likely needed.** The free-text `/compact`+"Prompt for Continuity" channel into any client-picked session (not just the intended fixed-verb set) is verified real at the code level, not just a reviewer artifact. If phase-1 is meant to be genuinely read-only/fixed-verb: constrain `body.message` server-side for non-default sessions (allow only `message === "/compact"` or a server-templated continuity string, no user-supplied free text) and remove or gate the free-text `ContinuityNotesModal` input when `targetSession` is set; add an integration test proving `/pm_dobot` cannot deliver attacker-chosen text. If the current behavior is judged acceptable given trusted Telegram-auth gating, no code change is required, but correct the PR-body language, since "fixed-verb palette" is not an accurate description of what ships today.
+2. M2 (frontmatter heuristic) — small, mechanical fix; can ride in the same pass or fast-follow given display-only impact.
+3. The 3 new LOW items (symlink-guard asymmetry, uncaught pollOnce rejection, non-deterministic cap-slice order) are cheap, optional hardening — bundle if convenient, otherwise file as follow-ups.
 
-Total fix-round budget: ~20-30 min codex (items 1, 2, 4 are small, mechanical fixes; item 3 is a conversation with Liam, not code).
+Total R2 budget: ~15-20 min codex for item 1's code path (if Liam wants the fix) + ~10 min for M2; item 1's Liam-decision has no time cost either way but is the actual blocker for merge confidence.
 
-**The user decision needed:** H3 — whether `/pm_dobot`'s current narrow-write-allowlist behavior matches Liam's intended "phase 1, read-only" scope, before this can be called done regardless of what code changes (if any) land.
-
-Also worth flagging: 4 of the planned 10 reviewers (the entire Claude-MAX family) were unavailable this run due to an account-level monthly spend cap — if a second opinion is wanted on the disputed H3 item specifically, it will need `--lineup no-claude` substitutes (codex/gemini/cursor only) or to wait for the MAX quota reset, since re-running the same family won't produce different results while the cap is in effect.
+**The user decision needed:** Whether `/pm_dobot`'s current free-text "Prompt for Continuity" channel is acceptable as-is (trusted-Telegram-auth-bounded design choice) or needs a server-side content constraint before this phase can be called done. This is now a verified code fact, not a reviewer disagreement — the swarm did its job by surfacing a real discrepancy between the newly-stated PR intent and the actual shipped behavior.
