@@ -1,0 +1,86 @@
+export type AppTab = "terminal" | "files" | "links" | "voice" | "prs";
+
+type BotPathAlias = Readonly<{
+  tab: AppTab;
+  session: string | null;
+}>;
+
+export const BOT_PATH_ALIASES: Readonly<Record<string, BotPathAlias>> = {
+  "/claude_do_bot": { tab: "terminal", session: null },
+};
+
+const DEFAULT_BOT_PATH = "/claude_do_bot";
+const DEFAULT_STATE: InitialAppState = {
+  tab: "terminal",
+  session: null,
+  file: null,
+};
+const TABS: AppTab[] = ["terminal", "files", "links", "voice", "prs"];
+
+// Client-side mirror of the server's session-name allowlist (SESSION_NAME_RE
+// in apps/server/src/routes/utils.ts). The server re-validates every session;
+// this drops invalid names before they become WebSocket parameters.
+const SESSION_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+
+export interface InitialAppState {
+  tab: AppTab;
+  session: string | null;
+  file: string | null;
+}
+
+export interface InitialAppResolution extends InitialAppState {
+  redirectPath: string | null;
+}
+
+function validatedSession(session: string | null): string | null {
+  return session !== null && SESSION_NAME_RE.test(session) ? session : null;
+}
+
+function resolveHashState(hashParams: string): InitialAppState {
+  const fileMatch = hashParams.match(/file=([^&]+)/)?.[1];
+  const file = fileMatch ? decodeURIComponent(fileMatch) : null;
+  const requestedTab = file
+    ? "files"
+    : (hashParams.split("&")[0] || "terminal") as AppTab;
+
+  let session: string | null = null;
+  const sessionMatch = hashParams.match(/(?:^|&)session=([^&]+)/)?.[1];
+  if (sessionMatch) {
+    try {
+      session = validatedSession(decodeURIComponent(sessionMatch));
+    } catch {
+      // A malformed hand-typed/truncated session deep link behaves like the
+      // default session instead of throwing during the initial render.
+    }
+  }
+
+  return {
+    tab: TABS.includes(requestedTab) ? requestedTab : "terminal",
+    session,
+    file,
+  };
+}
+
+/** Resolve the first-render route without reading from or mutating window. */
+export function resolveInitialAppState(pathname: string, hash: string): InitialAppResolution {
+  const hashParams = hash.replace(/^#/, "");
+  if (hashParams) {
+    return { ...resolveHashState(hashParams), redirectPath: null };
+  }
+
+  const redirectPath = pathname === "/" ? DEFAULT_BOT_PATH : null;
+  const alias = BOT_PATH_ALIASES[pathname] ?? (redirectPath ? BOT_PATH_ALIASES[redirectPath] : undefined);
+  if (!alias) return { ...DEFAULT_STATE, redirectPath };
+
+  return {
+    tab: alias.tab,
+    session: validatedSession(alias.session),
+    file: null,
+    redirectPath,
+  };
+}
+
+/** Build the replaceState URL while leaving auth query/hash text untouched. */
+export function buildLandingUrl(pathname: string, search: string, hash: string): string {
+  return `${pathname}${search}${hash}`;
+}
