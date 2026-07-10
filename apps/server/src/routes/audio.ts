@@ -180,7 +180,14 @@ app.post("/send-telegram", async (c) => {
     const { botToken, chatId } = await getTelegramCreds();
     const fileName = audioPath.split("/").pop() || "audio.mp3";
     const shortPath = audioPath.replace(/^\/home\/claude\//, "~/");
-    const encodedPath = encodeURIComponent(audioPath);
+    const docPath = audioPath.replace(/\.mp3$/i, ".md");
+    // Allowlist-guard the derived doc path so a planted symlink can't reveal
+    // whether an out-of-bounds file exists; its realpath() also proves the doc
+    // exists, in one lookup — a separate existsSync() would reopen the
+    // check-then-use race PR #292 closed for reads. Fall back to the audio link.
+    // Known limitation: an uppercase-extension sibling (note.MD) is not discovered and falls back to the audio link.
+    const deepLinkPath = (await isPathAllowed(resolve(docPath))) ? docPath : audioPath;
+    const encodedPath = encodeURIComponent(deepLinkPath);
     const deepUrl = `https://cpc.claude.do/#file=${encodedPath}`;
 
     // Shell out via execFile — argv array, no /bin/bash interpolation. The

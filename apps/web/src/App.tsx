@@ -102,6 +102,8 @@ const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc
 export function App() {
   const [authed, setAuthed] = useState(() => hasAuth());
   const [connected, setConnected] = useState(false);
+  // dev's resolver (cpc-ui group) supersedes this branch's inline hash parse;
+  // it carries the same guarded decodeURIComponent for malformed deep links.
   const [initialRoute] = useState(() =>
     resolveInitialAppState(window.location.pathname, window.location.hash));
 
@@ -133,7 +135,12 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
-  const [initialFilePath] = useState<string | null>(initialRoute.file);
+  const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialRoute.file, sequence: 0 });
+  // FileViewer is keyed by this request sequence. Keep the latest request in
+  // a ref so callbacks retained by an unmounted viewer cannot publish a late
+  // file/path result over the replacement viewer's state.
+  const fileOpenRequestRef = useRef(fileOpenRequest);
+  fileOpenRequestRef.current = fileOpenRequest;
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
   });
@@ -155,6 +162,21 @@ export function App() {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
   const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
+
+  const fileViewerSequence = fileOpenRequest.sequence;
+  const handleFileViewChange = useCallback((file: { path: string; name: string } | null) => {
+    if (fileViewerSequence === fileOpenRequestRef.current.sequence) setViewingFile(file);
+  }, [fileViewerSequence]);
+  const handleFilePathChange = useCallback((path: string) => {
+    if (fileViewerSequence === fileOpenRequestRef.current.sequence) setCurrentFolder(path);
+  }, [fileViewerSequence]);
+
+  const openFileFromReadingList = useCallback((path: string) => {
+    setViewingFile(null);
+    setFileOpenRequest((request) => ({ path, sequence: request.sequence + 1 }));
+    setIsAnimating(true);
+    setActiveTab("files");
+  }, []);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -555,10 +577,10 @@ export function App() {
             />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
+            <FileViewer key={fileOpenRequest.sequence} onClose={() => setActiveTab("terminal")} initialFile={fileOpenRequest.path} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={handleFileViewChange} onPathChange={handleFilePathChange} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Links onClose={() => setActiveTab("terminal")} />
+            <Links onClose={() => setActiveTab("terminal")} onOpenFile={openFileFromReadingList} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <VoiceRecorder />

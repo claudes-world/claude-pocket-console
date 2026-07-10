@@ -26,6 +26,7 @@ import { voiceRoute } from "./routes/voice.js";
 import { markdownRoute } from "./routes/markdown.js";
 import { readingListRoute } from "./routes/reading-list.js";
 import { prsRoute } from "./routes/prs.js";
+import { shareRoute } from "./routes/share.js";
 import { isAssetLikePath } from "./lib/spa-fallback.js";
 
 // Load env from secrets file if not already set
@@ -159,6 +160,7 @@ app.route("/api/voice", voiceRoute);
 app.route("/api/markdown", markdownRoute);
 app.route("/api/reading-list", readingListRoute);
 app.route("/api/prs", prsRoute);
+app.route("/api/share", shareRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)
 app.get("/ws/terminal", upgradeWebSocket(terminalWsRoute));

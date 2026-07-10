@@ -70,6 +70,12 @@ export const ALLOWED_FILE_ROOTS = [
   "/tmp",
 ] as const;
 
+// publish = external exposure, deliberately narrower than read; widen
+// deliberately when a use case lands.
+export const ALLOWED_SHARE_ROOTS = [
+  "/home/claude/claudes-world",
+] as const;
+
 
 function getRealRoot(root: string): Promise<string> {
   const key = resolve(root);

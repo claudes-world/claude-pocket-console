@@ -47,6 +47,7 @@ export type Modal =
   | "file-options"
   | "file-search"
   | "audio-gen"
+  | "share"
   | "tldr"
   | "confirm-delete"
   | "reconnect-menu";
@@ -66,6 +67,13 @@ export interface SearchResult {
 export interface AudioStatus {
   exists: boolean;
   path?: string;
+}
+
+export interface ReadingListItem {
+  id: number;
+  path: string;
+  title: string | null;
+  created_at: number;
 }
 
 export interface GitBranch {
