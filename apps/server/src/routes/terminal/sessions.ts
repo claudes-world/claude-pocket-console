@@ -33,8 +33,11 @@ export interface TmuxSessionInfo {
   command: string;
   /** false when the first pane has dropped to a bare shell */
   alive: boolean;
-  /** true only for the server's configured TMUX_SESSION (the one session
-   *  the REST write endpoints target) — everything else is view-only */
+  /** true only for the server's configured TMUX_SESSION — the implicit
+   *  write target and the one that gets the full command set / pencil. Other
+   *  sessions are still reachable by the restricted palette (Esc/digits/
+   *  /compact/etc.) with an explicit session param; they are "not the default
+   *  writable session", not strictly view-only (Option A, Liam msg 1607). */
   writable: boolean;
 }
 

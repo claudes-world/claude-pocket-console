@@ -524,7 +524,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       );
       break;
     case "continuity-notes": {
-      // Collapse the free-text note to a single line: a view-only (non-default)
+      // Collapse the free-text note to a single line: a restricted (non-default)
       // session rejects multi-line payloads server-side (newline = an extra
       // submitted command line), so a pasted multi-line note would otherwise
       // 400. Single-lining keeps the flow working against any target.

@@ -83,12 +83,15 @@ async function resolvePaletteTarget(c: any, body: any): Promise<{ session: strin
 
 // Control chars (C0 + DEL) in a literal `send-keys` payload act as submit /
 // command separators in the target terminal — a single newline turns one
-// "verb" into two submitted lines. For a NON-default session (one the mini
-// app is only viewing) that would let a compaction message or key string
-// smuggle extra commands into a session that is not the writable default, so
-// literal payloads to non-default sessions must be single-line. The default
-// session (Liam's own, writable) intentionally keeps multi-line steering —
-// e.g. the "/fork\n/rename" flow relies on an embedded newline.
+// "verb" into two submitted lines. For a NON-default (restricted) session —
+// one reached through the restricted palette, which DOES allow gated
+// single-line free text (Option A, Liam msg 1607) — that would let a
+// compaction message or key string smuggle EXTRA commands past the one the
+// user actually submitted, so literal payloads to non-default sessions must
+// be single-line. This bounds each action to one line; it is not a view-only
+// restriction. The default session (Liam's own, writable) intentionally
+// keeps multi-line steering — e.g. the "/fork\n/rename" flow relies on an
+// embedded newline.
 const LITERAL_CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
 
 /** True when a literal payload must be rejected for the given target: a
@@ -129,10 +132,11 @@ app.post("/send-keys", async (c) => {
         execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, ...tokens])
       );
     } else {
-      // A non-default session must not receive a multi-line literal payload:
-      // an embedded newline submits an extra command line into a session the
-      // mini app is only viewing (PR #306 R3). execFile already blocks shell
-      // injection; this blocks command *chaining* at the tmux layer.
+      // A non-default (restricted) session must not receive a multi-line
+      // literal payload: an embedded newline submits an extra command line
+      // beyond the single line the user meant (PR #306 R3). Free single-line
+      // text IS allowed (Option A); execFile already blocks shell injection;
+      // this blocks command *chaining* at the tmux layer.
       if (isDisallowedNonDefaultLiteral(session, keys)) {
         return c.json({ ok: false, error: "non-default sessions accept single-line keys only" }, 400);
       }
@@ -161,12 +165,12 @@ app.post("/compact", async (c) => {
     if ("response" in resolved) return resolved.response;
     const session = resolved.session;
 
-    // A non-default session must not receive a multi-line compaction message:
-    // an embedded newline submits an extra command line into a session the
-    // mini app is only viewing (PR #306 R3, superseding the bypassable
+    // A non-default (restricted) session must not receive a multi-line
+    // compaction message: an embedded newline submits an extra command line
+    // beyond the one the user meant (PR #306 R3, superseding the bypassable
     // "/compact"-prefix check — `\s` matched `\n`). The single-line message
-    // itself is still free text, bounded by Telegram auth; broadening or
-    // narrowing that scope is the phase-2 steering decision (#241).
+    // itself is intentionally free text (Option A, Liam msg 1607), bounded by
+    // Telegram auth; the durable confirm-gated steering design is #241 phase-2.
     if (isDisallowedNonDefaultLiteral(session, message)) {
       return c.json({ ok: false, error: "non-default sessions accept single-line messages only" }, 400);
     }
