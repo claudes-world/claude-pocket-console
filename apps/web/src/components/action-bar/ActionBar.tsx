@@ -304,49 +304,9 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       }
     }
   };
-  const handleGenerateAudio = async (filePath: string) => {
-    if (audioInFlightRef.current) return;
-    audioInFlightRef.current = true;
-    setAudioLoading(true);
-    setAudioOp("generating");
-    setStatus("Generating audio...");
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
-      try {
-        const data = await generateAudio(filePath, controller.signal);
-        if (data.ok) {
-          haptic.success();
-          setAudioStatus({ exists: true, path: data.path });
-          setStatus("Audio generated");
-        } else {
-          haptic.error();
-          setStatus(`Failed: ${data.error}`);
-        }
-      } finally {
-        // clearTimeout in finally so a thrown fetch doesn't leave the
-        // 60s timeout dangling and accumulating. (Copilot round-3 review.)
-        clearTimeout(timeout);
-      }
-    } catch (err) {
-      haptic.error();
-      setStatus(
-        err instanceof DOMException && err.name === "AbortError"
-          ? "Timed out"
-          : `Error: ${err instanceof Error ? err.message : String(err)}`
-      );
-    } finally {
-      audioInFlightRef.current = false;
-      setAudioOp("idle");
-      setAudioLoading(false);
-    }
-  };
-  const handleSendAudio = async (audioPath: string) => {
-    if (audioInFlightRef.current) return;
-    audioInFlightRef.current = true;
-    setAudioLoading(true);
+  const sendAudio = async (audioPath: string, pendingStatus = "Sending to Telegram...") => {
     setAudioOp("sending");
-    setStatus("Sending to Telegram...");
+    setStatus(pendingStatus);
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
@@ -371,6 +331,52 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           ? "Timed out"
           : `Error: ${err instanceof Error ? err.message : String(err)}`
       );
+    }
+  };
+  const handleGenerateAudio = async (filePath: string) => {
+    if (audioInFlightRef.current) return;
+    audioInFlightRef.current = true;
+    setAudioLoading(true);
+    setAudioOp("generating");
+    setStatus("Generating audio...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+      let data: Awaited<ReturnType<typeof generateAudio>>;
+      try {
+        data = await generateAudio(filePath, controller.signal);
+      } finally {
+        // clearTimeout in finally so a thrown fetch doesn't leave the
+        // 60s timeout dangling and accumulating. (Copilot round-3 review.)
+        clearTimeout(timeout);
+      }
+      if (data.ok && data.path) {
+        haptic.success();
+        setAudioStatus({ exists: true, path: data.path });
+        await sendAudio(data.path, "Audio generated — sending to Telegram…");
+      } else {
+        haptic.error();
+        setStatus(`Failed: ${data.error}`);
+      }
+    } catch (err) {
+      haptic.error();
+      setStatus(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Timed out"
+          : `Error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      audioInFlightRef.current = false;
+      setAudioOp("idle");
+      setAudioLoading(false);
+    }
+  };
+  const handleSendAudio = async (audioPath: string) => {
+    if (audioInFlightRef.current) return;
+    audioInFlightRef.current = true;
+    setAudioLoading(true);
+    try {
+      await sendAudio(audioPath);
     } finally {
       audioInFlightRef.current = false;
       setAudioOp("idle");
