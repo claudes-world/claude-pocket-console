@@ -7,6 +7,29 @@ import { getFileIcon } from "./file-icons";
 import "./FileViewer.css";
 
 const PASTE_MAX_BYTES = 1024 * 1024;
+const FILE_PATH_MAX_LENGTH = 60;
+
+/**
+ * Compact a path around its middle, preferring directory boundaries so the
+ * filesystem root and the most specific trailing directories stay visible.
+ */
+export function middleTruncatePath(path: string, maxLength = FILE_PATH_MAX_LENGTH): string {
+  if (path.length <= maxLength) return path;
+  if (maxLength <= 1) return "\u2026".slice(0, Math.max(0, maxLength));
+
+  const visibleLength = maxLength - 1;
+  const prefixBudget = Math.ceil(visibleLength / 2);
+  const suffixBudget = Math.floor(visibleLength / 2);
+  const boundaryPrefixEnd = path.lastIndexOf("/", prefixBudget - 1) + 1;
+  const boundarySuffixStart = path.indexOf("/", path.length - suffixBudget);
+  const prefixEnd = boundaryPrefixEnd > 1 ? boundaryPrefixEnd : prefixBudget;
+  const suffixStart = boundarySuffixStart >= 0 ? boundarySuffixStart : path.length - suffixBudget;
+
+  if (prefixEnd >= suffixStart) {
+    return `${path.slice(0, prefixBudget)}\u2026${path.slice(-suffixBudget)}`;
+  }
+  return `${path.slice(0, prefixEnd)}\u2026${path.slice(suffixStart)}`;
+}
 
 /**
  * Build a default filename from content. If the first non-empty line is a
@@ -135,6 +158,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [filePath, setFilePath] = useState<string>("");
+  const [filePathExpanded, setFilePathExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsedRanges, setCollapsedRanges] = useState<Set<number>>(new Set());
@@ -385,6 +409,7 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
       setFileContent(data.content);
       setFileName(name);
       setFilePath(path);
+      setFilePathExpanded(false);
       onViewChange?.({ path, name });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to read file");
@@ -551,6 +576,10 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
     });
   }, [entries, showHidden, sortMode]);
   const shortPath = currentPath.replace("/home/claude/", "~/");
+  const fileDirectoryPath = useMemo(() => {
+    const lastSlash = filePath.lastIndexOf("/");
+    return lastSlash <= 0 ? "/" : `${filePath.slice(0, lastSlash)}/`;
+  }, [filePath]);
 
   return (
     <div className="cpc-file-viewer" style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
@@ -639,6 +668,39 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
             );
           })}
         </div>
+      )}
+
+      {/* Compact parent path for the open file. This sits immediately above
+          the existing filename/control row and shares its swipe isolation. */}
+      {fileContent !== null && (
+        <button
+          type="button"
+          onClick={() => setFilePathExpanded((expanded) => !expanded)}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          aria-expanded={filePathExpanded}
+          aria-label={`${filePathExpanded ? "Collapse" : "Expand"} parent directory path`}
+          style={{
+            width: "100%",
+            minHeight: 16,
+            padding: "0 8px",
+            boxSizing: "border-box",
+            border: "none",
+            background: "none",
+            color: "var(--color-muted)",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: 10,
+            lineHeight: "16px",
+            textAlign: "center",
+            whiteSpace: filePathExpanded ? "normal" : "nowrap",
+            overflowWrap: filePathExpanded ? "anywhere" : undefined,
+            flexShrink: 0,
+          }}
+        >
+          {filePathExpanded ? fileDirectoryPath : middleTruncatePath(fileDirectoryPath)}
+        </button>
       )}
 
       {/* Header

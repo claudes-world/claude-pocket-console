@@ -25,7 +25,7 @@ vi.mock("../file-icons", () => ({
   getFileIcon: () => null,
 }));
 
-import { FileViewer, SORT_OPTIONS } from "../FileViewer";
+import { FileViewer, SORT_OPTIONS, middleTruncatePath } from "../FileViewer";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -188,5 +188,27 @@ describe("SORT_OPTIONS export", () => {
       expect(opt.short).toBeTruthy();
       expect(opt.long).toBeTruthy();
     }
+  });
+});
+
+describe("middleTruncatePath", () => {
+  it("leaves a short path unchanged", () => {
+    expect(middleTruncatePath("/home/claude/code/")).toBe("/home/claude/code/");
+  });
+
+  it("middle-truncates a long path while preserving prefix and trailing directories", () => {
+    const path = "/home/claude/claudes-world/.claude/skills/some/really/deeply/nested/foo/";
+    const truncated = middleTruncatePath(path);
+
+    expect(truncated).toContain("\u2026");
+    expect(truncated).toMatch(/^\/home\/claude\//);
+    expect(truncated).toMatch(/\/deeply\/nested\/foo\/$/);
+    expect(truncated.length).toBeLessThanOrEqual(60);
+  });
+
+  it("leaves a path at the exact boundary unchanged", () => {
+    const path = `/${"a".repeat(58)}/`;
+    expect(path).toHaveLength(60);
+    expect(middleTruncatePath(path)).toBe(path);
   });
 });
