@@ -79,6 +79,7 @@ vi.mock("../action-bar/api", () => ({
 }));
 
 import { ActionBar } from "../action-bar";
+import { haptic } from "../../lib/haptic";
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -290,6 +291,69 @@ describe("ActionBar", () => {
     });
   });
 
+  it("commits a save when an unrelated reading-list change invalidates its check", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    mockCheckReadingListPaths
+      .mockResolvedValueOnce({ saved: { "/tmp/app.ts": false } })
+      .mockImplementation(() => new Promise(() => {}));
+    mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    act(() => window.dispatchEvent(new Event("cpc:reading-list-changed")));
+
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled();
+    expect(screen.getByText("Saved to reading list")).toBeInTheDocument();
+  });
+
+  it("settles a stale reading-list save silently after viewing another file", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    const successSpy = vi.spyOn(haptic, "success");
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Saved to reading list")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Saved ✓" })).not.toBeInTheDocument();
+    expect(successSpy).not.toHaveBeenCalled();
+  });
+
+  it("settles a stale reading-list save failure silently after viewing another file", async () => {
+    let rejectSave!: (reason: Error) => void;
+    mockSaveReadingListItem.mockImplementation(() => new Promise((_resolve, reject) => { rejectSave = reject; }));
+    const errorSpy = vi.spyOn(haptic, "error");
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await act(async () => {
+      rejectSave(new Error("stale failure"));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Failed: stale failure")).not.toBeInTheDocument();
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
+  });
+
   it("publishes with the selected share mode", async () => {
     render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
     fireEvent.click(screen.getByText("Share"));
@@ -315,11 +379,11 @@ describe("ActionBar", () => {
     });
   });
 
-  it("drops a stale publish result after Share is reopened for another file", async () => {
-    let resolveFirst!: (value: { ok: true; url: string }) => void;
-    mockPublishShared.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveFirst = resolve;
-    }));
+  it("publishes B while A is pending and drops A's late result", async () => {
+    let resolveA!: (value: { ok: true; url: string }) => void;
+    mockPublishShared
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce({ ok: true, url: "https://shared.claude.do/public/b-current" });
 
     const { rerender } = render(
       <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
@@ -333,23 +397,26 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByText("Share"));
 
     expect(screen.getByText("b.ts")).toBeInTheDocument();
-    expect(screen.getByText("Public")).toBeInTheDocument();
-
-    await act(async () => {
-      resolveFirst({ ok: true, url: "https://shared.claude.do/public/a-stale" });
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByText("https://shared.claude.do/public/a-stale")).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Public"));
+
     await waitFor(() => {
+      expect(mockPublishShared).toHaveBeenCalledTimes(2);
       expect(mockPublishShared).toHaveBeenLastCalledWith(
         "/tmp/b.ts",
         "public",
         false,
         expect.any(AbortSignal),
       );
+      expect(screen.getByText("https://shared.claude.do/public/b-current")).toBeInTheDocument();
     });
+
+    await act(async () => {
+      resolveA({ ok: true, url: "https://shared.claude.do/public/a-stale" });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("https://shared.claude.do/public/b-current")).toBeInTheDocument();
+    expect(screen.queryByText("https://shared.claude.do/public/a-stale")).not.toBeInTheDocument();
   });
 
   it("opens a published URL without granting window.opener", async () => {

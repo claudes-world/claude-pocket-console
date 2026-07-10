@@ -74,6 +74,13 @@ afterEach(() => {
 });
 
 describe("App FileViewer callback ownership", () => {
+  it("ignores a malformed file deep link instead of throwing during render", () => {
+    window.history.replaceState(null, "", "#files&file=%");
+
+    expect(() => render(<App />)).not.toThrow();
+    expect(mockFileViewerPropsByPath.has(null)).toBe(true);
+  });
+
   it("drops the old viewer's late callbacks after a reading-list open", async () => {
     render(<App />);
     const oldViewer = mockFileViewerPropsByPath.get("/old.ts");

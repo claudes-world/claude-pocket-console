@@ -84,7 +84,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
-  const shareInFlightRef = useRef(false);
+  const shareInFlightRef = useRef(new Set<string>());
   const shareSeqRef = useRef(0);
   const [readingListSaved, setReadingListSaved] = useState(false);
   const [readingListChecking, setReadingListChecking] = useState(false);
@@ -95,8 +95,9 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   // block a duplicate save.
   const readingListInFlightRef = useRef(new Set<string>());
   // A check started for the previous file must never mark the newly viewed
-  // file as saved. Saving also bumps this token so its success state owns
-  // the button over any older GET still in flight.
+  // file as saved. Saving bumps this token to invalidate an older GET; the
+  // save completion itself is owned by readingListViewedPathRef so unrelated
+  // reading-list events cannot suppress its commit.
   const readingListCheckSeqRef = useRef(0);
   const readingListViewedPathRef = useRef<string | null>(null);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
@@ -562,26 +563,32 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     const path = viewingFile.path;
     if (readingListInFlightRef.current.has(path)) return;
     readingListInFlightRef.current.add(path);
-    const seq = ++readingListCheckSeqRef.current;
+    ++readingListCheckSeqRef.current;
     setReadingListSaving(true);
     try {
       await saveReadingListItem(path, viewingFile.name);
-      if (seq === readingListCheckSeqRef.current) setReadingListSaved(true);
-      haptic.success();
-      setStatus("Saved to reading list");
+      if (readingListViewedPathRef.current === path) {
+        setReadingListSaved(true);
+        haptic.success();
+        setStatus("Saved to reading list");
+      }
       emitReadingListChanged();
     } catch (err) {
-      if (seq === readingListCheckSeqRef.current) setReadingListSaved(false);
-      haptic.error();
-      setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      if (readingListViewedPathRef.current === path) {
+        setReadingListSaved(false);
+        haptic.error();
+        setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } finally {
       readingListInFlightRef.current.delete(path);
       if (readingListViewedPathRef.current === path) setReadingListSaving(false);
     }
   };
   const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {
-    if (!viewingFile || shareInFlightRef.current) return;
-    shareInFlightRef.current = true;
+    if (!viewingFile) return;
+    const path = viewingFile.path;
+    if (shareInFlightRef.current.has(path)) return;
+    shareInFlightRef.current.add(path);
     const seq = ++shareSeqRef.current;
     setShareLoading(true);
     setShareUrl(null);
@@ -591,7 +598,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
-        const data = await publishShared(viewingFile.path, scope, tmp, controller.signal);
+        const data = await publishShared(path, scope, tmp, controller.signal);
         if (seq !== shareSeqRef.current) return;
         if (data.ok && data.url) {
           haptic.success();
@@ -615,7 +622,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       setShareError(message);
       setStatus(`Failed: ${message}`);
     } finally {
-      shareInFlightRef.current = false;
+      shareInFlightRef.current.delete(path);
       if (seq === shareSeqRef.current) setShareLoading(false);
     }
   };

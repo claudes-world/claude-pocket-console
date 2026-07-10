@@ -19,6 +19,7 @@ let sandbox: string;
 let allowedFile: string;
 let openFailure: "not-found" | "denied" | "error" | undefined;
 let statOverride: { isFile: () => boolean; size: number } | undefined;
+let readChunksOverride: Buffer[] | undefined;
 let publishedContent: string | undefined;
 let publishedFd: number | undefined;
 let stagedPath: string | undefined;
@@ -34,14 +35,17 @@ function capturePublishedFile(options: any) {
   publishedContent = readFileSync(`/proc/self/fd/${publishedFd}`, "utf8");
 }
 
-const openAllowedForReadSpy = vi.fn(async (path: string, roots: readonly string[]) => {
+const openAllowedForReadSpy = vi.fn(async (path: string, _roots: readonly string[]) => {
   if (openFailure) {
     return { ok: false as const, reason: openFailure };
   }
   const actual = await vi.importActual<typeof import("../../lib/path-allowed.js")>(
     "../../lib/path-allowed.js",
   );
-  const opened = await actual.openAllowedForRead(path, roots);
+  // Route tests use a temporary sandbox; delegate the pinned-fd mechanics to
+  // the real helper with that sandbox while separately asserting the route's
+  // production root argument.
+  const opened = await actual.openAllowedForRead(path, [sandbox]);
   if (!opened.ok) return opened;
 
   const closeSpy = vi.fn(() => opened.handle.close());
@@ -50,7 +54,9 @@ const openAllowedForReadSpy = vi.fn(async (path: string, roots: readonly string[
     ...opened,
     handle: {
       stat: () => statOverride ? Promise.resolve(statOverride) : opened.handle.stat(),
-      createReadStream: (options: any) => opened.handle.createReadStream(options),
+      createReadStream: (options: any) => readChunksOverride
+        ? (async function* () { yield* readChunksOverride!; })()
+        : opened.handle.createReadStream(options),
       close: closeSpy,
     } as any,
   };
@@ -113,6 +119,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(2026, 6, 10, 12, 34, 56));
   openFailure = undefined;
   statOverride = undefined;
+  readChunksOverride = undefined;
   publishedContent = undefined;
   publishedFd = undefined;
   stagedPath = undefined;
@@ -176,7 +183,7 @@ describe("POST /publish", () => {
     expect(body).toEqual({ ok: false, error: "path not allowed" });
     expect(openAllowedForReadSpy).toHaveBeenCalledWith(
       resolve(allowedFile),
-      expect.any(Array),
+      ["/home/claude/claudes-world"],
     );
     expect(spawnSpy).not.toHaveBeenCalled();
   });
@@ -275,6 +282,22 @@ describe("POST /publish", () => {
 
   it("rejects a file over 50 MB and closes its pinned handle", async () => {
     statOverride = { isFile: () => true, size: 50 * 1024 * 1024 + 1 };
+
+    const { status, body } = await postPublish({ path: allowedFile, scope: "public" });
+
+    expect(status).toBe(413);
+    expect(body).toEqual({ ok: false, error: "file too large" });
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(handleCloseSpies[0]).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts if the pinned file grows past 50 MB during staging", async () => {
+    statOverride = { isFile: () => true, size: 1 };
+    readChunksOverride = [
+      Buffer.alloc(25 * 1024 * 1024),
+      Buffer.alloc(25 * 1024 * 1024),
+      Buffer.from("growth after fstat"),
+    ];
 
     const { status, body } = await postPublish({ path: allowedFile, scope: "public" });
 

@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, relative } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { realpath } from "node:fs/promises";
+import { join } from "node:path";
+import { openAllowedForRead } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -514,35 +516,48 @@ const ICON_MIME: Record<string, string> = {
   png: "image/png",
 };
 
-function readRepoIcon(repoPath: string): string | null {
+async function readRepoIcon(repoPath: string): Promise<string | null> {
   let realRepoPath: string;
   try {
-    realRepoPath = realpathSync(repoPath);
+    realRepoPath = await realpath(repoPath);
   } catch {
     return null;
   }
 
   for (const candidate of ICON_CANDIDATES) {
     const candidatePath = join(repoPath, candidate);
-    if (!existsSync(candidatePath)) continue;
-
+    const opened = await openAllowedForRead(candidatePath, [realRepoPath]);
+    if (!opened.ok) continue;
     try {
-      const realCandidatePath = realpathSync(candidatePath);
-      const relativePath = relative(realRepoPath, realCandidatePath);
-      if (relativePath.startsWith("..") || isAbsolute(relativePath)) continue;
-
-      const stat = statSync(realCandidatePath);
+      const stat = await opened.handle.stat();
       if (!stat.isFile() || stat.size > MAX_ICON_BYTES) continue;
 
       const extension = candidate.slice(candidate.lastIndexOf(".") + 1);
       const mime = ICON_MIME[extension];
       if (!mime) continue;
-      const contents = readFileSync(realCandidatePath);
-      if (contents.length > MAX_ICON_BYTES) continue;
+
+      // Read from the validated descriptor, never by path. The extra byte
+      // detects a file that grows after fstat without staging an unbounded read.
+      const buffer = Buffer.alloc(MAX_ICON_BYTES + 1);
+      let total = 0;
+      while (total < buffer.length) {
+        const { bytesRead } = await opened.handle.read(
+          buffer,
+          total,
+          buffer.length - total,
+          total,
+        );
+        if (bytesRead === 0) break;
+        total += bytesRead;
+      }
+      if (total > MAX_ICON_BYTES) continue;
+      const contents = buffer.subarray(0, total);
       const encoded = contents.toString("base64");
       return `data:${mime};base64,${encoded}`;
     } catch {
       // Unreadable/broken candidates are skipped in favor of the next one.
+    } finally {
+      await opened.handle.close().catch(() => {});
     }
   }
 
@@ -662,11 +677,12 @@ app.get("/issues", async (c) => {
     return c.json({ ok: true, repo: repo.fullName, issues });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    return c.json({ ok: false, error }, 502);
+    console.error("issues fetch failed", error);
+    return c.json({ ok: false, error: "issues fetch failed" }, 502);
   }
 });
 
-app.get("/icons", (c) => {
+app.get("/icons", async (c) => {
   const now = Date.now();
   if (iconCache && now - iconCache.cachedAt < ICON_CACHE_TTL_MS) {
     return c.json({ ok: true, icons: iconCache.icons });
@@ -675,7 +691,7 @@ app.get("/icons", (c) => {
   const icons: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const repo of discoverRepos()) {
     if (icons[repo.fullName]) continue;
-    const icon = readRepoIcon(repo.path);
+    const icon = await readRepoIcon(repo.path);
     if (icon) icons[repo.fullName] = icon;
   }
 

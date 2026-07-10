@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { realpath } from "node:fs/promises";
+import { openAllowedForRead } from "../../lib/path-allowed.js";
 import type { PrRow, RepoInfo } from "../prs.js";
 
 /**
@@ -65,12 +67,18 @@ vi.mock("node:fs", async () => {
   return {
     ...actual,
     existsSync: vi.fn(actual.existsSync),
-    readFileSync: vi.fn(actual.readFileSync),
     readdirSync: vi.fn(actual.readdirSync),
-    realpathSync: vi.fn(actual.realpathSync),
-    statSync: vi.fn(actual.statSync),
   };
 });
+
+vi.mock("node:fs/promises", async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return { ...actual, realpath: vi.fn(actual.realpath) };
+});
+
+vi.mock("../../lib/path-allowed.js", () => ({
+  openAllowedForRead: vi.fn(),
+}));
 
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>(
@@ -109,6 +117,8 @@ beforeEach(() => {
   __resetPrAuxCachesForTests();
   vi.mocked(existsSync).mockImplementation(() => false);
   vi.mocked(readdirSync).mockImplementation(() => [] as any);
+  vi.mocked(realpath).mockRejectedValue(new Error("mocked"));
+  vi.mocked(openAllowedForRead).mockResolvedValue({ ok: false, reason: "not-found" });
   vi.mocked(execFileSync).mockImplementation(() => { throw new Error("mocked"); });
   vi.mocked(execFile).mockImplementation(((_cmd: string, _args: string[], _opts: any, cb?: any) => {
     if (cb) cb(new Error("mocked"), "", "");
@@ -136,6 +146,20 @@ function mockDiscoveredRepo(repo = makeRepoInfo()) {
     if (args.includes("rev-parse")) return `${repo.branch}\n`;
     throw new Error("unexpected git call");
   }) as any);
+}
+
+function mockOpenedIcon(contents: Buffer, size = contents.length, isFile = true) {
+  const handle = {
+    stat: vi.fn().mockResolvedValue({ isFile: () => isFile, size }),
+    read: vi.fn().mockImplementation(
+      async (buffer: Buffer, offset: number, length: number, position: number) => {
+        const bytesRead = contents.copy(buffer, offset, position, position + length);
+        return { bytesRead, buffer };
+      },
+    ),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  return { result: { ok: true as const, handle, realPath: "/mock/icon" }, handle };
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +376,26 @@ describe("GET /issues", () => {
     await prsRoute.request("/issues?repo=claudes-world%2Finbox&force=1");
     expect(execFile).toHaveBeenCalledTimes(3);
   });
+
+  it("logs gh failures server-side and returns a fixed client error", async () => {
+    mockDiscoveredRepo();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(execFile).mockImplementationOnce(((_cmd: string, _args: string[], _opts: any, cb: any) => {
+      cb(new Error("spawn failed at /home/claude/.config/gh"), "", "secret stderr detail");
+      return { on: vi.fn() } as any;
+    }) as any);
+
+    const res = await prsRoute.request("/issues?repo=claudes-world%2Finbox");
+    const body = await res.json() as any;
+
+    expect(res.status).toBe(502);
+    expect(body).toEqual({ ok: false, error: "issues fetch failed" });
+    expect(JSON.stringify(body)).not.toContain("secret stderr detail");
+    expect(consoleError).toHaveBeenCalledWith(
+      "issues fetch failed",
+      expect.stringContaining("secret stderr detail"),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -361,28 +405,25 @@ describe("GET /icons", () => {
   it("uses candidate order, skips files over 64KB, and returns the ico mime", async () => {
     const repo = makeRepoInfo();
     mockDiscoveredRepo(repo);
-    vi.mocked(existsSync).mockImplementation((path) => {
-      const value = String(path);
-      return value === "/home/claude/code"
-        || value === `${repo.path}/.git`
-        || value === `${repo.path}/favicon.svg`
-        || value === `${repo.path}/favicon.ico`;
+    vi.mocked(realpath).mockResolvedValue(repo.path);
+    const oversized = mockOpenedIcon(Buffer.from("ignored"), 64 * 1024 + 1);
+    const ico = mockOpenedIcon(Buffer.from("icon"));
+    vi.mocked(openAllowedForRead).mockImplementation(async (path) => {
+      if (path === `${repo.path}/favicon.svg`) return oversized.result as any;
+      if (path === `${repo.path}/favicon.ico`) return ico.result as any;
+      return { ok: false, reason: "not-found" };
     });
-    vi.mocked(realpathSync).mockImplementation(((path: string) => path) as any);
-    vi.mocked(statSync).mockImplementation(((path: string) => ({
-      isFile: () => true,
-      size: path.endsWith("favicon.svg") ? 64 * 1024 + 1 : 4,
-    })) as any);
-    vi.mocked(readFileSync).mockReturnValue(Buffer.from("icon") as any);
 
     const res = await prsRoute.request("/icons");
     const body = await res.json() as any;
 
     expect(body.icons[repo.fullName]).toBe(`data:image/x-icon;base64,${Buffer.from("icon").toString("base64")}`);
-    expect(statSync).toHaveBeenNthCalledWith(1, `${repo.path}/favicon.svg`);
-    expect(statSync).toHaveBeenNthCalledWith(2, `${repo.path}/favicon.ico`);
-    expect(readFileSync).toHaveBeenCalledTimes(1);
-    expect(readFileSync).toHaveBeenCalledWith(`${repo.path}/favicon.ico`);
+    expect(openAllowedForRead).toHaveBeenNthCalledWith(1, `${repo.path}/favicon.svg`, [repo.path]);
+    expect(openAllowedForRead).toHaveBeenNthCalledWith(2, `${repo.path}/favicon.ico`, [repo.path]);
+    expect(oversized.handle.read).not.toHaveBeenCalled();
+    expect(oversized.handle.close).toHaveBeenCalledOnce();
+    expect(ico.handle.read).toHaveBeenCalled();
+    expect(ico.handle.close).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -391,19 +432,40 @@ describe("GET /icons", () => {
   ])("returns the correct data URI mime for %s", async (candidate, mime) => {
     const repo = makeRepoInfo();
     mockDiscoveredRepo(repo);
-    vi.mocked(existsSync).mockImplementation((path) => {
-      const value = String(path);
-      return value === "/home/claude/code"
-        || value === `${repo.path}/.git`
-        || value === `${repo.path}/${candidate}`;
-    });
-    vi.mocked(realpathSync).mockImplementation(((path: string) => path) as any);
-    vi.mocked(statSync).mockReturnValue({ isFile: () => true, size: 3 } as any);
-    vi.mocked(readFileSync).mockReturnValue(Buffer.from("img") as any);
+    vi.mocked(realpath).mockResolvedValue(repo.path);
+    const opened = mockOpenedIcon(Buffer.from("img"));
+    vi.mocked(openAllowedForRead).mockImplementation(async (path) => (
+      path === `${repo.path}/${candidate}`
+        ? opened.result as any
+        : { ok: false, reason: "not-found" }
+    ));
 
     const body = await (await prsRoute.request("/icons")).json() as any;
 
     expect(body.icons[repo.fullName]).toBe(`data:${mime};base64,${Buffer.from("img").toString("base64")}`);
+    expect(opened.handle.close).toHaveBeenCalledOnce();
+  });
+
+  it("reads only through the pinned handle and rejects growth past 64KB", async () => {
+    const repo = makeRepoInfo();
+    mockDiscoveredRepo(repo);
+    vi.mocked(realpath).mockResolvedValue("/real/repo");
+    const growing = mockOpenedIcon(Buffer.alloc(64 * 1024 + 1, 1), 1);
+    vi.mocked(openAllowedForRead).mockImplementation(async (path) => (
+      path === `${repo.path}/favicon.svg`
+        ? growing.result as any
+        : { ok: false, reason: "not-found" }
+    ));
+
+    const body = await (await prsRoute.request("/icons")).json() as any;
+
+    expect(body.icons[repo.fullName]).toBeUndefined();
+    expect(openAllowedForRead).toHaveBeenCalledWith(
+      `${repo.path}/favicon.svg`,
+      ["/real/repo"],
+    );
+    expect(growing.handle.read).toHaveBeenCalled();
+    expect(growing.handle.close).toHaveBeenCalledOnce();
   });
 });
 

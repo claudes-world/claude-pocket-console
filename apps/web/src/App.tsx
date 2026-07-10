@@ -105,7 +105,17 @@ export function App() {
   const [authed, setAuthed] = useState(() => hasAuth());
   const [connected, setConnected] = useState(false);
   const hashParams = window.location.hash.replace("#", "");
-  const initialFile = hashParams.match(/file=([^&]+)/)?.[1] ? decodeURIComponent(hashParams.match(/file=([^&]+)/)![1]) : null;
+  const initialFileRaw = hashParams.match(/(?:^|&)file=([^&]+)/)?.[1];
+  let initialFile: string | null = null;
+  if (initialFileRaw) {
+    try {
+      initialFile = decodeURIComponent(initialFileRaw);
+    } catch {
+      // Malformed percent-encoding in a hand-typed/truncated deep link
+      // (e.g. "#files&file=%") — treat as no file rather than throwing
+      // during initial render.
+    }
+  }
   const initialTab = initialFile ? "files" : (hashParams.split("&")[0] || "terminal") as Tab;
   const [activeTab, setActiveTab] = useState<Tab>(
     TABS.includes(initialTab as Tab) ? initialTab : "terminal"

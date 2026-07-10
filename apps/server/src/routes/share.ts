@@ -3,7 +3,7 @@ import { constants, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Hono } from "hono";
-import { ALLOWED_FILE_ROOTS, openAllowedForRead } from "../lib/path-allowed.js";
+import { ALLOWED_SHARE_ROOTS, openAllowedForRead } from "../lib/path-allowed.js";
 
 const PUBLISH_SHARED = "/home/claude/bin/publish-shared";
 const DEFAULT_PUBLIC_BASE_URL = "https://shared.claude.do/public";
@@ -121,7 +121,7 @@ app.post("/publish", async (c) => {
 
     const resolvedPath = resolve(body.path);
 
-    const opened = await openAllowedForRead(resolvedPath, ALLOWED_FILE_ROOTS);
+    const opened = await openAllowedForRead(resolvedPath, ALLOWED_SHARE_ROOTS);
     if (!opened.ok) {
       if (opened.reason === "not-found") {
         return c.json({ ok: false, error: "file not found" }, 404);
@@ -155,7 +155,12 @@ app.post("/publish", async (c) => {
       // FileHandle-backed write stream with autoClose:false keeps a ref on
       // the handle that pipeline never releases, deadlocking the later
       // handle.close(). The read side is unaffected (it closes pre-spawn).
+      let copiedBytes = 0;
       for await (const chunk of opened.handle.createReadStream({ autoClose: false })) {
+        copiedBytes += chunk.length;
+        if (copiedBytes > MAX_SHARE_BYTES) {
+          return c.json({ ok: false, error: "file too large" }, 413);
+        }
         await writeFully(stagedHandle, chunk as Buffer);
       }
       await stagedHandle.sync();
