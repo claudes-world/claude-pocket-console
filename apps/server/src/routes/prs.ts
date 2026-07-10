@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const app = new Hono();
@@ -11,6 +11,7 @@ const GIT_TIMEOUT_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const SCOPE_CACHE_TTL_MS = 60_000;
 const REPO_DISCOVERY_TTL_MS = 5 * 60_000; // re-scan ~/code every 5 min
+const NAMESPACE_SCAN_CAP = 50;
 
 // --- Types ---
 
@@ -83,7 +84,7 @@ export function discoverRepos(): RepoInfo[] {
   const repos: RepoInfo[] = [];
 
   if (!existsSync(codeDir)) {
-    repoCache = { repos, cachedAt: now };
+    repoCache = { repos, cachedAt: Date.now() };
     return repos;
   }
 
@@ -91,7 +92,7 @@ export function discoverRepos(): RepoInfo[] {
   try {
     dirNames = readdirSync(codeDir);
   } catch {
-    repoCache = { repos, cachedAt: now };
+    repoCache = { repos, cachedAt: Date.now() };
     return repos;
   }
 
@@ -136,6 +137,13 @@ export function discoverRepos(): RepoInfo[] {
       continue;
     }
 
+    try {
+      const stats = lstatSync(repoPath);
+      if (!stats.isDirectory() || stats.isSymbolicLink()) continue;
+    } catch {
+      continue;
+    }
+
     let childNames: string[];
     try {
       childNames = readdirSync(repoPath);
@@ -143,7 +151,8 @@ export function discoverRepos(): RepoInfo[] {
       continue;
     }
 
-    for (const childName of childNames) {
+    // Bound work in unexpectedly large namespace directories; preserve readdir order.
+    for (const childName of childNames.slice(0, NAMESPACE_SCAN_CAP)) {
       const childPath = join(repoPath, childName);
       if (existsSync(join(childPath, ".git"))) {
         pushRepoIfValid(childPath, `${dirName}/${childName}`);
@@ -151,7 +160,7 @@ export function discoverRepos(): RepoInfo[] {
     }
   }
 
-  repoCache = { repos, cachedAt: now };
+  repoCache = { repos, cachedAt: Date.now() };
   return repos;
 }
 
