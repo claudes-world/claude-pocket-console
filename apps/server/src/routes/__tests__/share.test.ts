@@ -319,3 +319,29 @@ describe("POST /publish", () => {
     expect(() => fstatSync(publishedFd!)).toThrow();
   });
 });
+
+describe("writeFully", () => {
+  it("loops until partial writes cover the whole buffer", async () => {
+    const { writeFully } = await import("../share.js");
+    const written: Array<{ offset: number; length: number }> = [];
+    const handle = {
+      write: vi.fn(async (buffer: Buffer, offset: number, length: number) => {
+        written.push({ offset, length });
+        return { bytesWritten: Math.min(3, length) }; // 3 bytes at a time
+      }),
+    };
+    await writeFully(handle, Buffer.from("0123456789"));
+    expect(written).toEqual([
+      { offset: 0, length: 10 },
+      { offset: 3, length: 7 },
+      { offset: 6, length: 4 },
+      { offset: 9, length: 1 },
+    ]);
+  });
+
+  it("throws instead of spinning when a write makes no progress", async () => {
+    const { writeFully } = await import("../share.js");
+    const handle = { write: vi.fn(async () => ({ bytesWritten: 0 })) };
+    await expect(writeFully(handle, Buffer.from("abc"))).rejects.toThrow("no progress");
+  });
+});

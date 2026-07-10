@@ -41,6 +41,24 @@ function derivePublishSlug(path: string, now = new Date()): string {
   return slug;
 }
 
+/**
+ * FileHandle.write() may write fewer bytes than requested (Node's own
+ * fsPromises.writeFile loops on bytesWritten for this reason). A dropped
+ * tail here would publish a silently truncated file, so loop until the
+ * whole buffer is on disk.
+ */
+export async function writeFully(
+  handle: { write(buffer: Buffer, offset: number, length: number): Promise<{ bytesWritten: number }> },
+  buffer: Buffer,
+): Promise<void> {
+  let offset = 0;
+  while (offset < buffer.length) {
+    const { bytesWritten } = await handle.write(buffer, offset, buffer.length - offset);
+    if (bytesWritten <= 0) throw new Error("write made no progress");
+    offset += bytesWritten;
+  }
+}
+
 function runPublishShared(
   args: string[],
   env: NodeJS.ProcessEnv,
@@ -138,7 +156,7 @@ app.post("/publish", async (c) => {
       // the handle that pipeline never releases, deadlocking the later
       // handle.close(). The read side is unaffected (it closes pre-spawn).
       for await (const chunk of opened.handle.createReadStream({ autoClose: false })) {
-        await stagedHandle.write(chunk as Buffer);
+        await writeFully(stagedHandle, chunk as Buffer);
       }
       await stagedHandle.sync();
       await opened.handle.close();
