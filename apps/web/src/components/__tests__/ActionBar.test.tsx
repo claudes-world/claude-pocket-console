@@ -201,6 +201,158 @@ describe("ActionBar", () => {
     }
   });
 
+  it("automatically sends generated audio to Telegram exactly once", async () => {
+    let resolveGenerate!: (value: { ok: true; path: string }) => void;
+    let resolveSend!: (value: { ok: true }) => void;
+    mockCheckAudio.mockResolvedValue({ exists: true, path: "/tmp/cached.ogg" });
+    mockGenerateAudio.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve; }));
+    mockSendAudioTelegram.mockImplementation(() => new Promise((resolve) => { resolveSend = resolve; }));
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Regenerate")).toBeInTheDocument());
+    const generateButton = screen.getByText("Regenerate");
+    const sendButton = screen.getByText("Send to Telegram");
+
+    fireEvent.click(generateButton);
+    fireEvent.click(generateButton);
+    fireEvent.click(sendButton);
+
+    expect(mockGenerateAudio).toHaveBeenCalledTimes(1);
+    expect(mockSendAudioTelegram).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveGenerate({ ok: true, path: "/tmp/generated.ogg" });
+    });
+
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/generated.ogg", expect.any(AbortSignal));
+    });
+
+    await act(async () => {
+      resolveSend({ ok: true });
+    });
+
+    await waitFor(() => expect(screen.getByText("Send to Telegram")).toBeInTheDocument());
+    expect(mockSendAudioTelegram).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a stale audio check overwrite generated audio", async () => {
+    let resolveStaleCheck!: (value: { exists: true; path: string }) => void;
+    mockCheckAudio
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveStaleCheck = resolve; }))
+      .mockResolvedValueOnce({ exists: false });
+    mockGenerateAudio.mockResolvedValue({ ok: true, path: "/tmp/generated.ogg" });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/old.md", name: "old.md" }} />
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/old.md"));
+
+    rerender(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/new.md", name: "new.md" }} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Audio" }));
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/new.md");
+      expect(screen.getByText("Generate Audio")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/generated.ogg", expect.any(AbortSignal));
+      expect(screen.getByText("Send to Telegram")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveStaleCheck({ exists: true, path: "/tmp/stale-old.ogg" });
+    });
+
+    fireEvent.click(screen.getByText("Send to Telegram"));
+    await waitFor(() => expect(mockSendAudioTelegram).toHaveBeenCalledTimes(2));
+    expect(mockSendAudioTelegram).toHaveBeenLastCalledWith("/tmp/generated.ogg", expect.any(AbortSignal));
+    expect(mockSendAudioTelegram).not.toHaveBeenCalledWith("/tmp/stale-old.ogg", expect.anything());
+  });
+
+  it("does not send audio to Telegram when generation fails", async () => {
+    mockGenerateAudio.mockResolvedValue({ ok: false, error: "Generation failed" });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: Generation failed")).toBeInTheDocument());
+    expect(mockSendAudioTelegram).not.toHaveBeenCalled();
+  });
+
+  it("clears stale audio status when regeneration fails", async () => {
+    mockCheckAudio.mockResolvedValue({ exists: true, path: "/tmp/stale.ogg" });
+    mockGenerateAudio.mockResolvedValue({ ok: false, error: "Generation failed" });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Audio file exists")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Regenerate"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Generation failed")).toBeInTheDocument();
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Send to Telegram")).not.toBeInTheDocument();
+  });
+
+  it("shows an unknown error when audio generation fails without an error message", async () => {
+    mockGenerateAudio.mockResolvedValue({ ok: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: unknown error")).toBeInTheDocument());
+  });
+
+  it("allows a manual retry after automatic sending fails", async () => {
+    mockSendAudioTelegram
+      .mockResolvedValueOnce({ ok: false, error: "Telegram unavailable" })
+      .mockResolvedValueOnce({ ok: true });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Telegram unavailable")).toBeInTheDocument();
+      expect(screen.getByText("Send to Telegram")).toBeInTheDocument();
+    });
+    expect(mockSendAudioTelegram).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("Send to Telegram"));
+
+    await waitFor(() => expect(mockSendAudioTelegram).toHaveBeenCalledTimes(2));
+    expect(mockSendAudioTelegram).toHaveBeenLastCalledWith("/tmp/audio.ogg", expect.any(AbortSignal));
+  });
+
+  it("shows an unknown error when sending audio fails without an error message", async () => {
+    mockSendAudioTelegram.mockResolvedValue({ ok: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: unknown error")).toBeInTheDocument());
+  });
+
   it("hides Reconnect button when onReconnect is not provided", () => {
     render(<ActionBar activeTab="terminal" />);
     expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
