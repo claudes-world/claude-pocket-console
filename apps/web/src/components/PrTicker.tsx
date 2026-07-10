@@ -55,6 +55,7 @@ interface RepoIssuesState {
   issues: IssueRow[];
   loading: boolean;
   loaded: boolean;
+  attempted: boolean;
   error: string | null;
 }
 
@@ -191,6 +192,25 @@ function saveCollapsedOrgs(collapsed: Set<string>) {
 // --- Main component ---
 
 const POLL_INTERVAL_MS = 10_000;
+const ISSUE_FETCH_CONCURRENCY = 4;
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const item = items[nextIndex++];
+        await worker(item);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
 
 export function PrTicker() {
   const [prs, setPrs] = useState<PrRow[]>([]);
@@ -208,6 +228,12 @@ export function PrTicker() {
   const [, setTick] = useState(0); // Force re-render for "last poll Xs ago"
   const mountedRef = useRef(true);
   const issuesRef = useRef<Record<string, RepoIssuesState>>({});
+  const issuesLoadSeqRef = useRef(0);
+  const issueFetchPoolRef = useRef<{ active: number; waiters: Array<() => void> }>({
+    active: 0,
+    waiters: [],
+  });
+  const previousViewModeRef = useRef<ViewMode>("prs");
 
   const toggleOrg = useCallback((org: string) => {
     haptic.impact("light");
@@ -267,55 +293,85 @@ export function PrTicker() {
   }, []);
 
   const updateRepoIssues = useCallback((repo: string, state: RepoIssuesState) => {
-    setIssuesByRepo((prev) => {
-      const next = { ...prev, [repo]: state };
-      issuesRef.current = next;
-      return next;
-    });
+    const next = { ...issuesRef.current, [repo]: state };
+    issuesRef.current = next;
+    setIssuesByRepo(next);
   }, []);
 
-  const fetchIssues = useCallback(async (repoNames: string[], force: boolean) => {
+  const withIssueFetchSlot = useCallback(async (task: () => Promise<void>) => {
+    const pool = issueFetchPoolRef.current;
+    if (pool.active < ISSUE_FETCH_CONCURRENCY) {
+      pool.active += 1;
+    } else {
+      await new Promise<void>((resolve) => pool.waiters.push(resolve));
+    }
+    try {
+      await task();
+    } finally {
+      const next = pool.waiters.shift();
+      if (next) {
+        next();
+      } else {
+        pool.active -= 1;
+      }
+    }
+  }, []);
+
+  const fetchIssues = useCallback(async (repoNames: string[], force: boolean, retryFailed = false) => {
+    const seq = ++issuesLoadSeqRef.current;
     const reposToFetch = repoNames.filter((repo) => {
       const current = issuesRef.current[repo];
-      return force || (!current?.loaded && !current?.loading);
+      return force || !current?.attempted || current.loading || (retryFailed && current.error !== null);
     });
 
-    await Promise.all(reposToFetch.map(async (repo) => {
-      const previous = issuesRef.current[repo];
+    const previousByRepo = new Map(reposToFetch.map((repo) => [repo, issuesRef.current[repo]]));
+    for (const repo of reposToFetch) {
+      const previous = previousByRepo.get(repo);
       updateRepoIssues(repo, {
         issues: previous?.issues ?? [],
         loading: true,
         loaded: previous?.loaded ?? false,
+        attempted: true,
         error: null,
       });
-      try {
-        const forceQuery = force ? "&force=1" : "";
-        const res = await fetch(`/api/prs/issues?repo=${encodeURIComponent(repo)}${forceQuery}`, {
-          headers: getAuthHeaders(),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error ?? "Unknown error");
-        if (mountedRef.current) {
-          updateRepoIssues(repo, {
-            issues: data.issues ?? [],
-            loading: false,
-            loaded: true,
-            error: null,
+    }
+
+    await runWithConcurrency(reposToFetch, ISSUE_FETCH_CONCURRENCY, async (repo) => {
+      if (seq !== issuesLoadSeqRef.current) return;
+      const previous = previousByRepo.get(repo);
+      await withIssueFetchSlot(async () => {
+        if (seq !== issuesLoadSeqRef.current) return;
+        try {
+          const forceQuery = force ? "&force=1" : "";
+          const res = await fetch(`/api/prs/issues?repo=${encodeURIComponent(repo)}${forceQuery}`, {
+            headers: getAuthHeaders(),
           });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error ?? "Unknown error");
+          if (mountedRef.current && seq === issuesLoadSeqRef.current) {
+            updateRepoIssues(repo, {
+              issues: data.issues ?? [],
+              loading: false,
+              loaded: true,
+              attempted: true,
+              error: null,
+            });
+          }
+        } catch (err) {
+          if (mountedRef.current && seq === issuesLoadSeqRef.current) {
+            updateRepoIssues(repo, {
+              issues: previous?.issues ?? [],
+              loading: false,
+              loaded: previous?.loaded ?? false,
+              attempted: true,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
-      } catch (err) {
-        if (mountedRef.current) {
-          updateRepoIssues(repo, {
-            issues: previous?.issues ?? [],
-            loading: false,
-            loaded: previous?.loaded ?? false,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-    }));
-  }, [updateRepoIssues]);
+      });
+    });
+  }, [updateRepoIssues, withIssueFetchSlot]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -379,11 +435,15 @@ export function PrTicker() {
   }, []);
 
   // Fetch only while Issues is selected; the PR polling interval never calls this.
+  const visibleIssueRepoSignature = visibleRepoNames(repos, prefs).sort().join("\n");
   useEffect(() => {
+    const enteredIssues = viewMode === "issues" && previousViewModeRef.current !== "issues";
+    previousViewModeRef.current = viewMode;
     if (viewMode === "issues") {
-      void fetchIssues(visibleRepoNames(repos, prefs), false);
+      const repoNames = visibleIssueRepoSignature ? visibleIssueRepoSignature.split("\n") : [];
+      void fetchIssues(repoNames, false, enteredIssues);
     }
-  }, [fetchIssues, prefs, repos, viewMode]);
+  }, [fetchIssues, viewMode, visibleIssueRepoSignature]);
 
   const grouped = groupPrs(prs, repos);
   const visibleGrouped = filterHidden(grouped, prefs);

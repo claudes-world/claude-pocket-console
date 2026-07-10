@@ -531,6 +531,134 @@ describe("PrTicker", () => {
     });
   });
 
+  it("does not retry a failed issues fetch when PR polling returns a fresh repos array", async () => {
+    const repo = makeRepo();
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [{ ...repo }], lastPollOk: Date.now() }),
+        };
+      }
+      if (url === "/api/prs/icons") {
+        return { ok: true, json: async () => ({ ok: true, icons: {} }) };
+      }
+      if (url.startsWith("/api/prs/issues?")) {
+        return { ok: false, status: 503, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("inbox")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+    await waitFor(() => expect(screen.getByText("issues failed: HTTP 503")).toBeInTheDocument());
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/prs/issues?"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/prs").length).toBeGreaterThanOrEqual(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "PRs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/prs/issues?"))).toHaveLength(2);
+    });
+  });
+
+  it("limits issue fetches to four in flight", async () => {
+    const repos = Array.from({ length: 7 }, (_, index) => makeRepo({
+      name: `repo-${index}`,
+      fullName: `claudes-world/repo-${index}`,
+    }));
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let releaseFetches: (() => void) | undefined;
+    const fetchGate = new Promise<void>((resolve) => { releaseFetches = resolve; });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos, lastPollOk: Date.now() }),
+        };
+      }
+      if (url === "/api/prs/icons") {
+        return { ok: true, json: async () => ({ ok: true, icons: {} }) };
+      }
+      if (url.startsWith("/api/prs/issues?")) {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await fetchGate;
+        inFlight -= 1;
+        return { ok: true, json: async () => ({ ok: true, issues: [] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("7 repos")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/prs/issues?"))).toHaveLength(4);
+    });
+    expect(maxInFlight).toBe(4);
+
+    releaseFetches?.();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/prs/issues?"))).toHaveLength(7);
+    });
+    expect(maxInFlight).toBe(4);
+  });
+
+  it("drops stale issue responses after a force refresh starts", async () => {
+    const repo = makeRepo();
+    const staleIssue = makeIssue({ number: 1, key: "claudes-world/inbox#1", title: "Stale issue" });
+    const freshIssue = makeIssue({ number: 2, key: "claudes-world/inbox#2", title: "Fresh issue" });
+    let resolveStale: ((response: unknown) => void) | undefined;
+    const staleResponse = new Promise<unknown>((resolve) => { resolveStale = resolve; });
+    let staleResponseRead = false;
+    let issueFetchCount = 0;
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      if (url === "/api/prs/icons") {
+        return { ok: true, json: async () => ({ ok: true, icons: {} }) };
+      }
+      if (url.startsWith("/api/prs/issues?")) {
+        issueFetchCount += 1;
+        if (issueFetchCount === 1) return staleResponse;
+        return { ok: true, json: async () => ({ ok: true, issues: [freshIssue] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("inbox")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+    await waitFor(() => expect(issueFetchCount).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh issues" }));
+    await waitFor(() => expect(screen.getByText("Fresh issue")).toBeInTheDocument());
+
+    resolveStale?.({
+      ok: true,
+      json: async () => {
+        staleResponseRead = true;
+        return { ok: true, issues: [staleIssue] };
+      },
+    });
+    await waitFor(() => expect(staleResponseRead).toBe(true));
+    expect(screen.getByText("Fresh issue")).toBeInTheDocument();
+    expect(screen.queryByText("Stale issue")).not.toBeInTheDocument();
+  });
+
   it("renders repo icons once with org-avatar and text-only fallbacks", async () => {
     const inbox = makeRepo();
     const cpc = makeRepo({ name: "cpc", fullName: "claudes-world/cpc" });
