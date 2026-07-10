@@ -332,7 +332,14 @@ app.get("/read", async (c) => {
 
   try {
     const st = await handle.stat();
-    if (st.isDirectory()) {
+    // Reject anything that isn't a plain regular file — not just
+    // directories. `openAllowedForRead` already rejects FIFOs/sockets/device
+    // nodes at open time (O_NONBLOCK + fstat, round-2 review PR #299) since
+    // /tmp is a world-writable read root; this is the route-level backstop
+    // in case a future allowed root ever lets a non-regular, non-directory
+    // node reach this far, or a directory itself (which the shared open
+    // helper allows through for /list, /download, /search).
+    if (!st.isFile()) {
       return c.json({ error: "Not a file" }, 400);
     }
 
