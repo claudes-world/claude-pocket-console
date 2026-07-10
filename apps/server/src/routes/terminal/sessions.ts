@@ -57,13 +57,19 @@ export function parseSessions(listOut: string, panesOut: string, defaultSession:
     const separatorIndex = line.indexOf(TMUX_FIELD_SEPARATOR);
     const name = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
     const command = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
-    if (name && !firstPaneCommand.has(name)) firstPaneCommand.set(name, command);
+    // tmux sorts `list-panes -a` by session name. Every character allowed by
+    // SESSION_NAME_RE is below "|" (0x7c), so a real session's first pane row
+    // precedes rows from any `real|suffix` impostor; first-wins keeps the real
+    // command even though pane commands must preserve pipes after the first.
+    if (SESSION_NAME_RE.test(name) && !firstPaneCommand.has(name)) firstPaneCommand.set(name, command);
   }
 
   const sessions: TmuxSessionInfo[] = [];
   for (const line of listOut.split("\n")) {
     if (!line) continue;
-    const [name, attached = "0", activity = "0"] = line.split(TMUX_FIELD_SEPARATOR);
+    const fields = line.split(TMUX_FIELD_SEPARATOR);
+    if (fields.length !== 3) continue;
+    const [name, attached, activity] = fields;
     if (!name || name.startsWith(HIDDEN_SESSION_PREFIX) || !SESSION_NAME_RE.test(name)) continue;
     const command = firstPaneCommand.get(name) ?? "";
     sessions.push({

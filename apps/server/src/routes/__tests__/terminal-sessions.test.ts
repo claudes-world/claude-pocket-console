@@ -125,6 +125,30 @@ describe("parseSessions", () => {
     expect(sessions.map((s) => s.name)).toEqual(["ok-name"]);
   });
 
+  it("drops list rows with extra fields instead of spoofing a real session", () => {
+    const sessions = parseSessions(
+      "real|0|100\nreal|1|9999999999|0|100",
+      "real|bash",
+      "claudes-world",
+    );
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ name: "real", attached: false, activity: 100 });
+  });
+
+  it("keeps the real command when its pane row precedes a pipe-name impostor", () => {
+    const sessions = parseSessions(
+      "real|0|100",
+      "real|bash\nreal|x|claude",
+      "claudes-world",
+    );
+    expect(sessions[0].command).toBe("bash");
+  });
+
+  it("ignores pane rows whose first-split name fails the allowlist", () => {
+    const sessions = parseSessions("real|0|100", "real;garbage|claude", "claudes-world");
+    expect(sessions[0].command).toBe("");
+  });
+
   it("treats a session with no pane rows as not alive", () => {
     const sessions = parseSessions("ghost|0|1", "", "claudes-world");
     expect(sessions[0].alive).toBe(false);
