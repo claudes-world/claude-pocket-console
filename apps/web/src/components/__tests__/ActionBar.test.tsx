@@ -463,6 +463,63 @@ describe("ActionBar", () => {
     expect(mockSendAudioTelegram).toHaveBeenCalledTimes(1);
   });
 
+  it("does not auto-send generated audio after navigating away and exposes it on return", async () => {
+    let resolveGenerate!: (value: { ok: true; path: string }) => void;
+    let generated = false;
+    mockCheckAudio.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/tmp/a.md" && generated
+          ? { exists: true, path: "/tmp/a.ogg" }
+          : { exists: false },
+      ),
+    );
+    mockGenerateAudio.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve; }));
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.md", name: "a.md" }} />,
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+    await waitFor(() => expect(mockGenerateAudio).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close sheet" }));
+    rerender(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.md", name: "b.md" }} />,
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/b.md");
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+
+    generated = true;
+    await act(async () => {
+      resolveGenerate({ ok: true, path: "/tmp/a.ogg" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Audio ready — reopen the file to send")).toBeInTheDocument();
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+    expect(mockSendAudioTelegram).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close sheet" }));
+    rerender(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.md", name: "a.md" }} />,
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/a.md");
+      expect(screen.getByText("Send to Telegram")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Send to Telegram"));
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/a.ogg", expect.any(AbortSignal));
+    });
+  });
+
   it("does not let a stale audio check overwrite generated audio", async () => {
     let resolveStaleCheck!: (value: { exists: true; path: string }) => void;
     mockCheckAudio

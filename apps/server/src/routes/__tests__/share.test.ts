@@ -1,15 +1,35 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  fstatSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 
 let sandbox: string;
 let allowedFile: string;
 let openFailure: "not-found" | "denied" | "error" | undefined;
 let statOverride: { isFile: () => boolean; size: number } | undefined;
 let publishedContent: string | undefined;
+let publishedFd: number | undefined;
+let stagedPath: string | undefined;
+let spawnFailure: Error | undefined;
+let spawnStdout: string;
 const handleCloseSpies: Array<ReturnType<typeof vi.fn>> = [];
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+function capturePublishedFile(options: any) {
+  publishedFd = options.stdio[3];
+  stagedPath = readlinkSync(`/proc/self/fd/${publishedFd}`);
+  publishedContent = readFileSync(publishedFd!, "utf8");
+}
 
 const openAllowedForReadSpy = vi.fn(async (path: string, roots: readonly string[]) => {
   if (openFailure) {
@@ -43,19 +63,23 @@ vi.mock("../../lib/path-allowed.js", async () => {
   };
 });
 
-const execFileSpy = vi.fn(
-  (_command: string, _args: string[], _options: object, callback: any) => {
-    publishedContent = readFileSync(_args.at(-1)!, "utf8");
-    callback(
-      null,
-      {
-        stdout:
-          "Published: /home/claude/shared/public/example-20260710\n" +
-          "URL: https://shared.claude.do/public/example-20260710\n",
-        stderr: "",
-      },
-    );
-    return { kill: () => {} } as any;
+const spawnSpy = vi.fn(
+  (_command: string, _args: string[], _options: any) => {
+    capturePublishedFile(_options);
+    const child = new EventEmitter() as any;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = vi.fn();
+    queueMicrotask(() => {
+      if (spawnFailure) {
+        child.emit("error", spawnFailure);
+        return;
+      }
+      child.stdout.end(spawnStdout);
+      child.stderr.end();
+      child.emit("close", 0, null);
+    });
+    return child;
   },
 );
 
@@ -65,7 +89,7 @@ vi.mock("node:child_process", async () => {
   );
   return {
     ...actual,
-    execFile: execFileSpy,
+    spawn: spawnSpy,
   };
 });
 
@@ -82,16 +106,25 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 6, 10, 12, 34, 56));
   openFailure = undefined;
   statOverride = undefined;
   publishedContent = undefined;
+  publishedFd = undefined;
+  stagedPath = undefined;
+  spawnFailure = undefined;
+  spawnStdout =
+    "Published: /home/claude/shared/public/example-20260710\n" +
+    "URL: https://shared.claude.do/public/example-20260710\n";
   handleCloseSpies.length = 0;
   openAllowedForReadSpy.mockClear();
-  execFileSpy.mockClear();
+  spawnSpy.mockClear();
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   consoleErrorSpy.mockRestore();
 });
 
@@ -118,7 +151,7 @@ describe("POST /publish", () => {
 
     expect(status).toBe(400);
     expect(body).toEqual({ ok: false, error: "path required" });
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it("returns 400 when scope is invalid", async () => {
@@ -126,7 +159,7 @@ describe("POST /publish", () => {
 
     expect(status).toBe(400);
     expect(body).toEqual({ ok: false, error: "scope must be public or private" });
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it("returns 403 when the resolved path is disallowed", async () => {
@@ -140,7 +173,7 @@ describe("POST /publish", () => {
       resolve(allowedFile),
       expect.any(Array),
     );
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it("returns 404 for a missing allowlisted file", async () => {
@@ -151,7 +184,7 @@ describe("POST /publish", () => {
     expect(status).toBe(404);
     expect(body).toEqual({ ok: false, error: "file not found" });
     expect(openAllowedForReadSpy).toHaveBeenCalled();
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it("publishes a public file with the exact argv and parses stdout", async () => {
@@ -163,32 +196,46 @@ describe("POST /publish", () => {
       url: "https://shared.claude.do/public/example-20260710",
       destPath: "/home/claude/shared/public/example-20260710",
     });
-    expect(execFileSpy).toHaveBeenCalledWith(
+    expect(spawnSpy).toHaveBeenCalledWith(
       "/home/claude/bin/publish-shared",
-      ["public", expect.any(String)],
+      ["public", "/dev/fd/3", "example-20260710-123456"],
       expect.objectContaining({
         env: expect.objectContaining({
           SHARED_PUBLIC_BASE_URL: expect.any(String),
         }),
-        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe", expect.any(Number)],
       }),
-      expect.any(Function),
     );
-    const stagedPath = execFileSpy.mock.calls[0][1][1];
     expect(publishedContent).toBe("# Example\n");
     expect(handleCloseSpies).toHaveLength(1);
     expect(handleCloseSpies[0]).toHaveBeenCalledTimes(1);
-    expect(basename(stagedPath)).toBe(basename(allowedFile));
-    expect(dirname(stagedPath).startsWith(join(tmpdir(), "cpc-share-"))).toBe(true);
-    expect(existsSync(dirname(stagedPath))).toBe(false);
+    expect(basename(stagedPath!)).toBe(basename(allowedFile));
+    expect(dirname(stagedPath!).startsWith(join(tmpdir(), "cpc-share-"))).toBe(true);
+    expect(existsSync(dirname(stagedPath!))).toBe(false);
+    expect(() => fstatSync(publishedFd!)).toThrow();
   });
 
   it("publishes a private temporary file with --tmp first", async () => {
     await postPublish({ path: allowedFile, scope: "private", tmp: true });
 
-    const args = execFileSpy.mock.calls[0][1];
+    const args = spawnSpy.mock.calls[0][1];
     expect(args.slice(0, 2)).toEqual(["--tmp", "private"]);
-    expect(basename(args[2])).toBe(basename(allowedFile));
+    expect(args[2]).toBe("/dev/fd/3");
+    expect(args[3]).toBe("example-20260710-123456");
+  });
+
+  it("preserves a raw media extension in the explicit slug", async () => {
+    const mediaFile = join(sandbox, "sample.OGG");
+    writeFileSync(mediaFile, "audio bytes");
+
+    await postPublish({ path: mediaFile, scope: "public" });
+
+    expect(spawnSpy.mock.calls[0][1]).toEqual([
+      "public",
+      "/dev/fd/3",
+      "sample-20260710-123456.OGG",
+    ]);
+    expect(publishedContent).toBe("audio bytes");
   });
 
   it("rejects a non-regular file and closes its pinned handle", async () => {
@@ -198,7 +245,7 @@ describe("POST /publish", () => {
 
     expect(status).toBe(400);
     expect(body).toEqual({ ok: false, error: "not a regular file" });
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
     expect(handleCloseSpies[0]).toHaveBeenCalledTimes(1);
   });
 
@@ -209,20 +256,12 @@ describe("POST /publish", () => {
 
     expect(status).toBe(413);
     expect(body).toEqual({ ok: false, error: "file too large" });
-    expect(execFileSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
     expect(handleCloseSpies[0]).toHaveBeenCalledTimes(1);
   });
 
   it("returns a generic 500 when stdout has no URL line", async () => {
-    execFileSpy.mockImplementationOnce(
-      (_command: string, _args: string[], _options: object, callback: any) => {
-        callback(null, {
-          stdout: "Published: /home/claude/shared/public/example\n",
-          stderr: "",
-        });
-        return { kill: () => {} } as any;
-      },
-    );
+    spawnStdout = "Published: /home/claude/shared/public/example\n";
 
     const { status, body } = await postPublish({ path: allowedFile, scope: "public" });
 
@@ -234,13 +273,8 @@ describe("POST /publish", () => {
     );
   });
 
-  it("hides execFile details and closes the handle when publish-shared fails", async () => {
-    execFileSpy.mockImplementationOnce(
-      (_command: string, _args: string[], _options: object, callback: any) => {
-        callback(new Error("spawn /home/claude/bin/publish-shared: secret stderr"), null);
-        return { kill: () => {} } as any;
-      },
-    );
+  it("hides process details and closes the handle when publish-shared fails", async () => {
+    spawnFailure = new Error("spawn /home/claude/bin/publish-shared: secret stderr");
 
     const { status, body } = await postPublish({
       path: allowedFile,
@@ -257,7 +291,7 @@ describe("POST /publish", () => {
       "Failed to publish shared file:",
       expect.any(Error),
     );
-    const stagedPath = execFileSpy.mock.calls[0][1][1];
-    expect(existsSync(dirname(stagedPath))).toBe(false);
+    expect(existsSync(dirname(stagedPath!))).toBe(false);
+    expect(() => fstatSync(publishedFd!)).toThrow();
   });
 });

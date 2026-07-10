@@ -70,6 +70,11 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   // click handler, so a ref-based lock is the only way to prevent two
   // concurrent backend audio jobs racing each other.
   const audioInFlightRef = useRef(false);
+  // Own generation/send state by the file that started it. The global lock
+  // still prevents duplicate backend jobs, while this path prevents a late
+  // completion from painting (or auto-sending from) a different file's UI.
+  const audioOpPathRef = useRef<string | null>(null);
+  const viewedFilePathRef = useRef<string | null>(viewingFile?.path ?? null);
   // Monotonically versions cache checks so a response from an older sheet
   // open/file cannot overwrite the state established by a newer check or by
   // the generate-and-send chain.
@@ -141,6 +146,19 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   useEffect(() => {
     const seq = ++readingListCheckSeqRef.current;
     const path = viewingFile?.path ?? null;
+    const audioPathChanged = path !== viewedFilePathRef.current;
+    viewedFilePathRef.current = path;
+    if (audioPathChanged) {
+      // Invalidate the previous file's cache check and immediately clear its
+      // presentation. A generate/send that still belongs to that old path
+      // may finish, but its guarded completion must not alter these values.
+      ++audioCheckSeqRef.current;
+      setAudioStatus(null);
+      if (audioOpPathRef.current !== path) {
+        setAudioLoading(false);
+        setAudioOp("idle");
+      }
+    }
     const pathChanged = path !== readingListViewedPathRef.current;
     readingListViewedPathRef.current = path;
     // Clear the prior file's result immediately. A same-file refresh (for
@@ -356,9 +374,11 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
 
   const handleCheckAudio = async (filePath: string) => {
     const seq = ++audioCheckSeqRef.current;
+    const hasInFlightOpForFile = () =>
+      audioInFlightRef.current && audioOpPathRef.current === filePath;
     // If a generate or send is already in-flight, don't clobber its
     // loading/op state with a check — just show the in-progress panel.
-    if (audioInFlightRef.current) return;
+    if (hasInFlightOpForFile()) return;
     setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("checking");
@@ -368,27 +388,32 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       // owns the UI now — a stale result must not overwrite it. Same for a
       // generate/send that started while this check was in-flight.
       if (seq !== audioCheckSeqRef.current) return;
-      if (!audioInFlightRef.current) setAudioStatus(status);
+      if (!hasInFlightOpForFile()) setAudioStatus(status);
     } catch {
       if (seq !== audioCheckSeqRef.current) return;
-      if (!audioInFlightRef.current) setAudioStatus(null);
+      if (!hasInFlightOpForFile()) setAudioStatus(null);
     } finally {
       // Only clear loading if this check still owns the UI and no
       // generate/send started while we were checking.
-      if (seq === audioCheckSeqRef.current && !audioInFlightRef.current) {
+      if (seq === audioCheckSeqRef.current && !hasInFlightOpForFile()) {
         setAudioOp("idle");
         setAudioLoading(false);
       }
     }
   };
-  const sendAudio = async (audioPath: string, pendingStatus = "Sending to Telegram...") => {
-    setAudioOp("sending");
-    setStatus(pendingStatus);
+  const sendAudio = async (audioPath: string, filePath: string, pendingStatus = "Sending to Telegram...") => {
+    const ownsViewedFile = () =>
+      audioOpPathRef.current === filePath && viewedFilePathRef.current === filePath;
+    if (ownsViewedFile()) {
+      setAudioOp("sending");
+      setStatus(pendingStatus);
+    }
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const data = await sendAudioTelegram(audioPath, controller.signal);
+        if (!ownsViewedFile()) return;
         if (data.ok) {
           haptic.success();
           setStatus("Sent to Telegram");
@@ -402,6 +427,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
         clearTimeout(timeout);
       }
     } catch (err) {
+      if (!ownsViewedFile()) return;
       haptic.error();
       setStatus(
         err instanceof DOMException && err.name === "AbortError"
@@ -414,6 +440,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     ++audioCheckSeqRef.current;
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
+    audioOpPathRef.current = filePath;
     setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("generating");
@@ -431,13 +458,19 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       }
       if (data.ok && data.path) {
         haptic.success();
+        if (viewedFilePathRef.current !== filePath) {
+          setStatus("Audio ready — reopen the file to send");
+          return;
+        }
         setAudioStatus({ exists: true, path: data.path });
-        await sendAudio(data.path, "Audio generated — sending to Telegram…");
+        await sendAudio(data.path, filePath, "Audio generated — sending to Telegram…");
       } else {
+        if (viewedFilePathRef.current !== filePath) return;
         haptic.error();
         setStatus(`Failed: ${data.error || (data.ok ? "Missing audio path" : "unknown error")}`);
       }
     } catch (err) {
+      if (viewedFilePathRef.current !== filePath) return;
       haptic.error();
       setStatus(
         err instanceof DOMException && err.name === "AbortError"
@@ -445,21 +478,32 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           : `Error: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
-      audioInFlightRef.current = false;
-      setAudioOp("idle");
-      setAudioLoading(false);
+      if (audioOpPathRef.current === filePath) {
+        audioInFlightRef.current = false;
+        audioOpPathRef.current = null;
+      }
+      if (viewedFilePathRef.current === filePath) {
+        setAudioOp("idle");
+        setAudioLoading(false);
+      }
     }
   };
-  const handleSendAudio = async (audioPath: string) => {
+  const handleSendAudio = async (audioPath: string, filePath: string) => {
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
+    audioOpPathRef.current = filePath;
     setAudioLoading(true);
     try {
-      await sendAudio(audioPath);
+      await sendAudio(audioPath, filePath);
     } finally {
-      audioInFlightRef.current = false;
-      setAudioOp("idle");
-      setAudioLoading(false);
+      if (audioOpPathRef.current === filePath) {
+        audioInFlightRef.current = false;
+        audioOpPathRef.current = null;
+      }
+      if (viewedFilePathRef.current === filePath) {
+        setAudioOp("idle");
+        setAudioLoading(false);
+      }
     }
   };
   const handleRestartSession = async () => {
@@ -757,7 +801,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           audioStatus={audioStatus}
           onClose={() => setModal(null)}
           onGenerate={() => void handleGenerateAudio(viewingFile.path)}
-          onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path); }}
+          onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path, viewingFile.path); }}
         />
       ) : null;
       break;

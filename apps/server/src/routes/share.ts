@@ -1,18 +1,84 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createWriteStream, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { promisify } from "node:util";
 import { Hono } from "hono";
 import { ALLOWED_FILE_ROOTS, openAllowedForRead } from "../lib/path-allowed.js";
-
-const execFileAsync = promisify(execFile);
 
 const PUBLISH_SHARED = "/home/claude/bin/publish-shared";
 const DEFAULT_PUBLIC_BASE_URL = "https://shared.claude.do/public";
 const DEFAULT_PRIVATE_BASE_URL = "https://shared.claude.do/private";
 const MAX_SHARE_BYTES = 50 * 1024 * 1024;
+const RAW_MEDIA_EXTENSIONS = new Set([
+  "avif", "bmp", "gif", "heic", "heif", "ico", "jpeg", "jpg", "jxl",
+  "m4v", "m4a", "mov", "mp3", "mp4", "ogg", "oga", "ogv", "png",
+  "svg", "tif", "tiff", "wav", "webm", "webp",
+]);
+
+function derivePublishSlug(path: string, now = new Date()): string {
+  const name = basename(path);
+  const lastDot = name.lastIndexOf(".");
+  const stem = lastDot === -1 ? name : name.slice(0, lastDot);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  let slug = `${stem}-${stamp}`;
+
+  const extension = lastDot === -1 ? "" : name.slice(lastDot + 1);
+  if (
+    extension &&
+    RAW_MEDIA_EXTENSIONS.has(extension.toLowerCase()) &&
+    !basename(slug).includes(".")
+  ) {
+    slug += `.${extension}`;
+  }
+
+  // publish-shared applies its own locale-aware space replacement and
+  // [:alnum:] allowlist to explicit slugs, so leave sanitization to it.
+  return slug;
+}
+
+function runPublishShared(
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  inheritedFd: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(PUBLISH_SHARED, args, {
+      env,
+      stdio: ["ignore", "pipe", "pipe", inheritedFd],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve(stdout);
+    };
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish(new Error("publish-shared timed out"));
+    }, 30_000);
+
+    // These streams are present because stdout/stderr are configured as pipes.
+    child.stdout!.setEncoding("utf8");
+    child.stderr!.setEncoding("utf8");
+    child.stdout!.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr!.on("data", (chunk: string) => { stderr += chunk; });
+    child.once("error", (error) => finish(error));
+    child.once("close", (code, signal) => {
+      if (code === 0) finish();
+      else finish(new Error(
+        `publish-shared exited with ${code ?? signal ?? "unknown status"}: ${stderr}`,
+      ));
+    });
+  });
+}
 
 const app = new Hono();
 
@@ -48,6 +114,7 @@ app.post("/publish", async (c) => {
     }
 
     let stagingDir: string | undefined;
+    let stagedHandle: Awaited<ReturnType<typeof fs.open>> | undefined;
     let handleClosed = false;
     try {
       const stats = await opened.handle.stat();
@@ -67,23 +134,29 @@ app.post("/publish", async (c) => {
       await opened.handle.close();
       handleClosed = true;
 
+      stagedHandle = await fs.open(stagedPath, "r");
+
       // A fixed executable and literal argv tokens keep user-controlled path
-      // data out of shell parsing and prevent command substitution.
+      // data out of shell parsing and prevent command substitution. Passing an
+      // inherited descriptor also prevents a same-UID process from swapping the
+      // staged path before publish-shared opens it.
       const args = [
         ...(body.tmp ? ["--tmp"] : []),
         body.scope,
-        stagedPath,
+        "/dev/fd/3",
+        derivePublishSlug(resolvedPath),
       ];
-      const { stdout } = await execFileAsync(PUBLISH_SHARED, args, {
-        env: {
+      const stdout = await runPublishShared(
+        args,
+        {
           ...process.env,
           SHARED_PUBLIC_BASE_URL:
             process.env.SHARED_PUBLIC_BASE_URL ?? DEFAULT_PUBLIC_BASE_URL,
           SHARED_PRIVATE_BASE_URL:
             process.env.SHARED_PRIVATE_BASE_URL ?? DEFAULT_PRIVATE_BASE_URL,
         },
-        timeout: 30_000,
-      });
+        stagedHandle.fd,
+      );
 
       const output = stdout.toString();
       const url = output.match(/^URL: (.+)$/m)?.[1]?.trim();
@@ -102,6 +175,9 @@ app.post("/publish", async (c) => {
     } finally {
       if (!handleClosed) {
         await opened.handle.close().catch(() => undefined);
+      }
+      if (stagedHandle) {
+        await stagedHandle.close().catch(() => undefined);
       }
       if (stagingDir) {
         await fs.rm(stagingDir, { recursive: true, force: true });
