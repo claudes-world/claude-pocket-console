@@ -1,19 +1,21 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { db } from "../db.js";
 import {
   ALLOWED_FILE_ROOTS,
-  isPathAllowed as isPathAllowedShared,
+  openAllowedForRead as openAllowedForReadShared,
 } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
-function isPathAllowed(absPath: string): Promise<boolean> {
-  return isPathAllowedShared(absPath, ALLOWED_FILE_ROOTS);
+/** Race-safe open+validate against the read roots (see path-allowed.ts) —
+ *  /tmp is world-writable, so a check-then-readFile-by-name would be a
+ *  TOCTOU. Read from the returned handle, never reopen by name. */
+function openAllowedForRead(absPath: string) {
+  return openAllowedForReadShared(absPath, ALLOWED_FILE_ROOTS);
 }
 
 // Env vars are read LAZILY (via getters) instead of snapshotted at module
@@ -331,44 +333,47 @@ app.post(
   const forceRefresh = body.force === true;
 
   const resolved = resolve(rawPath);
-  if (!(await isPathAllowed(resolved))) {
-    return c.json({ ok: false, error: "Access denied" }, 403);
-  }
   if (!resolved.toLowerCase().endsWith(".md")) {
     return c.json({ ok: false, error: "Only .md files are supported" }, 400);
   }
 
-  let st;
-  try {
-    st = await stat(resolved);
-  } catch {
-    return c.json({ ok: false, error: "File not found" }, 404);
+  // Race-safe: open+validate the fd, then read from the handle (never reopen
+  // `resolved` by name) so a /tmp symlink swap can't redirect the read.
+  const opened = await openAllowedForRead(resolved);
+  if (!opened.ok) {
+    if (opened.reason === "not-found") return c.json({ ok: false, error: "File not found" }, 404);
+    return c.json({ ok: false, error: "Access denied" }, 403);
   }
-  if (!st.isFile()) {
-    return c.json({ ok: false, error: "Not a file" }, 400);
-  }
+  const handle = opened.handle;
+
   // Read env values lazily (after loadEnv has run) — see getter definitions.
   const maxBytes = getMaxBytes();
   const model = getModel();
   const promptVersion = getPromptVersion();
-  if (st.size > maxBytes) {
-    return c.json(
-      { ok: false, error: `File too large for TL;DR (max ${Math.round(maxBytes / 1024)}KB)` },
-      413,
-    );
-  }
 
   let content: string;
   try {
-    content = await readFile(resolved, "utf-8");
+    const st = await handle.stat();
+    if (!st.isFile()) {
+      return c.json({ ok: false, error: "Not a file" }, 400);
+    }
+    if (st.size > maxBytes) {
+      return c.json(
+        { ok: false, error: `File too large for TL;DR (max ${Math.round(maxBytes / 1024)}KB)` },
+        413,
+      );
+    }
+    content = await handle.readFile("utf-8");
   } catch (err: any) {
     // Don't echo raw fs error message — can include absolute paths and
     // errno codes. Log server-side, return generic. (Copilot review.)
     console.error(
-      `[markdown/summarize] readFile(${resolved}) failed:`,
+      `[markdown/summarize] read(${resolved}) failed:`,
       err?.message,
     );
     return c.json({ ok: false, error: "Failed to read file" }, 500);
+  } finally {
+    await handle.close();
   }
   if (!content.trim()) {
     return c.json({ ok: false, error: "File is empty" }, 400);

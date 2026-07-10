@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,6 +36,7 @@ import { __resetRealRootCacheForTests } from "../../lib/path-allowed.js";
  */
 
 let sandbox: string;
+let outsideSecret: string;
 let testAllowedRoots: string[] = [];
 
 vi.mock("../../lib/path-allowed.js", async () => {
@@ -45,6 +47,12 @@ vi.mock("../../lib/path-allowed.js", async () => {
     ...real,
     isPathAllowed: async (candidate: string, _ignoredAllowedRoots: string[]) => {
       return real.isPathAllowed(candidate, testAllowedRoots);
+    },
+    // /read, /list, /download validate via the race-safe openAllowedForRead;
+    // delegate to the real impl against the test roots so the allowlist
+    // boundary is exercised against the sandbox rather than the host.
+    openAllowedForRead: async (candidate: string, _ignoredAllowedRoots: string[]) => {
+      return real.openAllowedForRead(candidate, testAllowedRoots);
     },
   };
 });
@@ -71,10 +79,18 @@ beforeAll(() => {
   writeFileSync(join(sandbox, "data.json"), '{"key": "value"}');
   writeFileSync(join(sandbox, ".hidden-file"), "secret");
   writeFileSync(join(sandbox, "sub", "nested.md"), "# Nested\n\nContent here.");
+
+  // A secret file OUTSIDE every allowed root, with a distinctive large size,
+  // and a symlink to it planted INSIDE the listable sandbox. Models a
+  // world-writable-/tmp symlink; /list must not leak the target's size/mtime.
+  outsideSecret = mkdtempSync(join(tmpdir(), "cpc-files-outside-"));
+  writeFileSync(join(outsideSecret, "secret.bin"), "S".repeat(654321));
+  symlinkSync(join(outsideSecret, "secret.bin"), join(sandbox, "leak-link.bin"));
 });
 
 afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true });
+  rmSync(outsideSecret, { recursive: true, force: true });
   __resetRealRootCacheForTests();
 });
 
@@ -117,6 +133,20 @@ describe("GET /roots", () => {
 // GET /list
 // ---------------------------------------------------------------------------
 describe("GET /list", () => {
+  it("does NOT leak an out-of-root symlink target's size/mtime (reports the link's own metadata)", async () => {
+    const res = await filesRoute.request(`/list?path=${encodeURIComponent(sandbox)}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{ name: string; type: string; size: number }>;
+    };
+    const link = body.items.find((i) => i.name === "leak-link.bin");
+    expect(link).toBeDefined();
+    // The out-of-root secret is 654321 bytes. lstat must report the link's
+    // own size (small), never the followed target's — no metadata leak.
+    expect(link!.size).not.toBe(654321);
+    expect(link!.size).toBeLessThan(4096);
+  });
+
   it("lists directory contents for an allowed path", async () => {
     const res = await filesRoute.request(`/list?path=${encodeURIComponent(sandbox)}`);
     expect(res.status).toBe(200);
@@ -289,18 +319,15 @@ describe("GET /read", () => {
     expect(body.error).toBe("Access denied");
   });
 
-  it("returns 500 for a non-existent file inside an allowed dir", async () => {
-    // isPathAllowed requires realpath to succeed, so a non-existent file
-    // is rejected at the isPathAllowed stage (returns false → 403).
-    // However, if the file disappears between the check and the read,
-    // the route would return 500. We test the 403 path since that's the
-    // normal flow for missing files.
+  it("returns 404 for a non-existent file inside an allowed dir", async () => {
+    // The race-safe open (openAllowedForRead) distinguishes ENOENT
+    // (not-found → 404) from an allowlist rejection (denied → 403), which
+    // is a more honest status than the old realpath-fails-so-403 behavior.
     const filePath = join(sandbox, "does-not-exist.txt");
     const res = await filesRoute.request(
       `/read?path=${encodeURIComponent(filePath)}`,
     );
-    // realpath fails for non-existent → isPathAllowed returns false → 403
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("returns 413 for a file larger than 1MB", async () => {
@@ -647,7 +674,7 @@ describe("POST /paste", () => {
 // GET /list — synthetic home view (/home/claude)
 // ---------------------------------------------------------------------------
 describe("GET /list — synthetic home view", () => {
-  it("returns only allowlisted subdirs of /home/claude, never disallowed siblings", async () => {
+  it("returns only allowlisted top-level roots, never disallowed siblings", async () => {
     const res = await filesRoute.request(
       `/list?path=${encodeURIComponent("/home/claude")}`,
     );
@@ -662,25 +689,36 @@ describe("GET /list — synthetic home view", () => {
     expect(body.parent).toBeNull();
     expect(Array.isArray(body.items)).toBe(true);
 
-    // Every returned item must be a directory whose path starts with /home/claude/
+    // Every returned item must be a directory that IS an allowlisted root —
+    // the view is built purely from the allowlist (which now includes
+    // top-level roots outside /home/claude, e.g. /tmp), never from readdir.
+    const { ALLOWED_FILE_ROOTS } = await vi.importActual<
+      typeof import("../../lib/path-allowed.js")
+    >("../../lib/path-allowed.js");
     for (const item of body.items) {
       expect(item.type).toBe("dir");
-      expect(item.path.startsWith("/home/claude/")).toBe(true);
+      expect(ALLOWED_FILE_ROOTS).toContain(item.path);
     }
 
     const names = body.items.map((i) => i.name);
 
-    // Allowlisted direct children must be present
+    // Allowlisted top-level roots must be present
     expect(names).toContain("claudes-world");
     expect(names).toContain("code");
     expect(names).toContain("bin");
     expect(names).toContain(".claude");
     expect(names).toContain(".world");
+    // View-only roots (Liam voice 1238): labeled home-relative / by real path
+    expect(names).toContain(".worldos/lanes");
+    expect(names).toContain("/tmp");
 
     // Disallowed siblings must never appear
     expect(names).not.toContain(".ssh");
     expect(names).not.toContain(".secrets");
-    expect(names).not.toContain("claudes-world/.claude"); // nested root, not a direct child
+    // Nested root (claudes-world/.claude) is reachable by browsing its
+    // parent, never shown at top level.
+    const paths = body.items.map((i) => i.path);
+    expect(paths).not.toContain("/home/claude/claudes-world/.claude");
   });
 
   it("returns 403 for direct file-read on /home/claude", async () => {

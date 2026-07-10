@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { realpath, open, type FileHandle } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { getTracer } from "./otel.js";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -35,13 +35,39 @@ const realRootCache = new Map<string, Promise<string>>();
 
 const pathTracer = getTracer('cpc-server-security');
 
-export const ALLOWED_FILE_ROOTS = [
+/**
+ * Roots CPC may WRITE into (file upload, paste, audio-generation sidecars).
+ * Deliberately narrower than the read list below: the viewer expansion for
+ * agent workspaces + /tmp (Liam voice 1238) is read-only — /tmp especially
+ * is world-writable shared space that CPC must never write into, and legacy
+ * lane workspaces are other agents' working state. This list is exactly the
+ * pre-expansion allowlist, so the write surface is unchanged.
+ */
+export const ALLOWED_WRITE_ROOTS = [
   "/home/claude/claudes-world",
   "/home/claude/code",
   "/home/claude/bin",
   "/home/claude/.claude",
   "/home/claude/claudes-world/.claude",
   "/home/claude/.world",
+] as const;
+
+/**
+ * Roots the file viewer may READ (list/read/search/download/send-to-chat).
+ * Superset of the write roots plus view-only additions:
+ *  - /home/claude/.worldos/lanes — legacy lane workspaces (current-gen lane
+ *    workspaces live under ~/.world, already covered above)
+ *  - /tmp — agents share artifacts there (tmpfs; whatever the server user
+ *    can read). Symlink escapes are neutralized by isPathAllowed's realpath
+ *    resolution: a /tmp symlink pointing outside the allowlist resolves to
+ *    its real target and is denied.
+ * Keep every entry an explicit absolute path — no globs, no env-derived
+ * wildcards; that property is what makes the traversal guard auditable.
+ */
+export const ALLOWED_FILE_ROOTS = [
+  ...ALLOWED_WRITE_ROOTS,
+  "/home/claude/.worldos/lanes",
+  "/tmp",
 ] as const;
 
 
@@ -71,6 +97,69 @@ export function __resetRealRootCacheForTests(): void {
     );
   }
   realRootCache.clear();
+}
+
+export type OpenAllowedResult =
+  | { ok: true; handle: FileHandle; realPath: string }
+  | { ok: false; reason: "not-found" | "denied" | "error" };
+
+/**
+ * Race-safe replacement for "isPathAllowed(p) then read p by name".
+ *
+ * The by-name pattern is a check-then-use TOCTOU: a path that passes the
+ * allowlist check can be swapped for a symlink before the subsequent
+ * open()/readFile()/readdir(), redirecting the read to a disallowed file.
+ * Benign while every allowed root was owned by the CPC account; a real
+ * allowlist bypass once a WORLD-WRITABLE root (/tmp) is in the read list —
+ * any local process can plant a file, let it pass the check, then swap in a
+ * symlink to e.g. ~/.ssh/id_rsa (PR #292 codex HIGH).
+ *
+ * Fix: open first (following symlinks — the "allow a symlink whose target
+ * is inside a root" semantics are preserved), then validate the OPENED
+ * inode's real path via `/proc/self/fd/<fd>`. The fd is pinned to one
+ * concrete inode, so whatever the attacker swapped, we validate the file we
+ * will actually read — never the name. Callers MUST read from the returned
+ * handle (or its `/proc/self/fd` path for readdir), never reopen by name.
+ *
+ * Linux-only by design (this is a Linux host); `/proc/self/fd` is the
+ * pinned-fd identity. On a platform without it the realpath resolves to a
+ * non-allowed path and the call fails closed.
+ */
+export async function openAllowedForRead(
+  absPath: string,
+  allowedRoots: readonly string[],
+): Promise<OpenAllowedResult> {
+  let handle: FileHandle;
+  try {
+    // "r" follows symlinks including the final component (preserving the
+    // legacy allow-symlink-into-root behavior); the post-open check below
+    // is what makes that safe.
+    handle = await open(resolve(absPath), "r");
+  } catch (err: any) {
+    return { ok: false, reason: err?.code === "ENOENT" ? "not-found" : "error" };
+  }
+  try {
+    // realpath('/proc/self/fd/N') resolves the kernel's magic symlink to the
+    // canonical path of the inode this fd holds — the authoritative identity.
+    const realPath = await realpath(`/proc/self/fd/${handle.fd}`);
+    for (const root of allowedRoots) {
+      let realRoot: string;
+      try {
+        realRoot = await getRealRoot(root);
+      } catch {
+        continue;
+      }
+      const rootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+      if (realPath === realRoot || realPath.startsWith(rootWithSep)) {
+        return { ok: true, handle, realPath };
+      }
+    }
+    await handle.close();
+    return { ok: false, reason: "denied" };
+  } catch {
+    await handle.close();
+    return { ok: false, reason: "error" };
+  }
 }
 
 export async function isPathAllowed(

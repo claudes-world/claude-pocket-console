@@ -2,9 +2,9 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { randomBytes } from "node:crypto";
 import {
+  lstat,
   open,
   readdir,
-  readFile,
   stat,
   unlink,
 } from "node:fs/promises";
@@ -14,7 +14,9 @@ import { constants as fsConstants } from "node:fs";
 import { Readable } from "node:stream";
 import {
   ALLOWED_FILE_ROOTS,
+  ALLOWED_WRITE_ROOTS,
   isPathAllowed as isPathAllowedShared,
+  openAllowedForRead as openAllowedForReadShared,
 } from "../lib/path-allowed.js";
 
 const app = new Hono();
@@ -41,6 +43,38 @@ function isPathAllowed(absPath: string): Promise<boolean> {
   return isPathAllowedShared(absPath, ALLOWED_ROOTS);
 }
 
+/** Write-endpoint gate (upload/paste): the narrower ALLOWED_WRITE_ROOTS —
+ *  the view-only roots (/tmp, legacy lane workspaces) must stay read-only. */
+function isWritePathAllowed(absPath: string): Promise<boolean> {
+  return isPathAllowedShared(absPath, ALLOWED_WRITE_ROOTS);
+}
+
+/** Race-safe open+validate against the read roots (see path-allowed.ts).
+ *  Use for every content read of a client-supplied path now that a
+ *  world-writable root (/tmp) is in the allowlist. */
+function openAllowedForRead(absPath: string) {
+  return openAllowedForReadShared(absPath, ALLOWED_ROOTS);
+}
+
+/**
+ * Race-safe directory listing: open+validate the dir's fd identity, then
+ * readdir THROUGH the pinned fd. Returns null if the dir isn't within an
+ * allowed root or can't be read. Used by /search's BFS so a symlink swapped
+ * onto any walked directory (including a client `?scope=` over world-writable
+ * /tmp) can't redirect the listing outside the allowlist.
+ */
+async function readdirAllowedEntries(dir: string) {
+  const opened = await openAllowedForRead(dir);
+  if (!opened.ok) return null;
+  try {
+    return await readdir(`/proc/self/fd/${opened.handle.fd}`, { withFileTypes: true });
+  } catch {
+    return null;
+  } finally {
+    await opened.handle.close();
+  }
+}
+
 function pruneExpiredDownloadTickets(now = Date.now()) {
   for (const [ticket, record] of downloadTickets) {
     if (record.expiresAt <= now) {
@@ -50,43 +84,54 @@ function pruneExpiredDownloadTickets(now = Date.now()) {
 }
 
 async function getDownloadableFile(filePath: string): Promise<
-  | { ok: true; path: string; size: number; name: string }
+  | { ok: true; handle: import("node:fs/promises").FileHandle; path: string; size: number; name: string }
   | { ok: false; status: 400 | 403 | 404 | 413 | 500; error: string }
 > {
   const resolved = resolve(filePath);
-  if (!await isPathAllowed(resolved)) {
+  // Race-safe: open+validate the fd, then stream from THAT fd (never reopen
+  // by name) so a symlink swapped in after the check can't redirect the
+  // download to a disallowed file. Callers either stream from the handle
+  // (createDownloadResponse) or close it immediately if they only needed the
+  // validation (the ticket POST).
+  const opened = await openAllowedForRead(resolved);
+  if (!opened.ok) {
+    if (opened.reason === "not-found") return { ok: false, status: 404, error: "File not found" };
     return { ok: false, status: 403, error: "Access denied" };
   }
+  const { handle } = opened;
 
   try {
-    const st = await stat(resolved);
+    const st = await handle.stat();
     if (!st.isFile()) {
+      await handle.close();
       return { ok: false, status: 400, error: "Not a file" };
     }
-
     if (st.size > DOWNLOAD_MAX_BYTES) {
+      await handle.close();
       return { ok: false, status: 413, error: `File too large (max ${DOWNLOAD_MAX_BYTES / (1024 * 1024)}MB)` };
     }
-
     return {
       ok: true,
+      handle,
       path: resolved,
       size: st.size,
       name: basename(resolved) || "file",
     };
   } catch (err: any) {
-    if (err?.code === "ENOENT") {
-      return { ok: false, status: 404, error: "File not found" };
-    }
+    await handle.close();
     console.error("[files/download] stat error:", err);
     return { ok: false, status: 500, error: "Failed to read file" };
   }
 }
 
-function createDownloadResponse(file: { path: string; size: number; name: string }) {
+function createDownloadResponse(file: { handle: import("node:fs/promises").FileHandle; size: number; name: string }) {
   const encodedName = encodeURIComponent(file.name);
   const safeName = file.name.replace(/["\r\n]/g, "") || "file";
-  const body = Readable.toWeb(createReadStream(file.path)) as unknown as BodyInit;
+  // Stream from the validated fd (createReadStream adopts and closes it on
+  // end/error via autoClose) — no by-name reopen.
+  const body = Readable.toWeb(
+    createReadStream("", { fd: file.handle.fd, autoClose: true }),
+  ) as unknown as BodyInit;
 
   return new Response(body, {
     status: 200,
@@ -140,17 +185,25 @@ app.get("/list", async (c) => {
   const dir = c.req.query("path") || BASE_DIR;
   const resolved = resolve(dir);
 
-  // Synthetic home view: construct listing from allowlist, never readdir /home/claude.
+  // Synthetic home view: construct listing from allowlist, never readdir
+  // /home/claude. Shows every TOP-LEVEL allowed root — one that isn't nested
+  // inside another allowed root (nested ones, e.g. claudes-world/.claude,
+  // are reachable by browsing their parent). Roots outside /home/claude
+  // (/tmp, ~/.worldos/lanes) appear here too, labeled by their real path,
+  // so view-only roots are reachable without memorizing paths. Still built
+  // purely from the allowlist, so disallowed siblings can never appear.
   if (resolved === HOME_CLAUDE) {
-    const items = ALLOWED_ROOTS
-      .map((r) => resolve(r))
-      .filter((r) => {
-        // Only include roots whose immediate parent is /home/claude
-        const parentDir = resolve(r, "..");
-        return parentDir === HOME_CLAUDE;
-      })
+    const resolvedRoots = ALLOWED_ROOTS.map((r) => resolve(r));
+    const items = resolvedRoots
+      .filter((r) =>
+        !resolvedRoots.some((other) => other !== r && r.startsWith(other + sep)),
+      )
       .map((r) => ({
-        name: basename(r),
+        name: resolve(r, "..") === HOME_CLAUDE
+          ? basename(r)
+          : r.startsWith(HOME_CLAUDE + sep)
+            ? r.slice(HOME_CLAUDE.length + 1)
+            : r,
         path: r,
         type: "dir" as const,
       }));
@@ -162,12 +215,26 @@ app.get("/list", async (c) => {
     });
   }
 
-  if (!await isPathAllowed(resolved)) {
+  // Race-safe: open the directory, validate the opened fd's real identity,
+  // then readdir THROUGH the pinned fd (its /proc/self/fd path) so a symlink
+  // swapped in after the check can't redirect the listing to, say, ~/.ssh.
+  const openedDir = await openAllowedForRead(resolved);
+  if (!openedDir.ok) {
+    if (openedDir.reason === "not-found") return c.json({ error: "Not found" }, 404);
     return c.json({ error: "Access denied" }, 403);
   }
+  const dirHandle = openedDir.handle;
+  // Entry paths are reported to the client as `resolved/<name>` (a clicked
+  // entry re-runs the full open-and-validate on /read), but every disk touch
+  // here goes through the pinned fd dir so the listing itself is race-safe.
+  const fdDir = `/proc/self/fd/${dirHandle.fd}`;
 
   try {
-    const entries = await readdir(resolved, { withFileTypes: true });
+    const dstat = await dirHandle.stat();
+    if (!dstat.isDirectory()) {
+      return c.json({ error: "Not a directory" }, 400);
+    }
+    const entries = await readdir(fdDir, { withFileTypes: true });
     const items = await Promise.all(
       entries
         .filter((e) => {
@@ -179,7 +246,15 @@ app.get("/list", async (c) => {
         .map(async (e) => {
           const fullPath = join(resolved, e.name);
           try {
-            const st = await stat(fullPath);
+            // lstat, NOT stat: for a symlink entry, report the LINK's own
+            // metadata, never the followed target's. A bare stat() follows
+            // the symlink with no allowlist check on where it lands, leaking
+            // byte-exact size + mtime + existence of arbitrary out-of-root
+            // files a planted /tmp symlink points at (gemini MEDIUM). `type`
+            // already uses the non-following Dirent, so this just aligns
+            // size/modified with the same don't-follow rule. Clicking an
+            // entry re-runs /read, which resolves+validates via fd.
+            const st = await lstat(join(fdDir, e.name));
             return {
               name: e.name,
               path: fullPath,
@@ -221,6 +296,8 @@ app.get("/list", async (c) => {
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
+  } finally {
+    await dirHandle.close();
   }
 });
 
@@ -236,12 +313,22 @@ app.get("/read", async (c) => {
   if (resolved === HOME_CLAUDE) {
     return c.json({ error: "Access denied" }, 403);
   }
-  if (!await isPathAllowed(resolved)) {
+
+  // Race-safe: open first, then validate the opened fd's real identity. All
+  // reads below go through the handle (never re-open `resolved` by name), so
+  // a symlink swapped in after the check can't redirect the read.
+  const opened = await openAllowedForRead(resolved);
+  if (!opened.ok) {
+    if (opened.reason === "not-found") return c.json({ error: "File not found" }, 404);
     return c.json({ error: "Access denied" }, 403);
   }
+  const { handle } = opened;
 
   try {
-    const st = await stat(resolved);
+    const st = await handle.stat();
+    if (st.isDirectory()) {
+      return c.json({ error: "Not a file" }, 400);
+    }
 
     // Don't read files larger than 1MB
     if (st.size > 1024 * 1024) {
@@ -264,32 +351,24 @@ app.get("/read", async (c) => {
         (n) => baseName.startsWith(n),
       );
 
+    const content = await handle.readFile();
     if (!isText && st.size > 0) {
-      // Try reading first 512 bytes to check for binary
-      const content = await readFile(resolved);
-      const sample = content.subarray(0, 512);
-      if (sample.includes(0)) {
+      // Binary sniff on the first 512 bytes of what we actually read.
+      if (content.subarray(0, 512).includes(0)) {
         return c.json({ error: "Binary file" }, 415);
       }
-      return c.json({
-        path: resolved,
-        name: baseName,
-        content: content.toString("utf-8"),
-        size: st.size,
-        modified: st.mtime.toISOString(),
-      });
     }
-
-    const content = await readFile(resolved, "utf-8");
     return c.json({
       path: resolved,
       name: baseName,
-      content,
+      content: content.toString("utf-8"),
       size: st.size,
       modified: st.mtime.toISOString(),
     });
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
+  } finally {
+    await handle.close();
   }
 });
 
@@ -312,6 +391,10 @@ app.post("/download-ticket", async (c) => {
   if (!file.ok) {
     return c.json({ error: file.error }, file.status);
   }
+  // The ticket POST only validates downloadability; the actual GET re-opens
+  // and re-validates via fd, so release this handle now (don't leak it for
+  // the whole ticket TTL).
+  await file.handle.close();
 
   const ticket = randomBytes(16).toString("hex");
   downloadTickets.set(ticket, {
@@ -378,16 +461,30 @@ app.get("/search", async (c) => {
 
   const scopeRaw = c.req.query("scope");
   let roots: readonly string[] = ALLOWED_ROOTS;
+  // Canonical scope path (from the validated fd) used for both BFS seeding
+  // and the scope-prefix filter, so a `?scope=` symlink can't skew either.
+  let scopeMatchRoot: string | null = null;
   if (scopeRaw) {
-    const scopeResolved = resolve(scopeRaw);
-    // Reject scopes that aren't inside an allowed root. Same check as every
-    // other file route — realpath-canonicalizing both sides and enforcing a
-    // true path-segment boundary — so a symlink escape or sibling-prefix
-    // bypass can't smuggle an out-of-tree path in via `?scope=`.
-    if (!(await isPathAllowed(scopeResolved))) {
-      return c.json({ error: "Access denied" }, 403);
+    // Race-safe: validate the scope by opening it and checking the OPENED
+    // fd's real identity (not the name), so a symlink escape or a mid-request
+    // swap over world-writable /tmp can't smuggle an out-of-tree path in.
+    const opened = await openAllowedForRead(resolve(scopeRaw));
+    if (!opened.ok) {
+      return c.json(
+        { error: opened.reason === "not-found" ? "Not found" : "Access denied" },
+        opened.reason === "not-found" ? 404 : 403,
+      );
     }
-    roots = [scopeResolved];
+    try {
+      const st = await opened.handle.stat();
+      if (!st.isDirectory()) {
+        return c.json({ error: "Scope is not a directory" }, 400);
+      }
+      scopeMatchRoot = opened.realPath;
+    } finally {
+      await opened.handle.close();
+    }
+    roots = [scopeMatchRoot];
   }
 
   const results: { name: string; path: string; type: string; relPath: string }[] = [];
@@ -399,7 +496,6 @@ app.get("/search", async (c) => {
   // Pre-compute the scope prefix (with trailing separator so we get a true
   // path-segment boundary and `/a/b-evil` can't match scope `/a/b`). The
   // scope itself is also a valid match, so we check for equality separately.
-  const scopeMatchRoot = scopeRaw ? resolve(scopeRaw) : null;
   const scopeMatchPrefix = scopeMatchRoot
     ? (scopeMatchRoot.endsWith(sep) ? scopeMatchRoot : scopeMatchRoot + sep)
     : null;
@@ -408,7 +504,10 @@ app.get("/search", async (c) => {
     const [dir, depth] = queue.shift()!;
     if (depth > 8) continue;
     try {
-      const entries = await readdir(dir, { withFileTypes: true });
+      // Validate + list every walked dir by its fd identity (race-safe),
+      // never a bare readdir(dir) that a symlink swap could redirect.
+      const entries = await readdirAllowedEntries(dir);
+      if (!entries) continue;
       for (const e of entries) {
         if (results.length >= MAX) break;
         if (e.name.startsWith(".") && !e.name.startsWith(".claude")) continue;
@@ -459,7 +558,7 @@ app.post(
   }
 
   const resolved = resolve(dir);
-  if (!await isPathAllowed(resolved)) {
+  if (!await isWritePathAllowed(resolved)) {
     return c.json({ error: "Access denied" }, 403);
   }
 
@@ -633,7 +732,7 @@ app.post(
   }
 
   const resolved = resolve(dir);
-  if (!(await isPathAllowed(resolved))) {
+  if (!(await isWritePathAllowed(resolved))) {
     return c.json({ error: "Access denied" }, 403);
   }
 
