@@ -317,7 +317,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           setStatus("Sent to Telegram");
         } else {
           haptic.error();
-          setStatus(`Failed: ${data.error}`);
+          setStatus(`Failed: ${data.error || "unknown error"}`);
         }
       } finally {
         // clearTimeout in finally so a thrown fetch doesn't leave the
@@ -336,6 +336,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const handleGenerateAudio = async (filePath: string) => {
     if (audioInFlightRef.current) return;
     audioInFlightRef.current = true;
+    setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("generating");
     setStatus("Generating audio...");
@@ -356,7 +357,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
         await sendAudio(data.path, "Audio generated — sending to Telegram…");
       } else {
         haptic.error();
-        setStatus(`Failed: ${data.error}`);
+        setStatus(`Failed: ${data.error || (data.ok ? "Missing audio path" : "unknown error")}`);
       }
     } catch (err) {
       haptic.error();

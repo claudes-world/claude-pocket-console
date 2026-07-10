@@ -227,6 +227,35 @@ describe("ActionBar", () => {
     expect(mockSendAudioTelegram).not.toHaveBeenCalled();
   });
 
+  it("clears stale audio status when regeneration fails", async () => {
+    mockCheckAudio.mockResolvedValue({ exists: true, path: "/tmp/stale.ogg" });
+    mockGenerateAudio.mockResolvedValue({ ok: false, error: "Generation failed" });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Audio file exists")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Regenerate"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Generation failed")).toBeInTheDocument();
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Send to Telegram")).not.toBeInTheDocument();
+  });
+
+  it("shows an unknown error when audio generation fails without an error message", async () => {
+    mockGenerateAudio.mockResolvedValue({ ok: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: unknown error")).toBeInTheDocument());
+  });
+
   it("allows a manual retry after automatic sending fails", async () => {
     mockSendAudioTelegram
       .mockResolvedValueOnce({ ok: false, error: "Telegram unavailable" })
@@ -248,6 +277,18 @@ describe("ActionBar", () => {
 
     await waitFor(() => expect(mockSendAudioTelegram).toHaveBeenCalledTimes(2));
     expect(mockSendAudioTelegram).toHaveBeenLastCalledWith("/tmp/audio.ogg", expect.any(AbortSignal));
+  });
+
+  it("shows an unknown error when sending audio fails without an error message", async () => {
+    mockSendAudioTelegram.mockResolvedValue({ ok: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: unknown error")).toBeInTheDocument());
   });
 
   it("hides Reconnect button when onReconnect is not provided", () => {
