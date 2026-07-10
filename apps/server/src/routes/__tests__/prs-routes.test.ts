@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import type { PrRow, RepoInfo } from "../prs.js";
 
 /**
@@ -65,7 +65,10 @@ vi.mock("node:fs", async () => {
   return {
     ...actual,
     existsSync: vi.fn(actual.existsSync),
+    readFileSync: vi.fn(actual.readFileSync),
     readdirSync: vi.fn(actual.readdirSync),
+    realpathSync: vi.fn(actual.realpathSync),
+    statSync: vi.fn(actual.statSync),
   };
 });
 
@@ -91,6 +94,7 @@ const {
   __setPollerForTests,
   __resetScopeCacheForTests,
   __resetRepoCacheForTests,
+  __resetPrAuxCachesForTests,
 } = await import("../prs.js");
 
 // ---------------------------------------------------------------------------
@@ -102,6 +106,14 @@ let mockPoller: InstanceType<typeof PrPoller>;
 beforeEach(() => {
   __resetScopeCacheForTests();
   __resetRepoCacheForTests();
+  __resetPrAuxCachesForTests();
+  vi.mocked(existsSync).mockImplementation(() => false);
+  vi.mocked(readdirSync).mockImplementation(() => [] as any);
+  vi.mocked(execFileSync).mockImplementation(() => { throw new Error("mocked"); });
+  vi.mocked(execFile).mockImplementation(((_cmd: string, _args: string[], _opts: any, cb?: any) => {
+    if (cb) cb(new Error("mocked"), "", "");
+    return { on: vi.fn() } as any;
+  }) as any);
   // Create a poller in static mode (empty repos = no network calls)
   mockPoller = new PrPoller([], 999_999);
   __setPollerForTests(mockPoller);
@@ -109,8 +121,22 @@ beforeEach(() => {
 
 afterEach(() => {
   __setPollerForTests(null);
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
+
+function mockDiscoveredRepo(repo = makeRepoInfo()) {
+  vi.mocked(existsSync).mockImplementation((path) => {
+    const value = String(path);
+    return value === "/home/claude/code" || value === `${repo.path}/.git`;
+  });
+  vi.mocked(readdirSync).mockReturnValue([repo.name] as any);
+  vi.mocked(execFileSync).mockImplementation(((_cmd: string, args: string[]) => {
+    if (args.includes("get-url")) return `git@github.com:${repo.fullName}.git`;
+    if (args.includes("rev-parse")) return `${repo.branch}\n`;
+    throw new Error("unexpected git call");
+  }) as any);
+}
 
 // ---------------------------------------------------------------------------
 // GET /
@@ -243,6 +269,141 @@ describe("POST /refresh", () => {
     const res = await prsRoute.request("/refresh", { method: "POST" });
     const body = (await res.json()) as { repos: any[] };
     expect(Array.isArray(body.repos)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /issues
+// ---------------------------------------------------------------------------
+describe("GET /issues", () => {
+  it("rejects repositories outside discoverRepos without invoking gh", async () => {
+    mockDiscoveredRepo();
+
+    const res = await prsRoute.request("/issues?repo=attacker/unknown");
+
+    expect(res.status).toBe(400);
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("maps gh issue output and invokes gh with literal argv", async () => {
+    mockDiscoveredRepo();
+    vi.mocked(execFile).mockImplementationOnce(((_cmd: string, _args: string[], _opts: any, cb: any) => {
+      cb(null, JSON.stringify([{
+        number: 215,
+        title: "Add issues mode",
+        state: "CLOSED",
+        author: { login: "octocat" },
+        updatedAt: "2026-07-10T12:00:00Z",
+        labels: [{ name: "enhancement" }, { name: "web" }],
+        url: "https://github.com/claudes-world/inbox/issues/215",
+      }]), "");
+      return { on: vi.fn() } as any;
+    }) as any);
+
+    const res = await prsRoute.request("/issues?repo=claudes-world%2Finbox");
+    const body = await res.json() as any;
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      repo: "claudes-world/inbox",
+      issues: [{
+        key: "claudes-world/inbox#215",
+        repo: "claudes-world/inbox",
+        number: 215,
+        title: "Add issues mode",
+        state: "CLOSED",
+        author: "octocat",
+        updatedAt: "2026-07-10T12:00:00Z",
+        labels: ["enhancement", "web"],
+        url: "https://github.com/claudes-world/inbox/issues/215",
+      }],
+    });
+    expect(execFile).toHaveBeenCalledWith(
+      "gh",
+      [
+        "issue", "list",
+        "--repo", "claudes-world/inbox",
+        "--json", "number,title,state,author,updatedAt,labels,url",
+        "--limit", "30",
+      ],
+      { timeout: 10_000 },
+      expect.any(Function),
+    );
+  });
+
+  it("uses the five-minute per-repo cache, expires it, and honors force=1", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T12:00:00Z"));
+    mockDiscoveredRepo();
+    vi.mocked(execFile).mockImplementation(((_cmd: string, _args: string[], _opts: any, cb: any) => {
+      cb(null, "[]", "");
+      return { on: vi.fn() } as any;
+    }) as any);
+
+    await prsRoute.request("/issues?repo=claudes-world%2Finbox");
+    await prsRoute.request("/issues?repo=claudes-world%2Finbox");
+    expect(execFile).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+    await prsRoute.request("/issues?repo=claudes-world%2Finbox");
+    expect(execFile).toHaveBeenCalledTimes(2);
+
+    await prsRoute.request("/issues?repo=claudes-world%2Finbox&force=1");
+    expect(execFile).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /icons
+// ---------------------------------------------------------------------------
+describe("GET /icons", () => {
+  it("uses candidate order, skips files over 64KB, and returns the ico mime", async () => {
+    const repo = makeRepoInfo();
+    mockDiscoveredRepo(repo);
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === "/home/claude/code"
+        || value === `${repo.path}/.git`
+        || value === `${repo.path}/favicon.svg`
+        || value === `${repo.path}/favicon.ico`;
+    });
+    vi.mocked(realpathSync).mockImplementation(((path: string) => path) as any);
+    vi.mocked(statSync).mockImplementation(((path: string) => ({
+      isFile: () => true,
+      size: path.endsWith("favicon.svg") ? 64 * 1024 + 1 : 4,
+    })) as any);
+    vi.mocked(readFileSync).mockReturnValue(Buffer.from("icon") as any);
+
+    const res = await prsRoute.request("/icons");
+    const body = await res.json() as any;
+
+    expect(body.icons[repo.fullName]).toBe(`data:image/x-icon;base64,${Buffer.from("icon").toString("base64")}`);
+    expect(statSync).toHaveBeenNthCalledWith(1, `${repo.path}/favicon.svg`);
+    expect(statSync).toHaveBeenNthCalledWith(2, `${repo.path}/favicon.ico`);
+    expect(readFileSync).toHaveBeenCalledTimes(1);
+    expect(readFileSync).toHaveBeenCalledWith(`${repo.path}/favicon.ico`);
+  });
+
+  it.each([
+    ["favicon.svg", "image/svg+xml"],
+    ["favicon.png", "image/png"],
+  ])("returns the correct data URI mime for %s", async (candidate, mime) => {
+    const repo = makeRepoInfo();
+    mockDiscoveredRepo(repo);
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === "/home/claude/code"
+        || value === `${repo.path}/.git`
+        || value === `${repo.path}/${candidate}`;
+    });
+    vi.mocked(realpathSync).mockImplementation(((path: string) => path) as any);
+    vi.mocked(statSync).mockReturnValue({ isFile: () => true, size: 3 } as any);
+    vi.mocked(readFileSync).mockReturnValue(Buffer.from("img") as any);
+
+    const body = await (await prsRoute.request("/icons")).json() as any;
+
+    expect(body.icons[repo.fullName]).toBe(`data:${mime};base64,${Buffer.from("img").toString("base64")}`);
   });
 });
 

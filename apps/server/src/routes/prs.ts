@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 
 const app = new Hono();
 
@@ -11,6 +11,9 @@ const GIT_TIMEOUT_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const SCOPE_CACHE_TTL_MS = 60_000;
 const REPO_DISCOVERY_TTL_MS = 5 * 60_000; // re-scan ~/code every 5 min
+const ISSUE_CACHE_TTL_MS = 5 * 60_000;
+const ICON_CACHE_TTL_MS = 30 * 60_000;
+const MAX_ICON_BYTES = 64 * 1024;
 
 // --- Types ---
 
@@ -35,6 +38,18 @@ export interface PrDiff {
   added: PrRow[];
   removed: PrRow[];
   changed: { pr: PrRow; fields: string[] }[];
+}
+
+export interface IssueRow {
+  key: string;
+  repo: string;
+  number: number;
+  title: string;
+  state: "OPEN" | "CLOSED";
+  author: string;
+  updatedAt: string;
+  labels: string[];
+  url: string;
 }
 
 // --- Repo discovery ---
@@ -204,6 +219,39 @@ function parseGhPrs(jsonStr: string, repoFullName: string, now: number): PrRow[]
     updatedAt: pr.updatedAt,
     firstSeen: now,
     lastChanged: now,
+  }));
+}
+
+interface GhIssueJson {
+  number: number;
+  title: string;
+  state: string;
+  author: { login: string } | null;
+  updatedAt: string;
+  labels: Array<{ name: string }>;
+  url: string;
+}
+
+function parseGhIssues(jsonStr: string, repoFullName: string): IssueRow[] {
+  let raw: GhIssueJson[];
+  try {
+    raw = JSON.parse(jsonStr);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.map((issue) => ({
+    key: `${repoFullName}#${issue.number}`,
+    repo: repoFullName,
+    number: issue.number,
+    title: issue.title,
+    state: issue.state?.toUpperCase() === "CLOSED" ? "CLOSED" : "OPEN",
+    author: issue.author?.login ?? "unknown",
+    updatedAt: issue.updatedAt,
+    labels: Array.isArray(issue.labels)
+      ? issue.labels.map((label) => label?.name).filter((name): name is string => typeof name === "string")
+      : [],
+    url: issue.url,
   }));
 }
 
@@ -438,6 +486,74 @@ export function __resetScopeCacheForTests() {
   scopeCache = null;
 }
 
+// --- On-demand issues and repository icons ---
+
+let issueCache = new Map<string, { issues: IssueRow[]; cachedAt: number }>();
+let iconCache: { icons: Record<string, string>; cachedAt: number } | null = null;
+
+const ICON_CANDIDATES = [
+  "favicon.svg",
+  "favicon.ico",
+  "favicon.png",
+  "public/favicon.svg",
+  "public/favicon.ico",
+  "public/favicon.png",
+  "app/favicon.ico",
+  "app/favicon.png",
+  "app/icon.svg",
+  "app/icon.png",
+  "assets/icon.svg",
+  "assets/icon.png",
+  "assets/logo.svg",
+  "assets/logo.png",
+] as const;
+
+const ICON_MIME: Record<string, string> = {
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  png: "image/png",
+};
+
+function readRepoIcon(repoPath: string): string | null {
+  let realRepoPath: string;
+  try {
+    realRepoPath = realpathSync(repoPath);
+  } catch {
+    return null;
+  }
+
+  for (const candidate of ICON_CANDIDATES) {
+    const candidatePath = join(repoPath, candidate);
+    if (!existsSync(candidatePath)) continue;
+
+    try {
+      const realCandidatePath = realpathSync(candidatePath);
+      const relativePath = relative(realRepoPath, realCandidatePath);
+      if (relativePath.startsWith("..") || isAbsolute(relativePath)) continue;
+
+      const stat = statSync(realCandidatePath);
+      if (!stat.isFile() || stat.size > MAX_ICON_BYTES) continue;
+
+      const extension = candidate.slice(candidate.lastIndexOf(".") + 1);
+      const mime = ICON_MIME[extension];
+      if (!mime) continue;
+      const contents = readFileSync(realCandidatePath);
+      if (contents.length > MAX_ICON_BYTES) continue;
+      const encoded = contents.toString("base64");
+      return `data:${mime};base64,${encoded}`;
+    } catch {
+      // Unreadable/broken candidates are skipped in favor of the next one.
+    }
+  }
+
+  return null;
+}
+
+export function __resetPrAuxCachesForTests() {
+  issueCache = new Map();
+  iconCache = null;
+}
+
 // --- Singleton poller instance ---
 
 let pollerInstance: PrPoller | null = null;
@@ -517,6 +633,54 @@ app.post("/refresh", async (c) => {
       changed: diff.changed.length,
     },
   });
+});
+
+app.get("/issues", async (c) => {
+  const requestedRepo = c.req.query("repo");
+  const repos = discoverRepos();
+  const repo = repos.find((candidate) => candidate.fullName === requestedRepo);
+  if (!requestedRepo || !repo) {
+    return c.json({ ok: false, error: "Unknown repository" }, 400);
+  }
+
+  const force = c.req.query("force") === "1";
+  const now = Date.now();
+  const cached = issueCache.get(repo.fullName);
+  if (!force && cached && now - cached.cachedAt < ISSUE_CACHE_TTL_MS) {
+    return c.json({ ok: true, repo: repo.fullName, issues: cached.issues });
+  }
+
+  try {
+    const stdout = await execGh([
+      "issue", "list",
+      "--repo", repo.fullName,
+      "--json", "number,title,state,author,updatedAt,labels,url",
+      "--limit", "30",
+    ]);
+    const issues = parseGhIssues(stdout, repo.fullName);
+    issueCache.set(repo.fullName, { issues, cachedAt: now });
+    return c.json({ ok: true, repo: repo.fullName, issues });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    return c.json({ ok: false, error }, 502);
+  }
+});
+
+app.get("/icons", (c) => {
+  const now = Date.now();
+  if (iconCache && now - iconCache.cachedAt < ICON_CACHE_TTL_MS) {
+    return c.json({ ok: true, icons: iconCache.icons });
+  }
+
+  const icons: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const repo of discoverRepos()) {
+    if (icons[repo.fullName]) continue;
+    const icon = readRepoIcon(repo.path);
+    if (icon) icons[repo.fullName] = icon;
+  }
+
+  iconCache = { icons, cachedAt: now };
+  return c.json({ ok: true, icons });
 });
 
 app.get("/current-branch-scope", async (c) => {
