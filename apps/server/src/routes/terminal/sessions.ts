@@ -14,6 +14,11 @@ const TMUX_TIMEOUT_MS = 5_000;
 // never useful to view from the mini app.
 const HIDDEN_SESSION_PREFIX = "_";
 
+// tmux replaces non-printable format characters (including tabs) with "_"
+// under a non-UTF-8 locale. "|" is printable and cannot occur in a session
+// name accepted by SESSION_NAME_RE, so its output is locale-independent.
+const TMUX_FIELD_SEPARATOR = "|";
+
 // A pane whose foreground process is a bare shell means the agent that was
 // running there has exited — same liveness heuristic as the fleet cockpit
 // collector (world-os apps/cpc/cockpit/lib/collector.mjs).
@@ -49,14 +54,16 @@ export function parseSessions(listOut: string, panesOut: string, defaultSession:
   const firstPaneCommand = new Map<string, string>();
   for (const line of panesOut.split("\n")) {
     if (!line) continue;
-    const [name, command = ""] = line.split("\t");
+    const separatorIndex = line.indexOf(TMUX_FIELD_SEPARATOR);
+    const name = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+    const command = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
     if (name && !firstPaneCommand.has(name)) firstPaneCommand.set(name, command);
   }
 
   const sessions: TmuxSessionInfo[] = [];
   for (const line of listOut.split("\n")) {
     if (!line) continue;
-    const [name, attached = "0", activity = "0"] = line.split("\t");
+    const [name, attached = "0", activity = "0"] = line.split(TMUX_FIELD_SEPARATOR);
     if (!name || name.startsWith(HIDDEN_SESSION_PREFIX) || !SESSION_NAME_RE.test(name)) continue;
     const command = firstPaneCommand.get(name) ?? "";
     sessions.push({
@@ -92,12 +99,12 @@ app.get("/sessions", async (c) => {
     const [list, panes] = await Promise.all([
       execFileAsync(
         "tmux",
-        ["list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{session_activity}"],
+        ["list-sessions", "-F", `#{session_name}${TMUX_FIELD_SEPARATOR}#{session_attached}${TMUX_FIELD_SEPARATOR}#{session_activity}`],
         { timeout: TMUX_TIMEOUT_MS },
       ),
       execFileAsync(
         "tmux",
-        ["list-panes", "-a", "-F", "#{session_name}\t#{pane_current_command}"],
+        ["list-panes", "-a", "-F", `#{session_name}${TMUX_FIELD_SEPARATOR}#{pane_current_command}`],
         { timeout: TMUX_TIMEOUT_MS },
       ),
     ]);

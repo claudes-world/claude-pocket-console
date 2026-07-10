@@ -28,20 +28,20 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
   let stdout = "";
   if (args[0] === "list-sessions") {
     stdout = [
-      "_tmux-server-keepalive\t0\t1751900000",
-      "claudes-world\t1\t1751900100",
-      "do-box--lane-a\t0\t1751900300",
-      "do-box--lane-b\t0\t1751900200",
-      "bad;name\t0\t1751900400",
+      "_tmux-server-keepalive|0|1751900000",
+      "claudes-world|1|1751900100",
+      "do-box--lane-a|0|1751900300",
+      "do-box--lane-b|0|1751900200",
+      "bad;name|0|1751900400",
     ].join("\n") + "\n";
   } else if (args[0] === "list-panes") {
     stdout = [
-      "_tmux-server-keepalive\tsh",
-      "claudes-world\tclaude",
+      "_tmux-server-keepalive|sh",
+      "claudes-world|claude",
       // Two panes for lane-a — the FIRST row must win.
-      "do-box--lane-a\tclaude",
-      "do-box--lane-a\tbash",
-      "do-box--lane-b\tbash",
+      "do-box--lane-a|claude",
+      "do-box--lane-a|bash",
+      "do-box--lane-b|bash",
     ].join("\n") + "\n";
   }
   callback?.(null, { stdout, stderr: "" });
@@ -69,14 +69,14 @@ beforeEach(() => {
 
 describe("parseSessions", () => {
   const LIST = [
-    "claudes-world\t1\t100",
-    "do-box--lane-a\t0\t300",
-    "do-box--lane-b\t0\t200",
+    "claudes-world|1|100",
+    "do-box--lane-a|0|300",
+    "do-box--lane-b|0|200",
   ].join("\n");
   const PANES = [
-    "claudes-world\tclaude",
-    "do-box--lane-a\tclaude",
-    "do-box--lane-b\tbash",
+    "claudes-world|claude",
+    "do-box--lane-a|claude",
+    "do-box--lane-b|bash",
   ].join("\n");
 
   it("maps fields, marks the default writable, sorts default-first then activity desc", () => {
@@ -106,8 +106,8 @@ describe("parseSessions", () => {
 
   it("uses the FIRST pane row per session (lowest window/pane index)", () => {
     const sessions = parseSessions(
-      "s1\t0\t1",
-      "s1\tclaude\ns1\tbash",
+      "s1|0|1",
+      "s1|claude\ns1|bash",
       "claudes-world",
     );
     expect(sessions[0].command).toBe("claude");
@@ -115,20 +115,27 @@ describe("parseSessions", () => {
   });
 
   it("hides _-prefixed infra sessions", () => {
-    const sessions = parseSessions("_keepalive\t0\t1\nreal\t0\t2", "", "claudes-world");
+    const sessions = parseSessions("_keepalive|0|1\nreal|0|2", "", "claudes-world");
     expect(sessions.map((s) => s.name)).toEqual(["real"]);
   });
 
   it("drops names that fail the session-name allowlist", () => {
     // A name we'd refuse to poll must never be offered to the client.
-    const sessions = parseSessions("bad;name\t0\t1\nok-name\t0\t2", "", "claudes-world");
+    const sessions = parseSessions("bad;name|0|1\nok-name|0|2", "", "claudes-world");
     expect(sessions.map((s) => s.name)).toEqual(["ok-name"]);
   });
 
   it("treats a session with no pane rows as not alive", () => {
-    const sessions = parseSessions("ghost\t0\t1", "", "claudes-world");
+    const sessions = parseSessions("ghost|0|1", "", "claudes-world");
     expect(sessions[0].alive).toBe(false);
     expect(sessions[0].command).toBe("");
+  });
+
+  it("uses a printable locale-safe separator and preserves separators in pane commands", () => {
+    // "|" is outside SESSION_NAME_RE's allowed charset, while pane commands
+    // are unconstrained and therefore must be split on the first "|" only.
+    const sessions = parseSessions("safe-name|0|1", "safe-name|command|with|pipes", "claudes-world");
+    expect(sessions[0].command).toBe("command|with|pipes");
   });
 });
 
@@ -149,6 +156,8 @@ describe("GET /sessions", () => {
     expect(body.sessions.map((s: any) => s.name)).not.toContain("_tmux-server-keepalive");
     // argv discipline: both tmux calls go through execFile with arrays.
     expect(execFileCalls.map((c) => c.args[0]).sort()).toEqual(["list-panes", "list-sessions"]);
+    const formats = execFileCalls.map((c) => c.args.at(-1));
+    expect(formats.every((format) => format?.includes("|") && !format.includes("\t"))).toBe(true);
   });
 
   it("returns 500 ok:false when tmux has no server running", async () => {
