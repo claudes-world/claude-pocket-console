@@ -7,6 +7,7 @@ type BotPathAlias = Readonly<{
 
 export const BOT_PATH_ALIASES: Readonly<Record<string, BotPathAlias>> = {
   "/claude_do_bot": { tab: "terminal", session: null },
+  "/pm_dobot": { tab: "terminal", session: "pm-dobot" },
 };
 
 const DEFAULT_BOT_PATH = "/claude_do_bot";

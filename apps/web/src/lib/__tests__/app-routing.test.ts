@@ -20,6 +20,15 @@ describe("resolveInitialAppState", () => {
     });
   });
 
+  it("resolves /pm_dobot to the pm-dobot terminal session without redirecting", () => {
+    expect(resolveInitialAppState("/pm_dobot", "")).toEqual({
+      tab: "terminal",
+      session: "pm-dobot",
+      file: null,
+      redirectPath: null,
+    });
+  });
+
   it("ignores a foreign Telegram hash when resolving the root redirect", () => {
     expect(resolveInitialAppState("/", "#tgWebAppData=abc&tgWebAppVersion=7")).toEqual({
       tab: "terminal",
@@ -43,6 +52,15 @@ describe("resolveInitialAppState", () => {
       tab: "files",
       session: null,
       file: "/tmp/notes.md",
+      redirectPath: null,
+    });
+  });
+
+  it("lets a hash deep link win over the pm-dobot alias", () => {
+    expect(resolveInitialAppState("/pm_dobot", "#terminal&session=another-session")).toEqual({
+      tab: "terminal",
+      session: "another-session",
+      file: null,
       redirectPath: null,
     });
   });
