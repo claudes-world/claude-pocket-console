@@ -1,22 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { PrRow, RepoInfo } from "../prs.js";
 
 /**
- * Tests for the HTTP route handlers in `prs.ts`:
+ * Tests for repository discovery and the HTTP route handlers in `prs.ts`:
+ *   - discoverRepos() — depth-1 repos and depth-2 namespace repos
  *   - GET /           — snapshot of PRs + repo summary
  *   - POST /refresh   — force-poll and return diff counts
  *   - GET /current-branch-scope — list active branches
  *
  * The pure-logic tests (parseGitRemote, diffSnapshots, PrPoller backoff,
  * getSnapshot sorting) already live in pr-poller.test.ts. This file covers
- * the Hono HTTP layer exclusively.
+ * discovery plus the Hono HTTP layer.
  *
  * Strategy:
  *   - Use the exported __setPollerForTests() to inject a mock PrPoller so
  *     no real `gh` CLI or `git` commands run.
  *   - Use __resetScopeCacheForTests() to clear the scope cache between tests.
+ *   - Mock filesystem and child-process calls for repository discovery.
  *   - Drive routes via Hono `app.request()`.
  */
 
@@ -65,6 +68,7 @@ vi.mock("node:fs", async () => {
   return {
     ...actual,
     existsSync: vi.fn(actual.existsSync),
+    lstatSync: vi.fn(actual.lstatSync),
     readdirSync: vi.fn(actual.readdirSync),
   };
 });
@@ -91,6 +95,7 @@ const {
   __setPollerForTests,
   __resetScopeCacheForTests,
   __resetRepoCacheForTests,
+  discoverRepos,
 } = await import("../prs.js");
 
 // ---------------------------------------------------------------------------
@@ -110,6 +115,229 @@ beforeEach(() => {
 afterEach(() => {
   __setPollerForTests(null);
   vi.clearAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// Repo discovery
+// ---------------------------------------------------------------------------
+describe("discoverRepos", () => {
+  const codeDir = join(process.env.HOME || "/home/claude", "code");
+
+  afterEach(() => {
+    vi.mocked(existsSync).mockReset();
+    vi.mocked(readdirSync).mockReset();
+    vi.mocked(execFileSync).mockReset();
+    vi.mocked(lstatSync).mockReset();
+    vi.useRealTimers();
+  });
+
+  function mockGitRepo(repoPath: string, remote: string, branch: string) {
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C" || args[1] !== repoPath) {
+        throw new Error("unexpected git command");
+      }
+      if (args[2] === "remote") return remote as any;
+      if (args[2] === "rev-parse") return `${branch}\n` as any;
+      throw new Error("unexpected git arguments");
+    });
+  }
+
+  it("discovers depth-1 and namespace repos without walking past depth 2", () => {
+    const directPath = join(codeDir, "direct-repo");
+    const namespacePath = join(codeDir, "omnipass-world");
+    const nestedPath = join(namespacePath, "clan-world");
+    const deeperParentPath = join(namespacePath, "not-a-repo");
+    const deeperRepoPath = join(deeperParentPath, "too-deep");
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir
+        || value === join(directPath, ".git")
+        || value === join(nestedPath, ".git")
+        || value === join(deeperRepoPath, ".git");
+    });
+    vi.mocked(readdirSync).mockImplementation(((path: string) => {
+      if (path === codeDir) return ["direct-repo", "omnipass-world"];
+      if (path === namespacePath) return ["clan-world", "not-a-repo"];
+      throw new Error(`unexpected readdir: ${path}`);
+    }) as any);
+    vi.mocked(lstatSync).mockImplementation(((path: string) => {
+      if (path !== namespacePath) throw new Error(`unexpected lstat: ${path}`);
+      return { isDirectory: () => true, isSymbolicLink: () => false };
+    }) as any);
+
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
+      if (args[2] === "remote") {
+        if (args[1] === directPath) return "git@github.com:claudes-world/direct.git" as any;
+        if (args[1] === nestedPath) return "https://github.com/omnipass-world/clan-world.git" as any;
+      }
+      if (args[2] === "rev-parse") return "dev\n" as any;
+      throw new Error("unexpected git arguments");
+    });
+
+    expect(discoverRepos()).toEqual([
+      {
+        path: directPath,
+        name: "direct-repo",
+        owner: "claudes-world",
+        repoName: "direct",
+        fullName: "claudes-world/direct",
+        branch: "dev",
+      },
+      {
+        path: nestedPath,
+        name: "omnipass-world/clan-world",
+        owner: "omnipass-world",
+        repoName: "clan-world",
+        fullName: "omnipass-world/clan-world",
+        branch: "dev",
+      },
+    ]);
+    expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(directPath);
+    expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(deeperParentPath);
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining([deeperRepoPath]),
+      expect.anything(),
+    );
+  });
+
+  it("skips plain files and unreadable namespace directories", () => {
+    const validNamespacePath = join(codeDir, "valid-namespace");
+    const nestedPath = join(validNamespacePath, "nested-repo");
+    const plainFilePath = join(codeDir, "README.txt");
+    const unreadablePath = join(codeDir, "unreadable-namespace");
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir || value === join(nestedPath, ".git");
+    });
+    vi.mocked(readdirSync).mockImplementation(((path: string) => {
+      if (path === codeDir) {
+        return ["README.txt", "unreadable-namespace", "valid-namespace"];
+      }
+      if (path === plainFilePath) throw new Error("ENOTDIR");
+      if (path === unreadablePath) throw new Error("EACCES");
+      if (path === validNamespacePath) return ["nested-repo"];
+      throw new Error(`unexpected readdir: ${path}`);
+    }) as any);
+    vi.mocked(lstatSync).mockImplementation(((path: string) => ({
+      isDirectory: () => path !== plainFilePath,
+      isSymbolicLink: () => false,
+    })) as any);
+    mockGitRepo(
+      nestedPath,
+      "git@github.com:claudes-world/nested-repo.git",
+      "main",
+    );
+
+    expect(discoverRepos()).toEqual([
+      {
+        path: nestedPath,
+        name: "valid-namespace/nested-repo",
+        owner: "claudes-world",
+        repoName: "nested-repo",
+        fullName: "claudes-world/nested-repo",
+        branch: "main",
+      },
+    ]);
+  });
+
+  it("keeps depth-1 symlinked repos but does not descend into symlinked namespaces", () => {
+    const linkedRepoPath = join(codeDir, "linked-repo");
+    const linkedNamespacePath = join(codeDir, "linked-namespace");
+    const realNamespacePath = join(codeDir, "real-namespace");
+    const nestedRepoPath = join(realNamespacePath, "nested-repo");
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir
+        || value === join(linkedRepoPath, ".git")
+        || value === join(nestedRepoPath, ".git");
+    });
+    vi.mocked(readdirSync).mockImplementation(((path: string) => {
+      if (path === codeDir) return ["linked-repo", "linked-namespace", "real-namespace"];
+      if (path === realNamespacePath) return ["nested-repo"];
+      throw new Error(`unexpected readdir: ${path}`);
+    }) as any);
+    vi.mocked(lstatSync).mockImplementation(((path: string) => ({
+      isDirectory: () => true,
+      isSymbolicLink: () => path === linkedNamespacePath,
+    })) as any);
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
+      if (args[2] === "remote") {
+        const repoName = args[1] === linkedRepoPath ? "linked-repo" : "nested-repo";
+        return `git@github.com:claudes-world/${repoName}.git` as any;
+      }
+      if (args[2] === "rev-parse") return "dev\n" as any;
+      throw new Error("unexpected git arguments");
+    });
+
+    expect(discoverRepos().map((repo) => repo.name)).toEqual([
+      "linked-repo",
+      "real-namespace/nested-repo",
+    ]);
+    expect(vi.mocked(lstatSync)).not.toHaveBeenCalledWith(linkedRepoPath);
+    expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(linkedNamespacePath);
+  });
+
+  it("caps each namespace scan at 50 children", () => {
+    const namespacePath = join(codeDir, "large-namespace");
+    const childNames = Array.from({ length: 51 }, (_, index) => `repo-${index}`);
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir
+        || (value.startsWith(`${namespacePath}/repo-`) && value.endsWith("/.git"));
+    });
+    vi.mocked(readdirSync).mockImplementation(((path: string) => {
+      if (path === codeDir) return ["large-namespace"];
+      if (path === namespacePath) return childNames;
+      throw new Error(`unexpected readdir: ${path}`);
+    }) as any);
+    vi.mocked(lstatSync).mockReturnValue({
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+    } as any);
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
+      if (args[2] === "remote") return "git@github.com:claudes-world/repo.git" as any;
+      if (args[2] === "rev-parse") return "main\n" as any;
+      throw new Error("unexpected git arguments");
+    });
+
+    expect(discoverRepos()).toHaveLength(50);
+    expect(vi.mocked(existsSync)).not.toHaveBeenCalledWith(
+      join(namespacePath, "repo-50", ".git"),
+    );
+  });
+
+  it("starts the cache TTL after a slow scan completes", () => {
+    const repoPath = join(codeDir, "slow-repo");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir || value === join(repoPath, ".git");
+    });
+    vi.mocked(readdirSync).mockReturnValue(["slow-repo"] as any);
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
+      if (args[2] === "remote") {
+        vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
+        return "git@github.com:claudes-world/slow-repo.git" as any;
+      }
+      if (args[2] === "rev-parse") return "main\n" as any;
+      throw new Error("unexpected git arguments");
+    });
+
+    expect(discoverRepos()).toHaveLength(1);
+    expect(discoverRepos()).toHaveLength(1);
+    expect(vi.mocked(readdirSync)).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -253,6 +481,14 @@ describe("GET /current-branch-scope", () => {
   it("returns ok:true with branches array (empty when all git calls fail)", async () => {
     // With child_process mocked to fail, discoverRepos returns [] (no repos found),
     // so branches will be empty — the route must still return ok:true.
+    const codeDir = join(process.env.HOME || "/home/claude", "code");
+    vi.mocked(existsSync)
+      .mockReturnValueOnce(true) // codeDir
+      .mockReturnValueOnce(true); // broken-repo/.git
+    vi.mocked(readdirSync).mockReturnValueOnce(["broken-repo"] as any);
+    vi.mocked(execFileSync).mockImplementationOnce(() => {
+      throw new Error("mocked git failure");
+    });
     const res = await prsRoute.request("/current-branch-scope");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; branches: string[] };

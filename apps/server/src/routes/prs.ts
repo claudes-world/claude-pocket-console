@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const app = new Hono();
@@ -11,6 +11,7 @@ const GIT_TIMEOUT_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const SCOPE_CACHE_TTL_MS = 60_000;
 const REPO_DISCOVERY_TTL_MS = 5 * 60_000; // re-scan ~/code every 5 min
+const NAMESPACE_SCAN_CAP = 50;
 
 // --- Types ---
 
@@ -83,7 +84,7 @@ export function discoverRepos(): RepoInfo[] {
   const repos: RepoInfo[] = [];
 
   if (!existsSync(codeDir)) {
-    repoCache = { repos, cachedAt: now };
+    repoCache = { repos, cachedAt: Date.now() };
     return repos;
   }
 
@@ -91,14 +92,11 @@ export function discoverRepos(): RepoInfo[] {
   try {
     dirNames = readdirSync(codeDir);
   } catch {
-    repoCache = { repos, cachedAt: now };
+    repoCache = { repos, cachedAt: Date.now() };
     return repos;
   }
 
-  for (const dirName of dirNames) {
-    const repoPath = join(codeDir, dirName);
-    if (!existsSync(join(repoPath, ".git"))) continue;
-
+  const pushRepoIfValid = (repoPath: string, displayName: string) => {
     try {
       // Get remote URL.
       // execFileSync is intentional: discoverRepos() runs at most once per 5-min TTL,
@@ -110,7 +108,7 @@ export function discoverRepos(): RepoInfo[] {
       }).trim();
 
       const parsed = parseGitRemote(remoteUrl);
-      if (!parsed) continue; // skip repos without a parseable GitHub remote
+      if (!parsed) return; // skip repos without a parseable GitHub remote
 
       // Get current branch
       const branch = execFileSync("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD"], {
@@ -120,7 +118,7 @@ export function discoverRepos(): RepoInfo[] {
 
       repos.push({
         path: repoPath,
-        name: dirName,
+        name: displayName,
         owner: parsed.owner,
         repoName: parsed.repoName,
         fullName: `${parsed.owner}/${parsed.repoName}`,
@@ -128,11 +126,41 @@ export function discoverRepos(): RepoInfo[] {
       });
     } catch {
       // Skip repos where git commands fail (no remote, detached HEAD, etc.)
+      return;
+    }
+  };
+
+  for (const dirName of dirNames) {
+    const repoPath = join(codeDir, dirName);
+    if (existsSync(join(repoPath, ".git"))) {
+      pushRepoIfValid(repoPath, dirName);
       continue;
+    }
+
+    try {
+      const stats = lstatSync(repoPath);
+      if (!stats.isDirectory() || stats.isSymbolicLink()) continue;
+    } catch {
+      continue;
+    }
+
+    let childNames: string[];
+    try {
+      childNames = readdirSync(repoPath);
+    } catch {
+      continue;
+    }
+
+    // Bound work in unexpectedly large namespace directories; preserve readdir order.
+    for (const childName of childNames.slice(0, NAMESPACE_SCAN_CAP)) {
+      const childPath = join(repoPath, childName);
+      if (existsSync(join(childPath, ".git"))) {
+        pushRepoIfValid(childPath, `${dirName}/${childName}`);
+      }
     }
   }
 
-  repoCache = { repos, cachedAt: now };
+  repoCache = { repos, cachedAt: Date.now() };
   return repos;
 }
 
