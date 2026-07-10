@@ -55,6 +55,21 @@ function makeRepo(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeIssue(overrides: Record<string, unknown> = {}) {
+  return {
+    key: "claudes-world/inbox#215",
+    repo: "claudes-world/inbox",
+    number: 215,
+    title: "Add issues mode",
+    state: "OPEN",
+    author: "octocat",
+    updatedAt: new Date().toISOString(),
+    labels: ["enhancement", "web", "mobile", "fourth-hidden"],
+    url: "https://github.com/claudes-world/inbox/issues/215",
+    ...overrides,
+  };
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -438,5 +453,114 @@ describe("PrTicker", () => {
     render(<PrTicker />);
     await waitFor(() => expect(screen.getByText("inbox")).toBeInTheDocument());
     expect(screen.queryByText("Persisted collapse")).not.toBeInTheDocument();
+  });
+
+  it("switches between PRs and Issues and force-refreshes visible repo issues", async () => {
+    const pr = makePr({ title: "PR-only title" });
+    const issue = makeIssue();
+    const repo = makeRepo({ prCount: 1 });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [pr], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      if (url === "/api/prs/icons") {
+        return { ok: true, json: async () => ({ ok: true, icons: {} }) };
+      }
+      if (url.startsWith("/api/prs/issues?")) {
+        return { ok: true, json: async () => ({ ok: true, issues: [issue] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("PR-only title")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+    await waitFor(() => {
+      expect(screen.getByText("Add issues mode")).toBeInTheDocument();
+      expect(screen.queryByText("PR-only title")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("enhancement")).toBeInTheDocument();
+    expect(screen.getByText("web")).toBeInTheDocument();
+    expect(screen.getByText("mobile")).toBeInTheDocument();
+    expect(screen.queryByText("fourth-hidden")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh issues" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/prs/issues?repo=claudes-world%2Finbox&force=1",
+        expect.objectContaining({ headers: { Authorization: "tma test-init-data" } }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "PRs" }));
+    expect(screen.getByText("PR-only title")).toBeInTheDocument();
+  });
+
+  it("does not fetch issues during the 10-second PR polling interval", async () => {
+    const repo = makeRepo();
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      if (url === "/api/prs/icons") {
+        return { ok: true, json: async () => ({ ok: true, icons: {} }) };
+      }
+      if (url.startsWith("/api/prs/issues?")) {
+        return { ok: true, json: async () => ({ ok: true, issues: [] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    await waitFor(() => expect(screen.getByText("inbox")).toBeInTheDocument());
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/prs/issues?"))).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/prs").length).toBeGreaterThanOrEqual(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Issues" }));
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/prs/issues?"))).toHaveLength(1);
+    });
+  });
+
+  it("renders repo icons once with org-avatar and text-only fallbacks", async () => {
+    const inbox = makeRepo();
+    const cpc = makeRepo({ name: "cpc", fullName: "claudes-world/cpc" });
+    const icon = "data:image/png;base64,aWNvbg==";
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [inbox, cpc], lastPollOk: Date.now() }),
+        };
+      }
+      if (url === "/api/prs/icons") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, icons: { "claudes-world/inbox": icon } }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+    const repoIcon = await screen.findByAltText("inbox icon");
+    const orgAvatar = screen.getByAltText("claudes-world avatar");
+
+    expect(repoIcon).toHaveAttribute("src", icon);
+    expect(orgAvatar).toHaveAttribute("src", "https://avatars.githubusercontent.com/claudes-world?s=32");
+    expect(screen.queryByAltText("cpc icon")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/prs/icons")).toHaveLength(1);
+
+    fireEvent.error(repoIcon);
+    expect(repoIcon).toHaveStyle({ display: "none" });
   });
 });
