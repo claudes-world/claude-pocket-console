@@ -81,6 +81,22 @@ async function resolvePaletteTarget(c: any, body: any): Promise<{ session: strin
   return { session: target.session };
 }
 
+// Control chars (C0 + DEL) in a literal `send-keys` payload act as submit /
+// command separators in the target terminal — a single newline turns one
+// "verb" into two submitted lines. For a NON-default session (one the mini
+// app is only viewing) that would let a compaction message or key string
+// smuggle extra commands into a session that is not the writable default, so
+// literal payloads to non-default sessions must be single-line. The default
+// session (Liam's own, writable) intentionally keeps multi-line steering —
+// e.g. the "/fork\n/rename" flow relies on an embedded newline.
+const LITERAL_CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
+
+/** True when a literal payload must be rejected for the given target: a
+ *  non-default session may only receive single-line, control-char-free text. */
+function isDisallowedNonDefaultLiteral(session: string, payload: string): boolean {
+  return session !== TMUX_SESSION && LITERAL_CONTROL_CHAR_RE.test(payload);
+}
+
 app.post("/send-keys", async (c) => {
   try {
     const body = await c.req.json();
@@ -113,6 +129,13 @@ app.post("/send-keys", async (c) => {
         execFileAsync("tmux", ["send-keys", "-t", `=${session}:`, ...tokens])
       );
     } else {
+      // A non-default session must not receive a multi-line literal payload:
+      // an embedded newline submits an extra command line into a session the
+      // mini app is only viewing (PR #306 R3). execFile already blocks shell
+      // injection; this blocks command *chaining* at the tmux layer.
+      if (isDisallowedNonDefaultLiteral(session, keys)) {
+        return c.json({ ok: false, error: "non-default sessions accept single-line keys only" }, 400);
+      }
       // Literal text — use execFile (no shell) with `-l` and `--` so user
       // input cannot inject via $(...) or backticks. The previous execAsync
       // path spawned /bin/sh -c on an interpolated string; JSON.stringify
@@ -138,12 +161,14 @@ app.post("/compact", async (c) => {
     if ("response" in resolved) return resolved.response;
     const session = resolved.session;
 
-    // Fixed-verb doctrine, enforced at the trust boundary (PR #306 R2): the
-    // web client assembles the "/compact ..." prefix, but a non-default
-    // target must not accept arbitrary text as keystrokes. Deliberately
-    // relaxable when phase-2 confirmation-gated steering lands (#241).
-    if (session !== TMUX_SESSION && !/^\/compact(\s|$)/.test(message)) {
-      return c.json({ ok: false, error: "non-default sessions accept /compact commands only" }, 400);
+    // A non-default session must not receive a multi-line compaction message:
+    // an embedded newline submits an extra command line into a session the
+    // mini app is only viewing (PR #306 R3, superseding the bypassable
+    // "/compact"-prefix check — `\s` matched `\n`). The single-line message
+    // itself is still free text, bounded by Telegram auth; broadening or
+    // narrowing that scope is the phase-2 steering decision (#241).
+    if (isDisallowedNonDefaultLiteral(session, message)) {
+      return c.json({ ok: false, error: "non-default sessions accept single-line messages only" }, 400);
     }
 
     // Send via tmux send-keys — execFile (no shell) with -l + -- so the

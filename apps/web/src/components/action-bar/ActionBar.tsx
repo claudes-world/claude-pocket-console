@@ -519,12 +519,17 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       );
       break;
     case "continuity-notes": {
+      // Collapse the free-text note to a single line: a view-only (non-default)
+      // session rejects multi-line payloads server-side (newline = an extra
+      // submitted command line), so a pasted multi-line note would otherwise
+      // 400. Single-lining keeps the flow working against any target.
+      const notes = continuityNotes.trim().replace(/\s+/g, " ");
       const continuityMsg = [
         "Before compacting, please ensure:",
         "1) README.md is up to date with recent changes.",
         "2) Anything important from this session is saved to the knowledge base or memory.",
         "3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.",
-        continuityNotes.trim() ? `Additional context from user: "${continuityNotes.trim()}".` : "",
+        notes ? `Additional context from user: "${notes}".` : "",
       ].filter(Boolean).join(" ");
       modalNode = (
         <ContinuityNotesModal
