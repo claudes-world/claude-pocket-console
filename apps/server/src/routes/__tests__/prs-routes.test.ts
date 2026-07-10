@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { PrRow, RepoInfo } from "../prs.js";
@@ -83,9 +83,6 @@ vi.mock("node:child_process", async () => {
       if (cb) cb(new Error("mocked"), "", "");
       return { on: vi.fn() };
     }),
-    execFileSync: vi.fn(() => {
-      throw new Error("mocked");
-    }),
   };
 });
 
@@ -123,26 +120,39 @@ afterEach(() => {
 describe("discoverRepos", () => {
   const codeDir = join(process.env.HOME || "/home/claude", "code");
 
+  function mockGitCommands(
+    implementation: (command: string, args: readonly string[]) => string,
+  ) {
+    vi.mocked(execFile).mockImplementation(((command, args, _options, callback) => {
+      try {
+        callback?.(null, implementation(String(command), args ?? []), "");
+      } catch (err) {
+        callback?.(err as Error, "", "");
+      }
+      return { on: vi.fn() } as any;
+    }) as any);
+  }
+
   afterEach(() => {
     vi.mocked(existsSync).mockReset();
     vi.mocked(readdirSync).mockReset();
-    vi.mocked(execFileSync).mockReset();
+    vi.mocked(execFile).mockReset();
     vi.mocked(lstatSync).mockReset();
     vi.useRealTimers();
   });
 
   function mockGitRepo(repoPath: string, remote: string, branch: string) {
-    vi.mocked(execFileSync).mockImplementation((command, args) => {
+    mockGitCommands((command, args) => {
       if (command !== "git" || args?.[0] !== "-C" || args[1] !== repoPath) {
         throw new Error("unexpected git command");
       }
-      if (args[2] === "remote") return remote as any;
-      if (args[2] === "rev-parse") return `${branch}\n` as any;
+      if (args[2] === "remote") return remote;
+      if (args[2] === "rev-parse") return `${branch}\n`;
       throw new Error("unexpected git arguments");
     });
   }
 
-  it("discovers depth-1 and namespace repos without walking past depth 2", () => {
+  it("discovers depth-1 and namespace repos without walking past depth 2", async () => {
     const directPath = join(codeDir, "direct-repo");
     const namespacePath = join(codeDir, "omnipass-world");
     const nestedPath = join(namespacePath, "clan-world");
@@ -166,17 +176,17 @@ describe("discoverRepos", () => {
       return { isDirectory: () => true, isSymbolicLink: () => false };
     }) as any);
 
-    vi.mocked(execFileSync).mockImplementation((command, args) => {
+    mockGitCommands((command, args) => {
       if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
       if (args[2] === "remote") {
-        if (args[1] === directPath) return "git@github.com:claudes-world/direct.git" as any;
-        if (args[1] === nestedPath) return "https://github.com/omnipass-world/clan-world.git" as any;
+        if (args[1] === directPath) return "git@github.com:claudes-world/direct.git";
+        if (args[1] === nestedPath) return "https://github.com/omnipass-world/clan-world.git";
       }
-      if (args[2] === "rev-parse") return "dev\n" as any;
+      if (args[2] === "rev-parse") return "dev\n";
       throw new Error("unexpected git arguments");
     });
 
-    expect(discoverRepos()).toEqual([
+    expect(await discoverRepos()).toEqual([
       {
         path: directPath,
         name: "direct-repo",
@@ -196,14 +206,15 @@ describe("discoverRepos", () => {
     ]);
     expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(directPath);
     expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(deeperParentPath);
-    expect(vi.mocked(execFileSync)).not.toHaveBeenCalledWith(
+    expect(vi.mocked(execFile)).not.toHaveBeenCalledWith(
       "git",
       expect.arrayContaining([deeperRepoPath]),
+      expect.anything(),
       expect.anything(),
     );
   });
 
-  it("skips plain files and unreadable namespace directories", () => {
+  it("skips plain files and unreadable namespace directories", async () => {
     const validNamespacePath = join(codeDir, "valid-namespace");
     const nestedPath = join(validNamespacePath, "nested-repo");
     const plainFilePath = join(codeDir, "README.txt");
@@ -232,7 +243,7 @@ describe("discoverRepos", () => {
       "main",
     );
 
-    expect(discoverRepos()).toEqual([
+    expect(await discoverRepos()).toEqual([
       {
         path: nestedPath,
         name: "valid-namespace/nested-repo",
@@ -244,7 +255,7 @@ describe("discoverRepos", () => {
     ]);
   });
 
-  it("keeps depth-1 symlinked repos but does not descend into symlinked namespaces", () => {
+  it("keeps depth-1 symlinked repos but does not descend into symlinked namespaces", async () => {
     const linkedRepoPath = join(codeDir, "linked-repo");
     const linkedNamespacePath = join(codeDir, "linked-namespace");
     const realNamespacePath = join(codeDir, "real-namespace");
@@ -265,17 +276,17 @@ describe("discoverRepos", () => {
       isDirectory: () => true,
       isSymbolicLink: () => path === linkedNamespacePath,
     })) as any);
-    vi.mocked(execFileSync).mockImplementation((command, args) => {
+    mockGitCommands((command, args) => {
       if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
       if (args[2] === "remote") {
         const repoName = args[1] === linkedRepoPath ? "linked-repo" : "nested-repo";
-        return `git@github.com:claudes-world/${repoName}.git` as any;
+        return `git@github.com:claudes-world/${repoName}.git`;
       }
-      if (args[2] === "rev-parse") return "dev\n" as any;
+      if (args[2] === "rev-parse") return "dev\n";
       throw new Error("unexpected git arguments");
     });
 
-    expect(discoverRepos().map((repo) => repo.name)).toEqual([
+    expect((await discoverRepos()).map((repo) => repo.name)).toEqual([
       "linked-repo",
       "real-namespace/nested-repo",
     ]);
@@ -283,9 +294,11 @@ describe("discoverRepos", () => {
     expect(vi.mocked(readdirSync)).not.toHaveBeenCalledWith(linkedNamespacePath);
   });
 
-  it("caps each namespace scan at 50 children", () => {
+  it("caps each namespace scan after filtering candidates and warns when truncated", async () => {
     const namespacePath = join(codeDir, "large-namespace");
-    const childNames = Array.from({ length: 51 }, (_, index) => `repo-${index}`);
+    const junkNames = Array.from({ length: 10 }, (_, index) => `junk-${index}`);
+    const repoNames = Array.from({ length: 51 }, (_, index) => `repo-${index}`);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     vi.mocked(existsSync).mockImplementation((path) => {
       const value = String(path);
@@ -294,27 +307,58 @@ describe("discoverRepos", () => {
     });
     vi.mocked(readdirSync).mockImplementation(((path: string) => {
       if (path === codeDir) return ["large-namespace"];
-      if (path === namespacePath) return childNames;
+      if (path === namespacePath) return [...junkNames, ...repoNames];
       throw new Error(`unexpected readdir: ${path}`);
     }) as any);
     vi.mocked(lstatSync).mockReturnValue({
       isDirectory: () => true,
       isSymbolicLink: () => false,
     } as any);
-    vi.mocked(execFileSync).mockImplementation((command, args) => {
+    mockGitCommands((command, args) => {
       if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
-      if (args[2] === "remote") return "git@github.com:claudes-world/repo.git" as any;
-      if (args[2] === "rev-parse") return "main\n" as any;
+      if (args[2] === "remote") return "git@github.com:claudes-world/repo.git";
+      if (args[2] === "rev-parse") return "main\n";
       throw new Error("unexpected git arguments");
     });
 
-    expect(discoverRepos()).toHaveLength(50);
-    expect(vi.mocked(existsSync)).not.toHaveBeenCalledWith(
+    expect(await discoverRepos()).toHaveLength(50);
+    expect(vi.mocked(existsSync)).toHaveBeenCalledWith(
       join(namespacePath, "repo-50", ".git"),
     );
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(namespacePath));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("dropped 1"));
+    warn.mockRestore();
   });
 
-  it("starts the cache TTL after a slow scan completes", () => {
+  it("coalesces concurrent scans behind one in-flight promise", async () => {
+    const repoPath = join(codeDir, "shared-repo");
+    const callbacks: Array<(err: Error | null, stdout: string, stderr: string) => void> = [];
+
+    vi.mocked(existsSync).mockImplementation((path) => {
+      const value = String(path);
+      return value === codeDir || value === join(repoPath, ".git");
+    });
+    vi.mocked(readdirSync).mockReturnValue(["shared-repo"] as any);
+    vi.mocked(execFile).mockImplementation(((_command, _args, _options, callback) => {
+      callbacks.push(callback as any);
+      return { on: vi.fn() } as any;
+    }) as any);
+
+    const first = discoverRepos();
+    const second = discoverRepos();
+    expect(second).toBe(first);
+    expect(callbacks).toHaveLength(1);
+
+    callbacks.shift()!(null, "git@github.com:claudes-world/shared-repo.git", "");
+    await vi.waitFor(() => expect(callbacks).toHaveLength(1));
+    callbacks.shift()!(null, "main\n", "");
+
+    await expect(first).resolves.toHaveLength(1);
+    await expect(second).resolves.toHaveLength(1);
+  });
+
+  it("starts the cache TTL after a slow scan completes", async () => {
     const repoPath = join(codeDir, "slow-repo");
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
@@ -324,18 +368,18 @@ describe("discoverRepos", () => {
       return value === codeDir || value === join(repoPath, ".git");
     });
     vi.mocked(readdirSync).mockReturnValue(["slow-repo"] as any);
-    vi.mocked(execFileSync).mockImplementation((command, args) => {
+    mockGitCommands((command, args) => {
       if (command !== "git" || args?.[0] !== "-C") throw new Error("unexpected git command");
       if (args[2] === "remote") {
         vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
-        return "git@github.com:claudes-world/slow-repo.git" as any;
+        return "git@github.com:claudes-world/slow-repo.git";
       }
-      if (args[2] === "rev-parse") return "main\n" as any;
+      if (args[2] === "rev-parse") return "main\n";
       throw new Error("unexpected git arguments");
     });
 
-    expect(discoverRepos()).toHaveLength(1);
-    expect(discoverRepos()).toHaveLength(1);
+    expect(await discoverRepos()).toHaveLength(1);
+    expect(await discoverRepos()).toHaveLength(1);
     expect(vi.mocked(readdirSync)).toHaveBeenCalledTimes(1);
   });
 });
@@ -474,6 +518,29 @@ describe("POST /refresh", () => {
   });
 });
 
+describe("PrPoller concurrent triggers", () => {
+  it("coalesces concurrent polls behind one in-flight promise", async () => {
+    const callbacks: Array<(err: Error | null, stdout: string, stderr: string) => void> = [];
+    const poller = new PrPoller([
+      { owner: "claudes-world", name: "claude-pocket-console" },
+    ]);
+    vi.mocked(execFile).mockImplementation(((_command, _args, _options, callback) => {
+      callbacks.push(callback as any);
+      return { on: vi.fn() } as any;
+    }) as any);
+
+    const first = poller.pollOnce();
+    const second = poller.pollOnce();
+    expect(second).toBe(first);
+    expect(callbacks).toHaveLength(1);
+
+    callbacks.shift()!(null, "[]", "");
+    await expect(first).resolves.toEqual({ added: [], removed: [], changed: [] });
+    await expect(second).resolves.toEqual({ added: [], removed: [], changed: [] });
+    expect(vi.mocked(execFile)).toHaveBeenCalledOnce();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // GET /current-branch-scope
 // ---------------------------------------------------------------------------
@@ -486,9 +553,10 @@ describe("GET /current-branch-scope", () => {
       .mockReturnValueOnce(true) // codeDir
       .mockReturnValueOnce(true); // broken-repo/.git
     vi.mocked(readdirSync).mockReturnValueOnce(["broken-repo"] as any);
-    vi.mocked(execFileSync).mockImplementationOnce(() => {
-      throw new Error("mocked git failure");
-    });
+    vi.mocked(execFile).mockImplementationOnce(((_command, _args, _options, callback) => {
+      callback?.(new Error("mocked git failure"), "", "");
+      return { on: vi.fn() } as any;
+    }) as any);
     const res = await prsRoute.request("/current-branch-scope");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; branches: string[] };
@@ -505,21 +573,11 @@ describe("GET /current-branch-scope", () => {
     // Make .git check pass for that repo
     mockExistsSync.mockReturnValueOnce(true);  // existsSync(join(repoPath, '.git'))
 
-    // Override execFileSync for the two discoverRepos git calls:
+    // Override execFile for the discoverRepos git calls:
     //   1st call: git remote get-url origin → GitHub SSH URL
     //   2nd call: git rev-parse --abbrev-ref HEAD → branch name
-    // Override execFile for the currentBranchScope worktree list call.
-    // The real readdirSync will iterate ~/code/* — the first directory with
-    // a .git dir will trigger both execFileSync calls.
-    const mockExecFileSync = vi.mocked(execFileSync);
-    // remote URL call
-    mockExecFileSync.mockImplementationOnce(() => "git@github.com:claudes-world/claude-pocket-console.git" as any);
-    // branch call
-    mockExecFileSync.mockImplementationOnce(() => "feat/server-route-tests\n" as any);
-
     const mockExecFile = vi.mocked(execFile);
-    // worktree list call — return a porcelain block with two worktrees
-    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, _opts: any, cb?: any) => {
+    mockExecFile.mockImplementation(((_cmd, args, _opts, cb) => {
       const worktreeOutput = [
         "worktree /home/claude/code/claude-pocket-console",
         "HEAD abc123",
@@ -530,9 +588,20 @@ describe("GET /current-branch-scope", () => {
         "branch refs/heads/feat/another-branch",
         "",
       ].join("\n");
-      if (cb) cb(null, worktreeOutput, "");
+      let stdout: string;
+      if (args?.[2] === "remote") {
+        stdout = "git@github.com:claudes-world/claude-pocket-console.git";
+      } else if (args?.[2] === "rev-parse") {
+        stdout = "feat/server-route-tests\n";
+      } else if (args?.[2] === "worktree") {
+        stdout = worktreeOutput;
+      } else {
+        cb?.(new Error("unexpected git arguments"), "", "");
+        return { on: vi.fn() } as any;
+      }
+      cb?.(null, stdout, "");
       return { on: vi.fn() } as any;
-    });
+    }) as any);
 
     const res = await prsRoute.request("/current-branch-scope");
     expect(res.status).toBe(200);

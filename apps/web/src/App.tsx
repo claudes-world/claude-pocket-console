@@ -101,19 +101,21 @@ const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc
 export function App() {
   const [authed, setAuthed] = useState(() => hasAuth());
   const [connected, setConnected] = useState(false);
-  const [initialRoute] = useState(() => {
-    const route = resolveInitialAppState(window.location.pathname, window.location.hash);
+  const [initialRoute] = useState(() =>
+    resolveInitialAppState(window.location.pathname, window.location.hash));
+
+  useEffect(() => {
     // Redirects only originate at exact "/", so path-prefixed dev deployments are naturally excluded.
     const isInitialDev = window.location.hostname.includes("cpc-dev");
-    if (route.redirectPath && !isInitialDev) {
+    if (initialRoute.redirectPath && !isInitialDev) {
       window.history.replaceState(
         null,
         "",
-        buildLandingUrl(route.redirectPath, window.location.search, window.location.hash),
+        buildLandingUrl(initialRoute.redirectPath, window.location.search, window.location.hash),
       );
     }
-    return route;
-  });
+  }, [initialRoute.redirectPath]);
+
   const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab);
   const [reconnectKey, setReconnectKey] = useState(0);
 

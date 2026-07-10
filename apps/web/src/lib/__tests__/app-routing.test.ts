@@ -56,6 +56,15 @@ describe("resolveInitialAppState", () => {
     });
   });
 
+  it("treats a malformed file hash value as absent", () => {
+    expect(resolveInitialAppState("/", "#files&file=%")).toEqual({
+      tab: "files",
+      session: null,
+      file: null,
+      redirectPath: null,
+    });
+  });
+
   it("lets a hash deep link win over the pm-dobot alias", () => {
     expect(resolveInitialAppState("/pm_dobot", "#terminal&session=another-session")).toEqual({
       tab: "terminal",

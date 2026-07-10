@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -12,6 +12,7 @@ const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const SCOPE_CACHE_TTL_MS = 60_000;
 const REPO_DISCOVERY_TTL_MS = 5 * 60_000; // re-scan ~/code every 5 min
 const NAMESPACE_SCAN_CAP = 50;
+const GIT_SCAN_CONCURRENCY = 8;
 
 // --- Types ---
 
@@ -73,67 +74,39 @@ export function parseGitRemote(url: string): { owner: string; repoName: string }
 }
 
 let repoCache: { repos: RepoInfo[]; cachedAt: number } | null = null;
+let repoScanInFlight: Promise<RepoInfo[]> | null = null;
 
-export function discoverRepos(): RepoInfo[] {
-  const now = Date.now();
-  if (repoCache && now - repoCache.cachedAt < REPO_DISCOVERY_TTL_MS) {
-    return repoCache.repos;
-  }
+interface RepoCandidate {
+  path: string;
+  name: string;
+}
 
+function execGit(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { timeout: GIT_TIMEOUT_MS, encoding: "utf-8" }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
+
+async function scanRepos(): Promise<RepoInfo[]> {
   const codeDir = join(HOME, "code");
-  const repos: RepoInfo[] = [];
+  const candidates: RepoCandidate[] = [];
 
-  if (!existsSync(codeDir)) {
-    repoCache = { repos, cachedAt: Date.now() };
-    return repos;
-  }
+  if (!existsSync(codeDir)) return [];
 
   let dirNames: string[];
   try {
     dirNames = readdirSync(codeDir);
   } catch {
-    repoCache = { repos, cachedAt: Date.now() };
-    return repos;
+    return [];
   }
-
-  const pushRepoIfValid = (repoPath: string, displayName: string) => {
-    try {
-      // Get remote URL.
-      // execFileSync is intentional: discoverRepos() runs at most once per 5-min TTL,
-      // covers <20 repos in practice, and completes in <2s total. Converting to async
-      // would complicate callers (currentBranchScope, pollOnce) for negligible gain.
-      const remoteUrl = execFileSync("git", ["-C", repoPath, "remote", "get-url", "origin"], {
-        timeout: GIT_TIMEOUT_MS,
-        encoding: "utf-8",
-      }).trim();
-
-      const parsed = parseGitRemote(remoteUrl);
-      if (!parsed) return; // skip repos without a parseable GitHub remote
-
-      // Get current branch
-      const branch = execFileSync("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD"], {
-        timeout: GIT_TIMEOUT_MS,
-        encoding: "utf-8",
-      }).trim();
-
-      repos.push({
-        path: repoPath,
-        name: displayName,
-        owner: parsed.owner,
-        repoName: parsed.repoName,
-        fullName: `${parsed.owner}/${parsed.repoName}`,
-        branch: branch || "HEAD",
-      });
-    } catch {
-      // Skip repos where git commands fail (no remote, detached HEAD, etc.)
-      return;
-    }
-  };
 
   for (const dirName of dirNames) {
     const repoPath = join(codeDir, dirName);
     if (existsSync(join(repoPath, ".git"))) {
-      pushRepoIfValid(repoPath, dirName);
+      candidates.push({ path: repoPath, name: dirName });
       continue;
     }
 
@@ -151,22 +124,79 @@ export function discoverRepos(): RepoInfo[] {
       continue;
     }
 
-    // Bound work in unexpectedly large namespace directories; preserve readdir order.
-    for (const childName of childNames.slice(0, NAMESPACE_SCAN_CAP)) {
-      const childPath = join(repoPath, childName);
-      if (existsSync(join(childPath, ".git"))) {
-        pushRepoIfValid(childPath, `${dirName}/${childName}`);
-      }
+    const childRepos = childNames.filter((childName) =>
+      existsSync(join(repoPath, childName, ".git")));
+    const droppedCount = childRepos.length - NAMESPACE_SCAN_CAP;
+    if (droppedCount > 0) {
+      console.warn(
+        `Repo discovery truncated namespace ${repoPath}: dropped ${droppedCount} candidate repos`,
+      );
+    }
+    for (const childName of childRepos.slice(0, NAMESPACE_SCAN_CAP)) {
+      candidates.push({
+        path: join(repoPath, childName),
+        name: `${dirName}/${childName}`,
+      });
     }
   }
 
-  repoCache = { repos, cachedAt: Date.now() };
+  const repos: RepoInfo[] = [];
+  for (let index = 0; index < candidates.length; index += GIT_SCAN_CONCURRENCY) {
+    const batch = candidates.slice(index, index + GIT_SCAN_CONCURRENCY);
+    const results = await Promise.all(batch.map(async (candidate): Promise<RepoInfo | null> => {
+      try {
+        const remoteUrl = (await execGit([
+          "-C", candidate.path, "remote", "get-url", "origin",
+        ])).trim();
+        const parsed = parseGitRemote(remoteUrl);
+        if (!parsed) return null;
+
+        const branch = (await execGit([
+          "-C", candidate.path, "rev-parse", "--abbrev-ref", "HEAD",
+        ])).trim();
+        return {
+          path: candidate.path,
+          name: candidate.name,
+          owner: parsed.owner,
+          repoName: parsed.repoName,
+          fullName: `${parsed.owner}/${parsed.repoName}`,
+          branch: branch || "HEAD",
+        };
+      } catch {
+        // Skip repos where git commands fail (no remote, detached HEAD, etc.)
+        return null;
+      }
+    }));
+    for (const repo of results) {
+      if (repo) repos.push(repo);
+    }
+  }
+
   return repos;
+}
+
+export function discoverRepos(): Promise<RepoInfo[]> {
+  const now = Date.now();
+  if (repoCache && now - repoCache.cachedAt < REPO_DISCOVERY_TTL_MS) {
+    return Promise.resolve(repoCache.repos);
+  }
+  if (repoScanInFlight) return repoScanInFlight;
+
+  repoScanInFlight = scanRepos()
+    .then((repos) => {
+      repoCache = { repos, cachedAt: Date.now() };
+      return repos;
+    })
+    .finally(() => {
+      repoScanInFlight = null;
+    });
+  return repoScanInFlight;
 }
 
 /** Allow tests to reset the repo discovery cache */
 export function __resetRepoCacheForTests() {
   repoCache = null;
+  repoScanInFlight = null;
 }
 
 // --- gh CLI wrapper ---
@@ -293,6 +323,7 @@ export class PrPoller {
   private backoff: BackoffState = { failures: 0, nextAllowedAt: 0 };
   private staticRepos: { owner: string; name: string }[] | null;
   private pollIntervalMs: number;
+  private pollInFlight: Promise<PrDiff> | null = null;
 
   constructor(
     repos?: { owner: string; name: string }[],
@@ -316,7 +347,15 @@ export class PrPoller {
     }
   }
 
-  async pollOnce(): Promise<PrDiff> {
+  pollOnce(): Promise<PrDiff> {
+    if (this.pollInFlight) return this.pollInFlight;
+    this.pollInFlight = this.runPollOnce().finally(() => {
+      this.pollInFlight = null;
+    });
+    return this.pollInFlight;
+  }
+
+  private async runPollOnce(): Promise<PrDiff> {
     const now = Date.now();
 
     // Respect backoff
@@ -330,7 +369,7 @@ export class PrPoller {
       repoList = this.staticRepos.map((r) => ({ fullName: `${r.owner}/${r.name}` }));
       this.discoveredRepos = [];
     } else {
-      const discovered = discoverRepos();
+      const discovered = await discoverRepos();
       this.discoveredRepos = discovered;
       // Deduplicate by fullName (multiple worktrees for same repo)
       const seen = new Set<string>();
@@ -418,7 +457,7 @@ export async function currentBranchScope(): Promise<string[]> {
   const branches: string[] = [];
 
   // Scan all discovered repos for branches (main worktree + linked worktrees)
-  const repos = discoverRepos();
+  const repos = await discoverRepos();
 
   // Deduplicate by repo path (worktrees share the same .git)
   const seenRepoPaths = new Set<string>();

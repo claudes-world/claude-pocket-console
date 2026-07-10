@@ -40,7 +40,15 @@ function validatedSession(session: string | null): string | null {
 
 function resolveHashState(hashParams: string): InitialAppState {
   const fileMatch = hashParams.match(/file=([^&]+)/)?.[1];
-  const file = fileMatch ? decodeURIComponent(fileMatch) : null;
+  let file: string | null = null;
+  if (fileMatch) {
+    try {
+      file = decodeURIComponent(fileMatch);
+    } catch {
+      // A malformed hand-typed/truncated file deep link behaves like no file
+      // selection instead of throwing during the initial render.
+    }
+  }
   const requestedTab = file
     ? "files"
     : (hashParams.split("&")[0] || "terminal") as AppTab;
