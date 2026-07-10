@@ -69,6 +69,13 @@ export interface AudioStatus {
   path?: string;
 }
 
+export interface ReadingListItem {
+  id: number;
+  path: string;
+  title: string | null;
+  created_at: number;
+}
+
 export interface GitBranch {
   branch: string;
   treeType: string;
