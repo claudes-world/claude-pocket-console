@@ -1,6 +1,6 @@
 import { BottomSheet } from "./BottomSheet";
 import { haptic } from "../lib/haptic";
-import { applyOrder, type PrViewPrefs } from "../lib/prViewPrefs";
+import { applyOrder, getRepoOrder, type PrViewPrefs } from "../lib/prViewPrefs";
 
 interface ManagePrsSheetProps {
   orgRepos: Record<string, string[]>;
@@ -47,7 +47,7 @@ export function ManagePrsSheet({ orgRepos, prefs, onChange, onClose }: ManagePrs
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {orgs.map((org, orgIndex) => {
           const orgHidden = prefs.hiddenOrgs.includes(org);
-          const repos = applyOrder(orgRepos[org] ?? [], prefs.repoOrder[org] ?? []);
+          const repos = applyOrder(orgRepos[org] ?? [], getRepoOrder(prefs, org));
 
           return (
             <div

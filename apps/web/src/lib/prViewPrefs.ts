@@ -35,6 +35,7 @@ export function loadPrViewPrefs(): PrViewPrefs {
     const repoOrder: Record<string, string[]> = {};
     if (value.repoOrder && typeof value.repoOrder === "object" && !Array.isArray(value.repoOrder)) {
       for (const [org, repos] of Object.entries(value.repoOrder as Record<string, unknown>)) {
+        if (org === "__proto__") continue;
         repoOrder[org] = stringArray(repos);
       }
     }
@@ -49,6 +50,14 @@ export function loadPrViewPrefs(): PrViewPrefs {
   } catch {
     return { ...DEFAULT_PREFS, repoOrder: {} };
   }
+}
+
+/** Read an org's saved repo order without falling through to Object.prototype. */
+export function getRepoOrder(prefs: PrViewPrefs, org: string): string[] {
+  const value = Object.prototype.hasOwnProperty.call(prefs.repoOrder, org)
+    ? prefs.repoOrder[org]
+    : undefined;
+  return Array.isArray(value) ? value : [];
 }
 
 /** Persist the complete, versionless PR view preferences object. */
@@ -66,7 +75,7 @@ export function applyOrder(items: string[], savedOrder: string[]): string[] {
   const seen = new Set<string>();
   const ordered: string[] = [];
 
-  for (const item of savedOrder) {
+  for (const item of Array.isArray(savedOrder) ? savedOrder : []) {
     if (available.has(item) && !seen.has(item)) {
       ordered.push(item);
       seen.add(item);

@@ -5,6 +5,7 @@ import { ManagePrsSheet } from "./ManagePrsSheet";
 import {
   applyOrder,
   filterHidden,
+  getRepoOrder,
   loadPrViewPrefs,
   savePrViewPrefs,
   type PrViewPrefs,
@@ -427,7 +428,7 @@ export function PrTicker() {
               key={org}
               org={org}
               repoMap={visibleGrouped[org]}
-              repoOrder={prefs.repoOrder[org] ?? []}
+              repoOrder={getRepoOrder(prefs, org)}
               collapsed={collapsedOrgs.has(org)}
               collapsedRepos={prefs.collapsedRepos}
               onToggle={() => toggleOrg(org)}

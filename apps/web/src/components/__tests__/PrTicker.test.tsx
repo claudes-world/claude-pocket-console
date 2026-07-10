@@ -115,6 +115,31 @@ describe("PrTicker", () => {
     });
   });
 
+  it("renders an org named constructor without a saved repo order", async () => {
+    const repo = makeRepo({
+      name: "repo",
+      org: "constructor",
+      fullName: "constructor/repo",
+      prCount: 0,
+    });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/prs") {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, prs: [], repos: [repo], lastPollOk: Date.now() }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<PrTicker />);
+
+    await waitFor(() => {
+      expect(screen.getByText("constructor")).toBeInTheDocument();
+      expect(screen.getByText("repo")).toBeInTheDocument();
+    });
+  });
+
   it("renders PR rows grouped by org and repo", async () => {
     const pr1 = makePr({ number: 42, title: "Fix the widget", headRefName: "fix/widget", repo: "claudes-world/inbox", key: "claudes-world/inbox#42" });
     const pr2 = makePr({ number: 43, title: "Add feature X", headRefName: "feat/x", repo: "claudes-world/claude-pocket-console", key: "claudes-world/claude-pocket-console#43" });

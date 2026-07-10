@@ -3,6 +3,7 @@ import {
   PR_VIEW_PREFS_KEY,
   applyOrder,
   filterHidden,
+  getRepoOrder,
   loadPrViewPrefs,
   savePrViewPrefs,
   type PrViewPrefs,
@@ -24,6 +25,17 @@ describe("PR view preference helpers", () => {
   it("applies saved values first and appends unknown values alphabetically", () => {
     expect(applyOrder(["gamma", "alpha", "delta", "beta"], ["beta", "missing", "beta"]))
       .toEqual(["beta", "alpha", "delta", "gamma"]);
+  });
+
+  it("treats a malformed saved order as empty", () => {
+    expect(applyOrder(["beta", "alpha"], "constructor" as unknown as string[]))
+      .toEqual(["alpha", "beta"]);
+  });
+
+  it("ignores inherited repo-order properties for adversarial org names", () => {
+    expect(getRepoOrder(emptyPrefs, "constructor")).toEqual([]);
+    expect(getRepoOrder(emptyPrefs, "toString")).toEqual([]);
+    expect(getRepoOrder(emptyPrefs, "__proto__")).toEqual([]);
   });
 
   it("filters hidden repos and orgs, including newly empty orgs", () => {
@@ -76,5 +88,18 @@ describe("PR view preference helpers", () => {
       hiddenRepos: [],
       collapsedRepos: ["alpha/one"],
     });
+  });
+
+  it("filters __proto__ while loading repo orders", () => {
+    localStorage.setItem(
+      PR_VIEW_PREFS_KEY,
+      '{"repoOrder":{"__proto__":["__proto__/repo"],"constructor":["constructor/repo"]}}',
+    );
+
+    const prefs = loadPrViewPrefs();
+
+    expect(Object.keys(prefs.repoOrder)).toEqual(["constructor"]);
+    expect(getRepoOrder(prefs, "__proto__")).toEqual([]);
+    expect(getRepoOrder(prefs, "constructor")).toEqual(["constructor/repo"]);
   });
 });
