@@ -146,11 +146,13 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     // Clear the prior file's result immediately. A same-file refresh (for
     // example the event emitted by a successful save) keeps the confirmed
     // Saved state visible while the authoritative re-check runs. Saving
-    // state is also per-file: a save still in flight for the previous file
-    // must not show the new file's button as "Saving…".
+    // state is per-file: derive it from the in-flight set, so a save still
+    // pending for the PREVIOUS file doesn't label this one "Saving…", while
+    // returning to a file whose save is pending shows "Saving…" again
+    // instead of an enabled button whose tap would silently no-op.
     if (pathChanged) {
       setReadingListSaved(false);
-      setReadingListSaving(false);
+      setReadingListSaving(path !== null && readingListInFlightRef.current.has(path));
     }
     if (!viewingFile) {
       setReadingListChecking(false);

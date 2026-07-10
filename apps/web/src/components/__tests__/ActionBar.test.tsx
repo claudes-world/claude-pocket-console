@@ -264,9 +264,10 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
     expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
 
+    // Returning to A while its save is still pending must show "Saving…"
+    // (disabled), not an enabled button whose tap would silently no-op.
     rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled());
     expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
 
     await act(async () => {
