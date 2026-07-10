@@ -27,10 +27,12 @@ function derivePublishSlug(path: string, now = new Date()): string {
   let slug = `${stem}-${stamp}`;
 
   const extension = lastDot === -1 ? "" : name.slice(lastDot + 1);
+  // CPC inserts a timestamp after the stem, so mirror publish-shared's media
+  // extension guard by checking for this specific extension, not any dot.
   if (
     extension &&
     RAW_MEDIA_EXTENSIONS.has(extension.toLowerCase()) &&
-    !basename(slug).includes(".")
+    !slug.toLowerCase().endsWith(`.${extension.toLowerCase()}`)
   ) {
     slug += `.${extension}`;
   }

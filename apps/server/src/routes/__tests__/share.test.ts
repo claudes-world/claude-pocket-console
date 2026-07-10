@@ -238,6 +238,17 @@ describe("POST /publish", () => {
     expect(publishedContent).toBe("audio bytes");
   });
 
+  it("preserves a raw media extension when the stem contains a dot", async () => {
+    const mediaFile = join(sandbox, "audio.master.wav");
+    writeFileSync(mediaFile, "audio bytes");
+
+    await postPublish({ path: mediaFile, scope: "public" });
+
+    expect(spawnSpy.mock.calls[0][1][2]).toBe(
+      "audio.master-20260710-123456.wav",
+    );
+  });
+
   it("rejects a non-regular file and closes its pinned handle", async () => {
     statOverride = { isFile: () => false, size: 0 };
 
