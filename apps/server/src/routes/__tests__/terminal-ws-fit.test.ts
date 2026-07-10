@@ -51,9 +51,31 @@ afterAll(() => {
 // for the tmux resize-window call, without ever spawning a real process.
 const execFileCalls: { cmd: string; args: string[] }[] = [];
 const mockExecFile = vi.fn(
-  (cmd: string, args: string[], callback: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-    execFileCalls.push({ cmd, args });
-    callback(null, "", "");
+  (...fnArgs: unknown[]) => {
+    const cmd = fnArgs[0] as string;
+    const args = fnArgs[1] as string[];
+    // execFile's real signature is (file, args, options?, callback) — find
+    // the callback by type instead of assuming a fixed arg position, since
+    // callers pass options (e.g. { timeout }) or not. Round-2 review
+    // (PR #299): applyFitResize and getPaneDimensions both now pass a
+    // timeout option, which previously wasn't the case for every call this
+    // mock had to handle.
+    const callback = fnArgs.find((a) => typeof a === "function") as
+      | ((err: Error | null, stdout?: string, stderr?: string) => void)
+      | undefined;
+    // getPaneDimensions' background "display-message" dims poll goes
+    // through this same mock too (round-2 review, PR #299 converted it
+    // from execFileSync to execFileAsync) — it fires once per
+    // connectAuthenticatedWs() call as a side effect of onOpen starting the
+    // 500ms poll loop, unrelated to the "fit" flow this file asserts on.
+    // Exclude it from execFileCalls so the fit-specific length/index
+    // assertions below stay meaningful; still answer the call so the background
+    // poll's promise resolves instead of hanging.
+    if (args?.[0] !== "display-message") {
+      execFileCalls.push({ cmd, args });
+    }
+    callback?.(null, "", "");
+    return { kill: () => {} } as any;
   },
 );
 
@@ -277,13 +299,21 @@ describe("terminalWsRoute onMessage: fit", () => {
     // window-size latest) fails, simulating the release call throwing
     // after the resize already applied.
     mockExecFile
-      .mockImplementationOnce((cmd: string, args: string[], callback: (err: Error | null) => void) => {
+      .mockImplementationOnce((...fnArgs: unknown[]) => {
+        const cmd = fnArgs[0] as string;
+        const args = fnArgs[1] as string[];
+        const callback = fnArgs.find((a) => typeof a === "function") as (err: Error | null) => void;
         execFileCalls.push({ cmd, args });
         callback(null);
+        return { kill: () => {} } as any;
       })
-      .mockImplementationOnce((cmd: string, args: string[], callback: (err: Error | null) => void) => {
+      .mockImplementationOnce((...fnArgs: unknown[]) => {
+        const cmd = fnArgs[0] as string;
+        const args = fnArgs[1] as string[];
+        const callback = fnArgs.find((a) => typeof a === "function") as (err: Error | null) => void;
         execFileCalls.push({ cmd, args });
         callback(new Error("no server running on /tmp/tmux-0/default"));
+        return { kill: () => {} } as any;
       });
 
     handlers.onMessage({ data: JSON.stringify({ type: "fit", cols: 92, rows: 40 }) } as any, ws as any);

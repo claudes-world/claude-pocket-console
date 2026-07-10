@@ -17,6 +17,7 @@ import {
   resolveInitialAppState,
   type AppTab as Tab,
 } from "./lib/app-routing";
+import { resolveSessionPickerProps } from "./lib/session-picker";
 
 const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
 const SWIPE_THRESHOLD = 120;
@@ -131,6 +132,7 @@ export function App() {
   // default explicitly by name is harmless (server resolves both to the
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
+  const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
   const [initialFilePath] = useState<string | null>(initialRoute.file);
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
@@ -509,14 +511,15 @@ export function App() {
         </div>
       )}
 
-      {/* Session picker — terminal tab only, when there's a choice OR a
-          hash deep-link points at a non-default session (even one the
-          roster doesn't know), so a stale deep link always leaves the user
-          a pill to click back to the default instead of stranding them on
-          the error frame. */}
-      {activeTab === "terminal" && (sessionList.length > 1 || activeSession !== null) && sessionList.length > 0 && (
+      {/* Session picker — terminal tab only. Visibility + session list
+          (including the stale-deep-link escape hatch) are decided by
+          resolveSessionPickerProps — see its docstring for the round-2
+          (PR #299) fix: an earlier inline `sessionList.length > 0` guard
+          hid the picker entirely whenever /api/terminal/sessions failed
+          while a stale session was active, stranding the user. */}
+      {activeTab === "terminal" && sessionPicker.visible && (
         <SessionPicker
-          sessions={sessionList}
+          sessions={sessionPicker.sessions}
           active={activeSession ?? defaultSession ?? ""}
           onSelect={onSelectSession}
         />

@@ -1,7 +1,6 @@
-import { resolve as resolvePath } from "node:path";
 import { Hono } from "hono";
 import { getTelegramCreds, tgRaw, tgSanitize } from "./utils.js";
-import { isPathAllowed, ALLOWED_FILE_ROOTS } from "../lib/path-allowed.js";
+import { openAllowedForRead, ALLOWED_FILE_ROOTS } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -9,13 +8,25 @@ app.post("/send-to-chat", async (c) => {
   const { filePath } = await c.req.json<{ filePath: string }>();
   if (!filePath) return c.json({ ok: false, error: "filePath required" }, 400);
 
-  if (!(await isPathAllowed(filePath, ALLOWED_FILE_ROOTS))) {
+  // Race-safe: open+validate the fd's real identity (same pattern as #292's
+  // files/search hardening) instead of the old check-then-use-by-name
+  // isPathAllowed. /tmp is world-writable and in ALLOWED_FILE_ROOTS, so a
+  // by-name check alone leaves a window for a symlink swap between the
+  // check and whenever the downstream Telegram-relayed agent reads the
+  // path (server HIGH #299 H1). We never read file content here — this
+  // route only relays a path — so the handle is closed immediately, but
+  // the message now carries the fd-resolved realPath (the file's actual
+  // on-disk identity at check time) instead of the raw client-supplied
+  // path.
+  const opened = await openAllowedForRead(filePath, ALLOWED_FILE_ROOTS);
+  if (!opened.ok) {
     return c.json({ ok: false, error: "Access denied" }, 403);
   }
+  const normalizedPath = opened.realPath;
+  await opened.handle.close();
 
   try {
     const { botToken, chatId } = await getTelegramCreds();
-    const normalizedPath = resolvePath(filePath);
     const shortPath = normalizedPath.replace(/^\/home\/claude\//, "~/");
     const message = [
       `📄 *Shared from Pocket Console*`,

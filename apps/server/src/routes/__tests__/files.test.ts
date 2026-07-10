@@ -5,8 +5,10 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { __resetRealRootCacheForTests } from "../../lib/path-allowed.js";
@@ -365,6 +367,32 @@ describe("GET /read", () => {
       rmSync(binFile, { force: true });
     }
   });
+
+  // Round-2 review, PR #299: /tmp (a world-writable root) can hold a FIFO
+  // that a client-controlled path names. The shared openAllowedForRead now
+  // opens O_NONBLOCK and fstat-rejects special files before /read's own
+  // isFile() check ever runs, so the request fails fast (403) instead of
+  // hanging the request/thread waiting for a writer that never connects.
+  (process.platform === "win32" ? it.skip : it)(
+    "rejects a FIFO instead of hanging or reading it",
+    async () => {
+      const fifoPath = join(sandbox, "evil.fifo");
+      execFileSync("mkfifo", [fifoPath]);
+      try {
+        const start = Date.now();
+        const res = await filesRoute.request(
+          `/read?path=${encodeURIComponent(fifoPath)}`,
+        );
+        const elapsedMs = Date.now() - start;
+        // Rejected by openAllowedForRead's fstat guard before files.ts's own
+        // isFile() check runs — 403, not a 200 with content or a hang.
+        expect(res.status).toBe(403);
+        expect(elapsedMs).toBeLessThan(2000);
+      } finally {
+        unlinkSync(fifoPath);
+      }
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
