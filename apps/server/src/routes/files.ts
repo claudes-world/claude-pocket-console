@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { randomBytes } from "node:crypto";
 import {
+  lstat,
   open,
   readdir,
   stat,
@@ -245,7 +246,15 @@ app.get("/list", async (c) => {
         .map(async (e) => {
           const fullPath = join(resolved, e.name);
           try {
-            const st = await stat(join(fdDir, e.name));
+            // lstat, NOT stat: for a symlink entry, report the LINK's own
+            // metadata, never the followed target's. A bare stat() follows
+            // the symlink with no allowlist check on where it lands, leaking
+            // byte-exact size + mtime + existence of arbitrary out-of-root
+            // files a planted /tmp symlink points at (gemini MEDIUM). `type`
+            // already uses the non-following Dirent, so this just aligns
+            // size/modified with the same don't-follow rule. Clicking an
+            // entry re-runs /read, which resolves+validates via fd.
+            const st = await lstat(join(fdDir, e.name));
             return {
               name: e.name,
               path: fullPath,

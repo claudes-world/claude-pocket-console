@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,6 +36,7 @@ import { __resetRealRootCacheForTests } from "../../lib/path-allowed.js";
  */
 
 let sandbox: string;
+let outsideSecret: string;
 let testAllowedRoots: string[] = [];
 
 vi.mock("../../lib/path-allowed.js", async () => {
@@ -45,6 +47,12 @@ vi.mock("../../lib/path-allowed.js", async () => {
     ...real,
     isPathAllowed: async (candidate: string, _ignoredAllowedRoots: string[]) => {
       return real.isPathAllowed(candidate, testAllowedRoots);
+    },
+    // /read, /list, /download validate via the race-safe openAllowedForRead;
+    // delegate to the real impl against the test roots so the allowlist
+    // boundary is exercised against the sandbox rather than the host.
+    openAllowedForRead: async (candidate: string, _ignoredAllowedRoots: string[]) => {
+      return real.openAllowedForRead(candidate, testAllowedRoots);
     },
   };
 });
@@ -71,10 +79,18 @@ beforeAll(() => {
   writeFileSync(join(sandbox, "data.json"), '{"key": "value"}');
   writeFileSync(join(sandbox, ".hidden-file"), "secret");
   writeFileSync(join(sandbox, "sub", "nested.md"), "# Nested\n\nContent here.");
+
+  // A secret file OUTSIDE every allowed root, with a distinctive large size,
+  // and a symlink to it planted INSIDE the listable sandbox. Models a
+  // world-writable-/tmp symlink; /list must not leak the target's size/mtime.
+  outsideSecret = mkdtempSync(join(tmpdir(), "cpc-files-outside-"));
+  writeFileSync(join(outsideSecret, "secret.bin"), "S".repeat(654321));
+  symlinkSync(join(outsideSecret, "secret.bin"), join(sandbox, "leak-link.bin"));
 });
 
 afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true });
+  rmSync(outsideSecret, { recursive: true, force: true });
   __resetRealRootCacheForTests();
 });
 
@@ -117,6 +133,20 @@ describe("GET /roots", () => {
 // GET /list
 // ---------------------------------------------------------------------------
 describe("GET /list", () => {
+  it("does NOT leak an out-of-root symlink target's size/mtime (reports the link's own metadata)", async () => {
+    const res = await filesRoute.request(`/list?path=${encodeURIComponent(sandbox)}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{ name: string; type: string; size: number }>;
+    };
+    const link = body.items.find((i) => i.name === "leak-link.bin");
+    expect(link).toBeDefined();
+    // The out-of-root secret is 654321 bytes. lstat must report the link's
+    // own size (small), never the followed target's — no metadata leak.
+    expect(link!.size).not.toBe(654321);
+    expect(link!.size).toBeLessThan(4096);
+  });
+
   it("lists directory contents for an allowed path", async () => {
     const res = await filesRoute.request(`/list?path=${encodeURIComponent(sandbox)}`);
     expect(res.status).toBe(200);
