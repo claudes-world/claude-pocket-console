@@ -1,4 +1,4 @@
-import { spawn, execFileSync, execFile } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { WSContext } from "hono/ws";
 import { checkAuth, validateSession, validateJwtTokenWithTokens, getBotTokens } from "../auth.js";
@@ -17,22 +17,29 @@ const execFileAsync = promisify(execFile);
 // must fail the call after 5s instead of wedging the connection setup.
 const TMUX_TIMEOUT_MS = 5_000;
 
-function getPaneDimensions(session: string): { cols: number; rows: number } {
+// Async (execFileAsync, no shell) rather than execFileSync (round-2 review,
+// PR #299): this runs on every 500ms poll tick per open WebSocket
+// connection, and execFileSync blocks Node's single event loop for however
+// long tmux takes — even bounded by TMUX_TIMEOUT_MS, that's up to 5s of
+// stalling every other request/socket on the process per slow tick. Callers
+// now await the result (fire-and-forget from sendPaneContent, same pattern
+// as the capture-pane spawn below) instead of using it synchronously inline.
+async function getPaneDimensions(session: string): Promise<{ cols: number; rows: number }> {
   try {
-    // execFileSync argv (no shell) because `session` can come from the
-    // client's ?session= query param — regex-validated upstream, but a
+    // argv (no shell) because `session` can come from the client's
+    // ?session= query param — regex-validated upstream, but a
     // client-controlled string must never be interpolated into a shell
     // line. Target form `=<name>:` — exact-match session lookup, and the
     // trailing `:` is REQUIRED: tmux 3.5a rejects bare `=name` for
     // pane-target commands (display-message/capture-pane/send-keys) with
     // "can't find pane"; only session-target commands (has-session) take
     // `=name` alone. Verified live on this host, 2026-07-09.
-    const out = execFileSync(
+    const { stdout } = await execFileAsync(
       "tmux",
       ["display-message", "-t", `=${session}:`, "-p", "#{pane_width}x#{pane_height}"],
       { encoding: "utf-8", timeout: TMUX_TIMEOUT_MS },
-    ).trim();
-    const [cols, rows] = out.split("x").map(Number);
+    );
+    const [cols, rows] = stdout.trim().split("x").map(Number);
     return { cols: cols || 80, rows: rows || 24 };
   } catch {
     return { cols: 80, rows: 24 };
@@ -163,18 +170,23 @@ export class FitLatchReleaseError extends Error {
 }
 
 export async function applyFitResize(cols: number, rows: number): Promise<void> {
+  // TMUX_TIMEOUT_MS on both calls (round-2 review, PR #299): every other
+  // tmux invocation in this file is capped so a wedged tmux server fails
+  // the request instead of hanging it forever; these two were the only
+  // ones left uncapped, letting a stuck fit request accumulate an
+  // unbounded child process and never resolve for the caller.
   await execFileAsync("tmux", [
     "resize-window",
     "-t", TMUX_SESSION,
     "-x", String(cols),
     "-y", String(rows),
-  ]);
+  ], { timeout: TMUX_TIMEOUT_MS });
   try {
     await execFileAsync("tmux", [
       "set-option",
       "-t", TMUX_SESSION,
       "window-size", "latest",
-    ]);
+    ], { timeout: TMUX_TIMEOUT_MS });
   } catch (err) {
     // Resize already succeeded — do NOT let this fall through to the
     // generic resize-failure handling in onMessage below. Wrap so the
@@ -262,18 +274,41 @@ export function terminalWsRoute(c: any) {
       // below: if the client disconnects before the check resolves, we must
       // not start an interval nobody will ever clear.
       let closed = false;
+      // In-flight guard for the dims poll (codex local-swarm finding, round-2
+      // PR #299): getPaneDimensions is async now (was execFileSync, which
+      // serialized ticks for free by blocking). Without this guard, a tmux
+      // call slower than the 500ms tick interval lets multiple
+      // display-message calls pile up concurrently per connection (up to
+      // TMUX_TIMEOUT_MS / 500ms ~= 10 of them), and whichever happens to
+      // resolve last wins even if it isn't the most recently issued —
+      // skipping a tick while one is already in flight avoids both.
+      let dimsInFlight = false;
       (ws as any)._cleanup = () => {
         closed = true;
         if (interval !== undefined) clearInterval(interval);
       };
 
       const sendPaneContent = () => {
-        // Send updated dimensions whenever they change
-        const dims = getPaneDimensions(session);
-        const dimsKey = `${dims.cols}x${dims.rows}`;
-        if (dimsKey !== lastDims) {
-          lastDims = dimsKey;
-          ws.send(JSON.stringify({ type: "dimensions", cols: dims.cols, rows: dims.rows }));
+        // Send updated dimensions whenever they change. Fire-and-forget —
+        // same async-child-process pattern as the capture-pane spawn right
+        // below, so a slow tmux display-message call never blocks the
+        // event loop for other connections (round-2 review, PR #299:
+        // execFileSync here stalled the whole process for up to
+        // TMUX_TIMEOUT_MS on every 500ms poll tick, per connection).
+        if (!dimsInFlight) {
+          dimsInFlight = true;
+          getPaneDimensions(session)
+            .then((dims) => {
+              if (closed) return;
+              const dimsKey = `${dims.cols}x${dims.rows}`;
+              if (dimsKey !== lastDims) {
+                lastDims = dimsKey;
+                ws.send(JSON.stringify({ type: "dimensions", cols: dims.cols, rows: dims.rows }));
+              }
+            })
+            .finally(() => {
+              dimsInFlight = false;
+            });
         }
         // -e preserves ANSI colors and -J joins wrapped lines so they reflow
         // to the client width. `=<name>:` target (exact-match + trailing
@@ -305,12 +340,24 @@ export function terminalWsRoute(c: any) {
           // last frame that looks live. The DEFAULT session deliberately
           // keeps the legacy tolerance: /restart-session kills and
           // recreates it, and connections are expected to ride that out.
-          if (code !== 0 && session !== TMUX_SESSION) {
+          //
+          // `code` is null (not 0) when the TMUX_TIMEOUT_MS timeout SIGTERMs
+          // the child instead of it exiting normally — a transient tmux
+          // slowdown, not proof the session is gone. Treating null as
+          // `!== 0` force-disconnected live non-default-session viewers on
+          // a single slow poll tick (server HIGH #299 H3); skip this tick
+          // instead and let the next poll re-check.
+          if (code !== 0 && code !== null && session !== TMUX_SESSION) {
             (ws as any)._cleanup?.();
             ws.send(JSON.stringify({ type: "error", message: `Session "${session}" ended` }));
             ws.close(4010, "Session ended");
             return;
           }
+          // A timed-out capture's `output` is a partial read cut off by
+          // SIGTERM, not a real frame — skip this tick entirely (don't
+          // overwrite lastContent with truncated data) and let the next
+          // 500ms poll retry cleanly.
+          if (code === null) return;
           if (output !== lastContent) {
             lastContent = output;
             ws.send(JSON.stringify({ type: "pane", content: output }));

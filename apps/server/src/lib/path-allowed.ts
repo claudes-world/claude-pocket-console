@@ -1,4 +1,4 @@
-import { realpath, open, type FileHandle } from "node:fs/promises";
+import { realpath, open, constants, type FileHandle } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { getTracer } from "./otel.js";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -124,6 +124,18 @@ export type OpenAllowedResult =
  * Linux-only by design (this is a Linux host); `/proc/self/fd` is the
  * pinned-fd identity. On a platform without it the realpath resolves to a
  * non-allowed path and the call fails closed.
+ *
+ * Opened O_NONBLOCK (round-2 review, PR #299): `/tmp` is a world-writable
+ * read root, so a client-controlled path can name a FIFO. Opening a FIFO
+ * for read with the plain "r" flag blocks the libuv threadpool until a
+ * writer shows up — a cheap DoS. O_NONBLOCK makes a FIFO open return
+ * immediately (per POSIX open(2)) instead of blocking, and is a no-op for
+ * regular files/directories, so every existing caller's behavior for real
+ * files is unchanged. The fstat check right after open then rejects
+ * anything that isn't a regular file or a directory (FIFO, socket, device
+ * node) before any caller can read from it — callers that open directories
+ * (list/download/search-scope) keep working; callers of special files do
+ * not.
  */
 export async function openAllowedForRead(
   absPath: string,
@@ -131,14 +143,22 @@ export async function openAllowedForRead(
 ): Promise<OpenAllowedResult> {
   let handle: FileHandle;
   try {
-    // "r" follows symlinks including the final component (preserving the
-    // legacy allow-symlink-into-root behavior); the post-open check below
-    // is what makes that safe.
-    handle = await open(resolve(absPath), "r");
+    // O_NONBLOCK + O_RDONLY still follows symlinks including the final
+    // component (preserving the legacy allow-symlink-into-root behavior);
+    // the post-open checks below are what make that safe.
+    handle = await open(resolve(absPath), constants.O_RDONLY | constants.O_NONBLOCK);
   } catch (err: any) {
     return { ok: false, reason: err?.code === "ENOENT" ? "not-found" : "error" };
   }
   try {
+    const st = await handle.stat();
+    if (!st.isFile() && !st.isDirectory()) {
+      // FIFO / socket / char / block device — reject before any caller can
+      // read from it. Opened non-blocking above specifically so this check
+      // can run instead of the open() call itself hanging.
+      await handle.close();
+      return { ok: false, reason: "denied" };
+    }
     // realpath('/proc/self/fd/N') resolves the kernel's magic symlink to the
     // canonical path of the inode this fd holds — the authoritative identity.
     const realPath = await realpath(`/proc/self/fd/${handle.fd}`);

@@ -27,6 +27,7 @@ import { markdownRoute } from "./routes/markdown.js";
 import { readingListRoute } from "./routes/reading-list.js";
 import { prsRoute } from "./routes/prs.js";
 import { shareRoute } from "./routes/share.js";
+import { isAssetLikePath } from "./lib/spa-fallback.js";
 
 // Load env from secrets file if not already set
 function loadEnv(path: string) {
@@ -206,13 +207,17 @@ app.use("/*", serveStatic({ root: webDistRoot }));
 // reached this point is neither an API/WS route nor a real asset. Serve the
 // app shell and let the client router handle the path (e.g. the /console
 // mini-app URL, which 404'd until a host-side Caddy rewrite papered over it).
-// API/WS prefixes still 404 so callers get JSON errors, not HTML.
+// API/WS prefixes still 404 so callers get JSON errors, not HTML. Asset-like
+// paths (round-2 review, PR #299) also 404 instead of falling back — see
+// isAssetLikePath for why (stale hashed asset after an out-of-lockstep
+// deploy must not silently become a 200 HTML response).
 // Cached for the process lifetime: every deploy restarts the server
 // (docs/guides/deploying.md), which is what invalidates this.
 let spaIndexHtml: string | null = null;
 app.get("*", (c) => {
   const path = c.req.path;
   if (/^\/(api|ws)(\/|$)/.test(path)) return c.notFound();
+  if (isAssetLikePath(path)) return c.notFound();
   if (spaIndexHtml === null) {
     try {
       spaIndexHtml = readFileSync(join(webDistRoot, "index.html"), "utf-8");

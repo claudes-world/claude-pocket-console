@@ -7,6 +7,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import {
@@ -258,6 +259,41 @@ describe("isPathAllowed", () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.reason).toBe("not-found");
     });
+
+    it("still opens a directory (existing /list, /download, /search-scope contract preserved)", async () => {
+      const r = await openAllowedForRead(allowedRoot, [allowedRoot]);
+      expect(r.ok).toBe(true);
+      if (r.ok) await r.handle.close();
+    });
+
+    // FIFOs aren't a POSIX-shell-first-class concept on Windows, and
+    // `mkfifo` isn't available — this hardening is Linux-host-specific
+    // anyway (see the openAllowedForRead docstring), so skip there.
+    (process.platform === "win32" ? it.skip : it)(
+      "rejects a FIFO under an allowed root without hanging (O_NONBLOCK + fstat, round-2 PR #299)",
+      async () => {
+        // /tmp is world-writable in production; this fixture models exactly
+        // that — any local process can plant a FIFO under an allowed root.
+        // Opening it with the plain "r" flag would block forever waiting for
+        // a writer that never shows up; O_NONBLOCK is what lets this test
+        // (and the real server) return instead of hanging.
+        const fifoPath = join(allowedRoot, "evil.fifo");
+        execFileSync("mkfifo", [fifoPath]);
+        try {
+          const start = Date.now();
+          const r = await openAllowedForRead(fifoPath, [allowedRoot]);
+          const elapsedMs = Date.now() - start;
+          expect(r.ok).toBe(false);
+          if (!r.ok) expect(r.reason).toBe("denied");
+          // No writer ever connects to this FIFO; a regression back to
+          // blocking "r" open would hang here until the test framework's
+          // own timeout, not resolve quickly with a rejection.
+          expect(elapsedMs).toBeLessThan(2000);
+        } finally {
+          unlinkSync(fifoPath);
+        }
+      },
+    );
   });
 
   it("memoizes realpath(root) via an on-disk swap of the root target", async () => {

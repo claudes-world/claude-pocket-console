@@ -8,7 +8,6 @@ import {
   stat,
   unlink,
 } from "node:fs/promises";
-import { createReadStream } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { constants as fsConstants } from "node:fs";
 import { Readable } from "node:stream";
@@ -127,10 +126,17 @@ async function getDownloadableFile(filePath: string): Promise<
 function createDownloadResponse(file: { handle: import("node:fs/promises").FileHandle; size: number; name: string }) {
   const encodedName = encodeURIComponent(file.name);
   const safeName = file.name.replace(/["\r\n]/g, "") || "file";
-  // Stream from the validated fd (createReadStream adopts and closes it on
-  // end/error via autoClose) — no by-name reopen.
+  // Stream via the FileHandle's OWN createReadStream — single fd ownership.
+  // Extracting the raw fd (`createReadStream("", { fd: file.handle.fd,
+  // autoClose: true })`) created two competing owners of the same fd: the
+  // raw-fd stream closes it on end/error, AND the still-referenced
+  // FileHandle object separately attempts to close it when GC'd. Whichever
+  // runs second either double-closes (Node warning) or — worse — closes an
+  // unrelated, already-reused fd from a later request if GC runs after
+  // stream end (server HIGH #299 H2). FileHandle#createReadStream() owns
+  // the fd itself and closes it exactly once when the stream ends/errors.
   const body = Readable.toWeb(
-    createReadStream("", { fd: file.handle.fd, autoClose: true }),
+    file.handle.createReadStream(),
   ) as unknown as BodyInit;
 
   return new Response(body, {
@@ -326,7 +332,14 @@ app.get("/read", async (c) => {
 
   try {
     const st = await handle.stat();
-    if (st.isDirectory()) {
+    // Reject anything that isn't a plain regular file — not just
+    // directories. `openAllowedForRead` already rejects FIFOs/sockets/device
+    // nodes at open time (O_NONBLOCK + fstat, round-2 review PR #299) since
+    // /tmp is a world-writable read root; this is the route-level backstop
+    // in case a future allowed root ever lets a non-regular, non-directory
+    // node reach this far, or a directory itself (which the shared open
+    // helper allows through for /list, /download, /search).
+    if (!st.isFile()) {
       return c.json({ error: "Not a file" }, 400);
     }
 

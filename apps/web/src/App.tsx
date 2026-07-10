@@ -12,6 +12,7 @@ import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
+import { resolveSessionPickerProps } from "./lib/session-picker";
 
 // Client-side mirror of the server's session-name allowlist (SESSION_NAME_RE
 // in apps/server/src/routes/utils.ts). Applied to the hash deep-link value —
@@ -135,6 +136,7 @@ export function App() {
   // default explicitly by name is harmless (server resolves both to the
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
+  const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
   const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialFile, sequence: 0 });
   // FileViewer is keyed by this request sequence. Keep the latest request in
   // a ref so callbacks retained by an unmounted viewer cannot publish a late
@@ -533,14 +535,15 @@ export function App() {
         </div>
       )}
 
-      {/* Session picker — terminal tab only, when there's a choice OR a
-          hash deep-link points at a non-default session (even one the
-          roster doesn't know), so a stale deep link always leaves the user
-          a pill to click back to the default instead of stranding them on
-          the error frame. */}
-      {activeTab === "terminal" && (sessionList.length > 1 || activeSession !== null) && sessionList.length > 0 && (
+      {/* Session picker — terminal tab only. Visibility + session list
+          (including the stale-deep-link escape hatch) are decided by
+          resolveSessionPickerProps — see its docstring for the round-2
+          (PR #299) fix: an earlier inline `sessionList.length > 0` guard
+          hid the picker entirely whenever /api/terminal/sessions failed
+          while a stale session was active, stranding the user. */}
+      {activeTab === "terminal" && sessionPicker.visible && (
         <SessionPicker
-          sessions={sessionList}
+          sessions={sessionPicker.sessions}
           active={activeSession ?? defaultSession ?? ""}
           onSelect={onSelectSession}
         />
