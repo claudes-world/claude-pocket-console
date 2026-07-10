@@ -1,5 +1,7 @@
 import { getAuthHeaders } from "../../lib/telegram";
-import type { AudioStatus, GitBranch, SearchResult, SessionName } from "./types";
+import type { AudioStatus, GitBranch, ReadingListItem, SearchResult, SessionName } from "./types";
+
+const READING_LIST_TIMEOUT_MS = 10_000;
 
 async function jsonFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
@@ -21,6 +23,17 @@ async function jsonFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promi
     throw new Error(serverError ?? `Request failed: ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** Reading-list requests are short CRUD calls; do not leave the UI hanging indefinitely. */
+async function readingListJsonFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), READING_LIST_TIMEOUT_MS);
+  try {
+    return await jsonFetch<T>(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function postAction(endpoint: string, body?: Record<string, unknown>) {
@@ -220,5 +233,37 @@ export async function sendFileToChat(filePath: string) {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify({ filePath }),
+  });
+}
+
+export async function saveReadingListItem(path: string, title?: string) {
+  return readingListJsonFetch<{ ok: true; id: number }>("/api/reading-list/save", {
+    method: "POST",
+    headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ path, ...(title !== undefined ? { title } : {}) }),
+  });
+}
+
+export async function fetchReadingList() {
+  return readingListJsonFetch<{ items: ReadingListItem[] }>("/api/reading-list/list", {
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function checkReadingListPaths(paths: string[]) {
+  const params = new URLSearchParams();
+  for (const path of paths) params.append("paths", path);
+  const query = params.toString();
+  return readingListJsonFetch<{ saved: Record<string, boolean> }>(
+    `/api/reading-list/check${query ? `?${query}` : ""}`,
+    { headers: getAuthHeaders() },
+  );
+}
+
+export async function deleteReadingListItem(target: { id: number } | { path: string }) {
+  return readingListJsonFetch<{ ok: true }>("/api/reading-list/delete", {
+    method: "POST",
+    headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(target),
   });
 }

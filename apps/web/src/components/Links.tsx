@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getTelegramWebApp } from "../lib/telegram";
+import { ReadingList } from "./ReadingList";
 import "./Links.css";
 
 interface LinkItem {
@@ -106,9 +107,10 @@ const APPS: AppItem[] = [
 
 interface LinksProps {
   onClose: () => void;
+  onOpenFile: (path: string) => void;
 }
 
-export function Links({ onClose }: LinksProps) {
+export function Links({ onClose, onOpenFile }: LinksProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
@@ -138,6 +140,7 @@ export function Links({ onClose }: LinksProps) {
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
+        <ReadingList onOpenFile={onOpenFile} />
         {LINKS.map((link) => (
           <a
             key={link.url}

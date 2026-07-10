@@ -16,13 +16,14 @@ import { ShareSheet } from "./ShareSheet";
 import { StatusLine } from "./StatusLine";
 import { btnStyle, type ActionBarProps, type AudioStatus, type GitBranch, type Modal, type SearchResult, type SessionName } from "./types";
 import {
-  checkAudio, deleteSessionName, fetchGitBranch, fetchGitStatus,
+  checkAudio, checkReadingListPaths, deleteSessionName, fetchGitBranch, fetchGitStatus,
   fetchSessionNames, fetchTodo, generateAudio, postAction,
   renameSession, restartSession, runGitCommand, searchFiles,
-  publishShared, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux,
+  publishShared, saveReadingListItem, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux,
 } from "./api";
 import { haptic } from "../../lib/haptic";
 import { usePreferences } from "../../hooks/usePreferences";
+import { emitReadingListChanged, READING_LIST_CHANGED_EVENT } from "../../lib/reading-list-events";
 
 // Preference key for the "current folder only" search toggle. Stored under
 // the unified cpc_dashboard_prefs aggregate via CloudStorage (Bot API 8.0+)
@@ -78,6 +79,16 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   const [shareError, setShareError] = useState<string | null>(null);
   const shareInFlightRef = useRef(false);
   const shareSeqRef = useRef(0);
+  const [readingListSaved, setReadingListSaved] = useState(false);
+  const [readingListChecking, setReadingListChecking] = useState(false);
+  const [readingListSaving, setReadingListSaving] = useState(false);
+  const [readingListRefreshVersion, setReadingListRefreshVersion] = useState(0);
+  const readingListInFlightRef = useRef(false);
+  // A check started for the previous file must never mark the newly viewed
+  // file as saved. Saving also bumps this token so its success state owns
+  // the button over any older GET still in flight.
+  const readingListCheckSeqRef = useRef(0);
+  const readingListCheckedPathRef = useRef<string | null>(null);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -117,6 +128,42 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     const timer = setTimeout(() => setStatus(null), 4000);
     return () => clearTimeout(timer);
   }, [status]);
+
+  useEffect(() => {
+    const refresh = () => setReadingListRefreshVersion((version) => version + 1);
+    window.addEventListener(READING_LIST_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(READING_LIST_CHANGED_EVENT, refresh);
+  }, []);
+
+  useEffect(() => {
+    const seq = ++readingListCheckSeqRef.current;
+    const path = viewingFile?.path ?? null;
+    const pathChanged = path !== readingListCheckedPathRef.current;
+    readingListCheckedPathRef.current = path;
+    // Clear the prior file's result immediately. A same-file refresh (for
+    // example the event emitted by a successful save) keeps the confirmed
+    // Saved state visible while the authoritative re-check runs.
+    if (pathChanged) setReadingListSaved(false);
+    if (!viewingFile) {
+      setReadingListChecking(false);
+      return;
+    }
+
+    setReadingListChecking(true);
+    void checkReadingListPaths([viewingFile.path])
+      .then((data) => {
+        if (seq === readingListCheckSeqRef.current) {
+          setReadingListSaved(data.saved[viewingFile.path] === true);
+        }
+      })
+      .catch(() => {
+        // A failed check leaves Save enabled; the POST remains authoritative.
+        if (seq === readingListCheckSeqRef.current) setReadingListSaved(false);
+      })
+      .finally(() => {
+        if (seq === readingListCheckSeqRef.current) setReadingListChecking(false);
+      });
+  }, [viewingFile?.path, readingListRefreshVersion]);
 
   // Replace the optimistic "Fit screen requested" status (set the instant
   // the button is tapped, in the reconnect-menu case below) with the real
@@ -435,6 +482,27 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     } catch {
       haptic.error();
       setStatus("Failed");
+    }
+  };
+  const handleSaveToReadingList = async () => {
+    if (!viewingFile || readingListSaved || readingListInFlightRef.current) return;
+    readingListInFlightRef.current = true;
+    const path = viewingFile.path;
+    const seq = ++readingListCheckSeqRef.current;
+    setReadingListSaving(true);
+    try {
+      await saveReadingListItem(path, viewingFile.name);
+      if (seq === readingListCheckSeqRef.current) setReadingListSaved(true);
+      haptic.success();
+      setStatus("Saved to reading list");
+      emitReadingListChanged();
+    } catch (err) {
+      if (seq === readingListCheckSeqRef.current) setReadingListSaved(false);
+      haptic.error();
+      setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      readingListInFlightRef.current = false;
+      setReadingListSaving(false);
     }
   };
   const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {
@@ -789,6 +857,19 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
                 style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}
               >
                 Send to Chat
+              </button>
+              <button
+                disabled={readingListChecking || readingListSaving || readingListSaved}
+                onClick={() => { haptic.impact("light"); void handleSaveToReadingList(); }}
+                style={{
+                  ...btnStyle,
+                  background: "var(--color-surface)",
+                  color: readingListSaved ? "var(--color-accent-green)" : "var(--color-accent-blue)",
+                  border: "1px solid var(--color-border-alt)",
+                  opacity: readingListChecking || readingListSaving ? 0.65 : 1,
+                }}
+              >
+                {readingListSaved ? "Saved ✓" : readingListSaving ? "Saving…" : "Save to reading list"}
               </button>
               <button
                 onClick={() => {

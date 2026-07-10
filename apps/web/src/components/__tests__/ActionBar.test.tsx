@@ -52,6 +52,8 @@ const mockSendAudioTelegram = vi.fn();
 const mockRestartSession = vi.fn();
 const mockSendFileToChat = vi.fn();
 const mockPublishShared = vi.fn();
+const mockCheckReadingListPaths = vi.fn();
+const mockSaveReadingListItem = vi.fn();
 
 vi.mock("../action-bar/api", () => ({
   postAction: (...args: unknown[]) => mockPostAction(...args),
@@ -71,6 +73,8 @@ vi.mock("../action-bar/api", () => ({
   restartSession: (...args: unknown[]) => mockRestartSession(...args),
   sendFileToChat: (...args: unknown[]) => mockSendFileToChat(...args),
   publishShared: (...args: unknown[]) => mockPublishShared(...args),
+  checkReadingListPaths: (...args: unknown[]) => mockCheckReadingListPaths(...args),
+  saveReadingListItem: (...args: unknown[]) => mockSaveReadingListItem(...args),
   summarizeMarkdown: vi.fn().mockResolvedValue({ ok: true, summary: "Test summary", cached: false, ms: 100 }),
 }));
 
@@ -96,6 +100,8 @@ beforeEach(() => {
   mockRestartSession.mockResolvedValue({ ok: true });
   mockSendFileToChat.mockResolvedValue({ ok: true });
   mockPublishShared.mockResolvedValue({ ok: true, url: "https://shared.claude.do/public/test-abc" });
+  mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
+  mockSaveReadingListItem.mockResolvedValue({ ok: true, id: 1 });
   mockDeleteSessionName.mockResolvedValue(undefined);
 });
 
@@ -152,6 +158,67 @@ describe("ActionBar", () => {
   it("shows Share button when viewing any file", () => {
     render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
     expect(screen.getByText("Share")).toBeInTheDocument();
+  });
+
+  it("saves the viewed file and flips the button to Saved", async () => {
+    const file = { path: "/tmp/app.ts", name: "app.ts" };
+    mockCheckReadingListPaths
+      .mockResolvedValueOnce({ saved: { [file.path]: false } })
+      .mockResolvedValue({ saved: { [file.path]: true } });
+    render(<ActionBar activeTab="files" viewingFile={file} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    await waitFor(() => {
+      expect(mockSaveReadingListItem).toHaveBeenCalledWith(file.path, file.name);
+      expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled();
+      expect(screen.getByText("Saved to reading list")).toBeInTheDocument();
+    });
+  });
+
+  it("marks a pre-saved viewed file from the initial check", async () => {
+    mockCheckReadingListPaths.mockResolvedValue({ saved: { "/tmp/saved.ts": true } });
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/saved.ts", name: "saved.ts" }} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled());
+    expect(mockCheckReadingListPaths).toHaveBeenCalledWith(["/tmp/saved.ts"]);
+  });
+
+  it("drops a stale saved check after the viewed file changes", async () => {
+    let resolveOld!: (value: { saved: Record<string, boolean> }) => void;
+    mockCheckReadingListPaths
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ saved: { "/tmp/new.ts": false } });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/old.ts", name: "old.ts" }} />,
+    );
+    await waitFor(() => expect(mockCheckReadingListPaths).toHaveBeenCalledWith(["/tmp/old.ts"]));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/new.ts", name: "new.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+
+    await act(async () => {
+      resolveOld({ saved: { "/tmp/old.ts": true } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("button", { name: "Saved ✓" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
+  });
+
+  it("reports a reading-list save failure and leaves Save available", async () => {
+    mockSaveReadingListItem.mockRejectedValue(new Error("Access denied"));
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Access denied")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
+    });
   });
 
   it("publishes with the selected share mode", async () => {

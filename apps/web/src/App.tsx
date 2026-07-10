@@ -135,7 +135,7 @@ export function App() {
   // default explicitly by name is harmless (server resolves both to the
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
-  const [initialFilePath] = useState<string | null>(initialFile);
+  const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialFile, sequence: 0 });
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
   });
@@ -157,6 +157,13 @@ export function App() {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
   const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
+
+  const openFileFromReadingList = useCallback((path: string) => {
+    setViewingFile(null);
+    setFileOpenRequest((request) => ({ path, sequence: request.sequence + 1 }));
+    setIsAnimating(true);
+    setActiveTab("files");
+  }, []);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -556,10 +563,10 @@ export function App() {
             />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
+            <FileViewer key={fileOpenRequest.sequence} onClose={() => setActiveTab("terminal")} initialFile={fileOpenRequest.path} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Links onClose={() => setActiveTab("terminal")} />
+            <Links onClose={() => setActiveTab("terminal")} onOpenFile={openFileFromReadingList} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <VoiceRecorder />
