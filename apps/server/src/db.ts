@@ -287,6 +287,19 @@ db.exec(
     .all() as Array<{ name: string; type: string }>;
   const createdAtCol = cols.find((c) => c.name === "created_at");
   if (createdAtCol && createdAtCol.type.toUpperCase() !== "INTEGER") {
+    const invalidTimestampCount = (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM reading_list WHERE strftime('%s', created_at) IS NULL",
+        )
+        .get() as { count: number }
+    ).count;
+    if (invalidTimestampCount > 0) {
+      console.warn(
+        `[reading_list migration] ${invalidTimestampCount} row(s) had unparseable created_at values; using the current time as a fallback`,
+      );
+    }
+
     // Retry-safe: drop any leftover `reading_list_new` from a previous failed
     // migration attempt before creating it fresh, and wrap the rebuild in a
     // try/catch with explicit ROLLBACK + cleanup so the next startup isn't
@@ -310,7 +323,10 @@ db.exec(
           user_id,
           path,
           title,
-          CAST(strftime('%s', created_at) AS INTEGER) * 1000
+          COALESCE(
+            CAST(strftime('%s', created_at) AS INTEGER) * 1000,
+            unixepoch() * 1000
+          )
         FROM reading_list;
         DROP INDEX IF EXISTS idx_reading_list_user;
         DROP INDEX IF EXISTS idx_reading_list_user_path;
