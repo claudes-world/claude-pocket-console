@@ -1,4 +1,4 @@
-import './lib/otel.js';
+import { registerDbSizeGauge, getTracer, shutdownTelemetry } from "./lib/otel.js";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ import {
 } from "./auth.js";
 import { isAllowedUser } from "./lib/allowed-users.js";
 import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
-import { registerDbSizeGauge, getTracer } from "./lib/otel.js";
+import { drainServer } from "./lib/graceful-shutdown.js";
 import { propagation, context as otelContext, trace, SpanStatusCode } from "@opentelemetry/api";
 import { DB_PATH } from "./db.js";
 import { terminalRoute } from "./routes/terminal/index.js";
@@ -70,7 +70,7 @@ if (getAllowedUsers().size === 0 && !allowAllTelegramUsers()) {
 registerDbSizeGauge(DB_PATH);
 
 const app = new Hono<{ Bindings: HttpBindings }>();
-const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({ app });
 
 app.use("*", cors({
   origin: [...ALLOWED_ORIGINS],
@@ -250,3 +250,29 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 });
 
 injectWebSocket(server);
+
+let shuttingDown = false;
+const shutdown = async (signal: NodeJS.Signals) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received; draining HTTP and WebSocket connections`);
+
+  // Covers both connection draining and the subsequent telemetry flush.
+  const hardKill = setTimeout(() => process.exit(1), 15_000);
+  hardKill.unref();
+
+  try {
+    await drainServer(server, wss, shutdownTelemetry);
+  } catch (error) {
+    console.error("[shutdown] graceful drain failed:", error);
+    // A close error must not prevent the telemetry providers from releasing
+    // their handles. This still occurs after the drain attempt has settled.
+    await shutdownTelemetry();
+  } finally {
+    clearTimeout(hardKill);
+    process.exit(0);
+  }
+};
+
+process.on("SIGTERM", () => { void shutdown("SIGTERM"); });
+process.on("SIGINT", () => { void shutdown("SIGINT"); });

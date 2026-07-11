@@ -67,23 +67,11 @@ const meterProvider = new MeterProvider({
 metrics.setGlobalMeterProvider(meterProvider);
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
-// Flush buffered spans/metrics on process termination, then exit so the process
-// doesn't hang on live handles (HTTP server socket, keep-alive connections).
-// process.exit(0) is in `finally` so it runs even if a provider rejects (e.g.
-// collector unavailable), preventing unhandled-rejection hangs on SIGTERM.
-const shutdown = async (signal: string) => {
-  // Hard-kill backstop: if flush stalls (e.g. collector network hang),
-  // force-exit after 10s. unref() so it doesn't prevent normal exit itself.
-  const hardKill = setTimeout(() => process.exit(1), 10_000);
-  hardKill.unref();
-  try {
-    await Promise.allSettled([provider.shutdown(), meterProvider.shutdown()]);
-  } finally {
-    process.exit(0);
-  }
-};
-process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
-process.on('SIGINT', () => { void shutdown('SIGINT'); });
+// Signal ownership belongs to index.ts, which can drain its HTTP and WebSocket
+// servers before flushing the final request-completion telemetry.
+export async function shutdownTelemetry(): Promise<void> {
+  await Promise.allSettled([provider.shutdown(), meterProvider.shutdown()]);
+}
 
 export function getTracer(name: string): Tracer {
   return trace.getTracer(name);
