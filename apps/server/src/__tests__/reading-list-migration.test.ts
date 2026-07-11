@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 
 /**
@@ -35,6 +35,19 @@ function runMigration(db: Database.Database) {
     .all() as Array<{ name: string; type: string }>;
   const createdAtCol = cols.find((c) => c.name === "created_at");
   if (createdAtCol && createdAtCol.type.toUpperCase() !== "INTEGER") {
+    const invalidTimestampCount = (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM reading_list WHERE strftime('%s', created_at) IS NULL",
+        )
+        .get() as { count: number }
+    ).count;
+    if (invalidTimestampCount > 0) {
+      console.warn(
+        `[reading_list migration] ${invalidTimestampCount} row(s) had unparseable created_at values; using the current time as a fallback`,
+      );
+    }
+
     // Retry-safe: mirrors db.ts — clean up any leftover reading_list_new from
     // a previous failed attempt, then wrap the rebuild in a try/catch that
     // rolls back + drops the scratch table if anything throws.
@@ -57,7 +70,10 @@ function runMigration(db: Database.Database) {
           user_id,
           path,
           title,
-          CAST(strftime('%s', created_at) AS INTEGER) * 1000
+          COALESCE(
+            CAST(strftime('%s', created_at) AS INTEGER) * 1000,
+            unixepoch() * 1000
+          )
         FROM reading_list;
         DROP INDEX IF EXISTS idx_reading_list_user;
         DROP INDEX IF EXISTS idx_reading_list_user_path;
@@ -80,6 +96,49 @@ function runMigration(db: Database.Database) {
 }
 
 describe("reading_list TEXT → INTEGER migration", () => {
+  it("preserves mixed valid and unparseable timestamps using a logged fallback", () => {
+    const db = new Database(":memory:");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    db.exec(`
+      CREATE TABLE reading_list (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        title TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, path)
+      );
+      INSERT INTO reading_list (user_id, path, title, created_at)
+      VALUES
+        ('u1', '/valid-a', 'Valid A', '2025-01-01 00:00:00'),
+        ('u1', '/valid-b', 'Valid B', '2025-06-15 12:30:00'),
+        ('u1', '/invalid', 'Invalid', 'not-a-date');
+    `);
+
+    const beforeMigration = Date.now();
+    expect(() => runMigration(db)).not.toThrow();
+    const afterMigration = Date.now();
+
+    const rows = db
+      .prepare("SELECT path, created_at FROM reading_list ORDER BY path")
+      .all() as Array<{ path: string; created_at: number }>;
+    expect(rows).toHaveLength(3);
+    expect(rows.find((row) => row.path === "/valid-a")?.created_at).toBe(
+      Date.UTC(2025, 0, 1, 0, 0, 0),
+    );
+    expect(rows.find((row) => row.path === "/valid-b")?.created_at).toBe(
+      Date.UTC(2025, 5, 15, 12, 30, 0),
+    );
+    const fallback = rows.find((row) => row.path === "/invalid")?.created_at;
+    expect(fallback).toBeGreaterThanOrEqual(Math.floor(beforeMigration / 1000) * 1000);
+    expect(fallback).toBeLessThanOrEqual(Math.floor(afterMigration / 1000) * 1000);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "[reading_list migration] 1 row(s) had unparseable created_at values; using the current time as a fallback",
+    );
+    warn.mockRestore();
+  });
+
   it("rebuilds the table and converts ISO timestamps to epoch-ms", () => {
     const db = new Database(":memory:");
     // Seed with the legacy schema (from #134).
