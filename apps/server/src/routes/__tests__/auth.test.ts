@@ -18,21 +18,32 @@ const TEST_USER = { id: 999111, first_name: "TestUser" };
 
 let savedBotToken: string | undefined;
 let savedAllowed: string | undefined;
+let savedAllowAll: string | undefined;
 
 beforeAll(() => {
   savedBotToken = process.env.TELEGRAM_BOT_TOKEN;
   savedAllowed = process.env.ALLOWED_TELEGRAM_USERS;
+  savedAllowAll = process.env.ALLOW_ALL_TELEGRAM_USERS;
   process.env.TELEGRAM_BOT_TOKEN = TEST_BOT_TOKEN;
   process.env.ALLOWED_TELEGRAM_USERS = TEST_USER_ID;
+  delete process.env.ALLOW_ALL_TELEGRAM_USERS;
 });
 
 afterAll(() => {
-  process.env.TELEGRAM_BOT_TOKEN = savedBotToken;
-  process.env.ALLOWED_TELEGRAM_USERS = savedAllowed;
+  restoreEnv("TELEGRAM_BOT_TOKEN", savedBotToken);
+  restoreEnv("ALLOWED_TELEGRAM_USERS", savedAllowed);
+  restoreEnv("ALLOW_ALL_TELEGRAM_USERS", savedAllowAll);
 });
 
 // Import after env setup so the module picks up our token.
 const { telegramAuth } = await import("../../middleware.js");
+const { checkAuth, validateJwtToken } = await import("../../auth.js");
+const { isAllowedUser } = await import("../../lib/allowed-users.js");
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 function buildApp(): Hono {
   const app = new Hono();
@@ -79,13 +90,15 @@ function makeInitData(
 /** Build a minimal JWT signed with the bot token. */
 function makeJwt(
   sub: string,
-  opts?: { exp?: number; botToken?: string },
+  opts?: { exp?: unknown; omitExp?: boolean; botToken?: string },
 ): string {
   const token = opts?.botToken ?? TEST_BOT_TOKEN;
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(
-    JSON.stringify({ sub, exp: opts?.exp ?? Math.floor(Date.now() / 1000) + 3600 }),
-  ).toString("base64url");
+  const claims: Record<string, unknown> = { sub };
+  if (!opts?.omitExp) {
+    claims.exp = opts?.exp ?? Math.floor(Date.now() / 1000) + 3600;
+  }
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
   const sig = createHmac("sha256", token)
     .update(`${header}.${payload}`)
     .digest("base64url");
@@ -183,6 +196,58 @@ describe("telegramAuth middleware", () => {
       const body = (await res.json()) as { error: string };
       expect(body.error).toBe("User not authorized");
     });
+
+    it("fails closed for isAllowedUser and checkAuth when the allowlist is empty", () => {
+      const originalAllowed = process.env.ALLOWED_TELEGRAM_USERS;
+      const originalAllowAll = process.env.ALLOW_ALL_TELEGRAM_USERS;
+      process.env.ALLOWED_TELEGRAM_USERS = "";
+      delete process.env.ALLOW_ALL_TELEGRAM_USERS;
+      try {
+        expect(isAllowedUser(TEST_USER_ID)).toBe(false);
+        expect(checkAuth(makeInitData(TEST_USER))).toEqual({
+          ok: false,
+          error: "Not authorized",
+        });
+      } finally {
+        restoreEnv("ALLOWED_TELEGRAM_USERS", originalAllowed);
+        restoreEnv("ALLOW_ALL_TELEGRAM_USERS", originalAllowAll);
+      }
+    });
+
+    it("allows isAllowedUser and checkAuth with the explicit empty-allowlist escape hatch", () => {
+      const originalAllowed = process.env.ALLOWED_TELEGRAM_USERS;
+      const originalAllowAll = process.env.ALLOW_ALL_TELEGRAM_USERS;
+      process.env.ALLOWED_TELEGRAM_USERS = "";
+      process.env.ALLOW_ALL_TELEGRAM_USERS = "true";
+      try {
+        expect(isAllowedUser(TEST_USER_ID)).toBe(true);
+        expect(checkAuth(makeInitData(TEST_USER))).toMatchObject({
+          ok: true,
+          user: TEST_USER,
+        });
+      } finally {
+        restoreEnv("ALLOWED_TELEGRAM_USERS", originalAllowed);
+        restoreEnv("ALLOW_ALL_TELEGRAM_USERS", originalAllowAll);
+      }
+    });
+
+    it("keeps a non-empty allowlist authoritative when the escape hatch is set", () => {
+      const originalAllowed = process.env.ALLOWED_TELEGRAM_USERS;
+      const originalAllowAll = process.env.ALLOW_ALL_TELEGRAM_USERS;
+      process.env.ALLOWED_TELEGRAM_USERS = TEST_USER_ID;
+      process.env.ALLOW_ALL_TELEGRAM_USERS = "1";
+      const nonAllowedUser = { id: 777888, first_name: "Intruder" };
+      try {
+        expect(isAllowedUser(nonAllowedUser.id)).toBe(false);
+        expect(checkAuth(makeInitData(nonAllowedUser))).toEqual({
+          ok: false,
+          error: "Not authorized",
+        });
+      } finally {
+        restoreEnv("ALLOWED_TELEGRAM_USERS", originalAllowed);
+        restoreEnv("ALLOW_ALL_TELEGRAM_USERS", originalAllowAll);
+      }
+    });
   });
 
   describe("Bearer JWT validation", () => {
@@ -202,6 +267,28 @@ describe("telegramAuth middleware", () => {
       expect(res.status).toBe(401);
       const body = (await res.json()) as { error: string };
       expect(body.error).toBe("Invalid or expired token");
+    });
+
+    it("rejects a signed JWT without an exp claim", () => {
+      expect(validateJwtToken(makeJwt(TEST_USER_ID, { omitExp: true }), TEST_BOT_TOKEN))
+        .toEqual({ valid: false });
+    });
+
+    it("rejects a signed JWT with a non-numeric exp claim", () => {
+      expect(validateJwtToken(makeJwt(TEST_USER_ID, { exp: "never" }), TEST_BOT_TOKEN))
+        .toEqual({ valid: false });
+    });
+
+    it("accepts a signed JWT with a future numeric exp claim", () => {
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      expect(validateJwtToken(makeJwt(TEST_USER_ID, { exp }), TEST_BOT_TOKEN))
+        .toMatchObject({ valid: true, user: { id: Number(TEST_USER_ID) } });
+    });
+
+    it("rejects a signed JWT with a past numeric exp claim", () => {
+      const exp = Math.floor(Date.now() / 1000) - 3600;
+      expect(validateJwtToken(makeJwt(TEST_USER_ID, { exp }), TEST_BOT_TOKEN))
+        .toEqual({ valid: false });
     });
 
     it("rejects a JWT signed with the wrong secret", async () => {

@@ -9,7 +9,12 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
-import { validateTelegramLoginWidget, createSession } from "./auth.js";
+import {
+  allowAllTelegramUsers,
+  createSession,
+  getAllowedUsers,
+  validateTelegramLoginWidget,
+} from "./auth.js";
 import { isAllowedUser } from "./lib/allowed-users.js";
 import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
 import { registerDbSizeGauge, getTracer } from "./lib/otel.js";
@@ -50,6 +55,16 @@ function loadEnv(path: string) {
 }
 
 loadEnv(`${process.env.HOME}/.secrets/cpc.env`);
+
+if (getAllowedUsers().size === 0 && !allowAllTelegramUsers()) {
+  console.error([
+    "!!!!!!!!!!!!!!!!!!!! CPC AUTH WARNING !!!!!!!!!!!!!!!!!!!!",
+    "Allowlist admission is DISABLED: ALLOWED_TELEGRAM_USERS is empty or unset.",
+    "All Telegram users are BLOCKED until ALLOWED_TELEGRAM_USERS is populated",
+    "or ALLOW_ALL_TELEGRAM_USERS=1 is explicitly set for development.",
+    "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+  ].join("\n"));
+}
 
 // Register DB size gauge after env is loaded so DB_PATH is stable
 registerDbSizeGauge(DB_PATH);
