@@ -756,11 +756,12 @@ app.get("/icons", async (c) => {
   }
 
   const icons: Record<string, string> = Object.create(null) as Record<string, string>;
-  for (const repo of await discoverRepos()) {
-    if (icons[repo.fullName]) continue;
+  const repos = await discoverRepos();
+  await Promise.all(repos.map(async (repo) => {
+    if (icons[repo.fullName]) return;
     const icon = await readRepoIcon(repo.path);
     if (icon) icons[repo.fullName] = icon;
-  }
+  }));
 
   iconCache = { icons, cachedAt: now };
   return c.json({ ok: true, icons });

@@ -186,7 +186,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     setReadingListChecking(true);
     void checkReadingListPaths([viewingFile.path])
       .then((data) => {
-        if (seq === readingListCheckSeqRef.current) {
+        if (
+          seq === readingListCheckSeqRef.current
+          && !readingListInFlightRef.current.has(viewingFile.path)
+        ) {
           setReadingListSaved(data.saved[viewingFile.path] === true);
         }
       })
@@ -966,7 +969,10 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
                 onClick={() => {
                   haptic.impact("light");
                   ++shareSeqRef.current;
-                  setShareLoading(false);
+                  const inFlight = viewingFile
+                    ? shareInFlightRef.current.has(viewingFile.path)
+                    : false;
+                  setShareLoading(inFlight);
                   setShareUrl(null);
                   setShareError(null);
                   setModal("share");

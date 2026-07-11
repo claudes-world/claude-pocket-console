@@ -312,6 +312,35 @@ describe("ActionBar", () => {
     expect(screen.getByText("Saved to reading list")).toBeInTheDocument();
   });
 
+  it("keeps a same-file save pending when a global refresh check resolves unsaved", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    let resolveRefreshCheck!: (value: { saved: Record<string, boolean> }) => void;
+    const file = { path: "/tmp/app.ts", name: "app.ts" };
+    mockCheckReadingListPaths
+      .mockResolvedValueOnce({ saved: { [file.path]: false } })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRefreshCheck = resolve; }))
+      .mockImplementation(() => new Promise(() => {}));
+    mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<ActionBar activeTab="files" viewingFile={file} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    act(() => window.dispatchEvent(new Event("cpc:reading-list-changed")));
+    await waitFor(() => expect(mockCheckReadingListPaths).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveRefreshCheck({ saved: { [file.path]: false } });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled();
+  });
+
   it("settles a stale reading-list save silently after viewing another file", async () => {
     let resolveSave!: (value: { ok: boolean }) => void;
     mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
@@ -417,6 +446,21 @@ describe("ActionBar", () => {
 
     expect(screen.getByText("https://shared.claude.do/public/b-current")).toBeInTheDocument();
     expect(screen.queryByText("https://shared.claude.do/public/a-stale")).not.toBeInTheDocument();
+  });
+
+  it("reopens Share in the publishing state for the same in-flight file", async () => {
+    mockPublishShared.mockImplementation(() => new Promise(() => {}));
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+    await waitFor(() => expect(mockPublishShared).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("Close sheet"));
+    fireEvent.click(screen.getByText("Share"));
+
+    expect(screen.getByLabelText("Publishing file")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Public" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Private" })).not.toBeInTheDocument();
   });
 
   it("opens a published URL without granting window.opener", async () => {

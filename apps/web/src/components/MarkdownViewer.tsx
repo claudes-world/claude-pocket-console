@@ -37,7 +37,7 @@ export function extractFrontmatter(content: string): FrontmatterResult {
   const metadataLines = metadata.split(/\r?\n/);
   const nonEmptyLines = metadataLines.filter((line) => line.length > 0);
   const hasYamlShape = nonEmptyLines.every((line) =>
-    /^\s|^#|^[A-Za-z0-9_.$-]+\s*:(\s|$)/.test(line),
+    /^\s|^#|^-(\s|$)|^[A-Za-z0-9_.$-]+\s*:(\s|$)/.test(line),
   );
   if (metadata !== "" && (nonEmptyLines.length === 0 || !hasYamlShape)) {
     return { body: content, metadata: null };

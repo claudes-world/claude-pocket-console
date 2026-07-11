@@ -237,6 +237,14 @@ describe("MarkdownViewer — YAML frontmatter", () => {
     expect(container.querySelector(".md-content")!.textContent).toBe("Nested body.");
   });
 
+  it("strips frontmatter containing an unindented block sequence", () => {
+    const content = "---\ntags:\n- cpc\n- webapp\n---\nSequence body.";
+    const { container } = renderMd(content);
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Sequence body.");
+  });
+
   it("strips frontmatter containing a comment", () => {
     const content = "---\n# metadata comment\nkey: value\n---\nComment body.";
     const { container } = renderMd(content);
