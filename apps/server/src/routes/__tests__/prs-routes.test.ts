@@ -27,6 +27,13 @@ import type { PrRow, RepoInfo } from "../prs.js";
 
 // --- Helpers ---
 
+// Must match prs.ts's own `HOME` fallback so fixtures line up with the real
+// discoverRepos() scan regardless of the environment's actual $HOME (e.g.
+// /home/claude locally vs /home/runner on GitHub Actions — a mismatch here
+// makes discoverRepos() resolve empty in CI, 400ing every repo-dependent
+// route while passing locally).
+const CODE_DIR = join(process.env.HOME || "/home/claude", "code");
+
 function makePr(overrides: Partial<PrRow> = {}): PrRow {
   const num = overrides.number ?? 1;
   return {
@@ -53,7 +60,7 @@ function makeRepoInfo(overrides: Partial<RepoInfo> = {}): RepoInfo {
   // (GitHub repo name) so the repo-shape test can assert the field mapping
   // is correct and not passing by coincidence (same value in both fields).
   return {
-    path: "/home/claude/code/tryinbox-sh",
+    path: join(CODE_DIR, "tryinbox-sh"),
     name: "tryinbox-sh",          // filesystem dir name
     owner: "claudes-world",
     repoName: "inbox",            // GitHub repo name — intentionally different
@@ -150,7 +157,7 @@ function ghCallCount(): number {
 function mockDiscoveredRepo(repo = makeRepoInfo()) {
   vi.mocked(existsSync).mockImplementation((path) => {
     const value = String(path);
-    return value === "/home/claude/code" || value === `${repo.path}/.git`;
+    return value === CODE_DIR || value === `${repo.path}/.git`;
   });
   vi.mocked(readdirSync).mockReturnValue([repo.name] as any);
   vi.mocked(lstatSync).mockImplementation((() => ({
@@ -190,7 +197,7 @@ function mockOpenedIcon(contents: Buffer, size = contents.length, isFile = true)
 // Repo discovery
 // ---------------------------------------------------------------------------
 describe("discoverRepos", () => {
-  const codeDir = join(process.env.HOME || "/home/claude", "code");
+  const codeDir = CODE_DIR;
 
   function mockGitCommands(
     implementation: (command: string, args: readonly string[]) => string,
@@ -789,7 +796,7 @@ describe("GET /current-branch-scope", () => {
   it("returns ok:true with branches array (empty when all git calls fail)", async () => {
     // With child_process mocked to fail, discoverRepos returns [] (no repos found),
     // so branches will be empty — the route must still return ok:true.
-    const codeDir = join(process.env.HOME || "/home/claude", "code");
+    const codeDir = CODE_DIR;
     vi.mocked(existsSync)
       .mockReturnValueOnce(true) // codeDir
       .mockReturnValueOnce(true); // broken-repo/.git
