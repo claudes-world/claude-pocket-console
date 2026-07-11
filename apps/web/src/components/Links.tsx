@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getTelegramWebApp } from "../lib/telegram";
+import { ReadingList } from "./ReadingList";
 import "./Links.css";
 
 interface LinkItem {
@@ -61,15 +62,20 @@ const LINKS: LinkItem[] = [
     url: "https://cockpit.claude.do",
     icon: "🛩️",
     description: "Fleet grid + live lane terminals",
-    // Stays inside the Mini App (Liam voice msg 1185). NOTE: cockpit.claude.do
-    // currently sits behind Cloudflare Access, which a Telegram WebView cannot
-    // pass — the link hits the Access wall until the cockpit auth lift lands
-    // (world-os#218 plan addendum). Shipped anyway per Liam.
-    inApp: true,
+    // In-app navigation (Liam voice msg 1185) is DISABLED until two blockers
+    // clear: (1) cockpit.claude.do sits behind Cloudflare Access, which a
+    // Telegram WebView cannot pass — the link dead-ends at the Access wall;
+    // (2) window.location.assign is a one-way trip — any return to CPC that
+    // isn't a fresh Telegram launch leaves the webview without initData,
+    // stranding the user on the login screen (live incident 2026-07-10,
+    // voice 1565). Re-enable inApp only with the Access lift + BackButton
+    // return wiring (world-os#218 plan addendum).
   },
   {
     title: "Transcription Glossary",
-    url: "https://github.com/claudes-world/toolbox/blob/main/transcribe/glossary.txt",
+    // Canonical glossary moved to world-os (the file the live switchboard STT
+    // actually loads — Liam edits it on GitHub; world-os PR #427, 2026-07-10).
+    url: "https://github.com/claudes-world/world-os/blob/dev/apps/switchboard/src/switchboard/transcribe_glossary.txt",
     icon: "📝",
     description: "Tech terms for STT accuracy",
   },
@@ -106,9 +112,10 @@ const APPS: AppItem[] = [
 
 interface LinksProps {
   onClose: () => void;
+  onOpenFile: (path: string) => void;
 }
 
-export function Links({ onClose }: LinksProps) {
+export function Links({ onClose, onOpenFile }: LinksProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
@@ -138,6 +145,7 @@ export function Links({ onClose }: LinksProps) {
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
+        <ReadingList onOpenFile={onOpenFile} />
         {LINKS.map((link) => (
           <a
             key={link.url}

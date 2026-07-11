@@ -1,7 +1,9 @@
 import { Hono } from "hono";
-import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
+import { openAllowedForRead } from "../lib/path-allowed.js";
 
 const app = new Hono();
 
@@ -11,6 +13,11 @@ const GIT_TIMEOUT_MS = 5_000;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const SCOPE_CACHE_TTL_MS = 60_000;
 const REPO_DISCOVERY_TTL_MS = 5 * 60_000; // re-scan ~/code every 5 min
+const ISSUE_CACHE_TTL_MS = 5 * 60_000;
+const ICON_CACHE_TTL_MS = 30 * 60_000;
+const MAX_ICON_BYTES = 64 * 1024;
+const NAMESPACE_SCAN_CAP = 50;
+const GIT_SCAN_CONCURRENCY = 8;
 
 // --- Types ---
 
@@ -35,6 +42,18 @@ export interface PrDiff {
   added: PrRow[];
   removed: PrRow[];
   changed: { pr: PrRow; fields: string[] }[];
+}
+
+export interface IssueRow {
+  key: string;
+  repo: string;
+  number: number;
+  title: string;
+  state: "OPEN" | "CLOSED";
+  author: string;
+  updatedAt: string;
+  labels: string[];
+  url: string;
 }
 
 // --- Repo discovery ---
@@ -72,73 +91,129 @@ export function parseGitRemote(url: string): { owner: string; repoName: string }
 }
 
 let repoCache: { repos: RepoInfo[]; cachedAt: number } | null = null;
+let repoScanInFlight: Promise<RepoInfo[]> | null = null;
 
-export function discoverRepos(): RepoInfo[] {
-  const now = Date.now();
-  if (repoCache && now - repoCache.cachedAt < REPO_DISCOVERY_TTL_MS) {
-    return repoCache.repos;
-  }
+interface RepoCandidate {
+  path: string;
+  name: string;
+}
 
+function execGit(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { timeout: GIT_TIMEOUT_MS, encoding: "utf-8" }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
+
+async function scanRepos(): Promise<RepoInfo[]> {
   const codeDir = join(HOME, "code");
-  const repos: RepoInfo[] = [];
+  const candidates: RepoCandidate[] = [];
 
-  if (!existsSync(codeDir)) {
-    repoCache = { repos, cachedAt: now };
-    return repos;
-  }
+  if (!existsSync(codeDir)) return [];
 
   let dirNames: string[];
   try {
     dirNames = readdirSync(codeDir);
   } catch {
-    repoCache = { repos, cachedAt: now };
-    return repos;
+    return [];
   }
 
   for (const dirName of dirNames) {
     const repoPath = join(codeDir, dirName);
-    if (!existsSync(join(repoPath, ".git"))) continue;
+    if (existsSync(join(repoPath, ".git"))) {
+      candidates.push({ path: repoPath, name: dirName });
+      continue;
+    }
 
     try {
-      // Get remote URL.
-      // execFileSync is intentional: discoverRepos() runs at most once per 5-min TTL,
-      // covers <20 repos in practice, and completes in <2s total. Converting to async
-      // would complicate callers (currentBranchScope, pollOnce) for negligible gain.
-      const remoteUrl = execFileSync("git", ["-C", repoPath, "remote", "get-url", "origin"], {
-        timeout: GIT_TIMEOUT_MS,
-        encoding: "utf-8",
-      }).trim();
-
-      const parsed = parseGitRemote(remoteUrl);
-      if (!parsed) continue; // skip repos without a parseable GitHub remote
-
-      // Get current branch
-      const branch = execFileSync("git", ["-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD"], {
-        timeout: GIT_TIMEOUT_MS,
-        encoding: "utf-8",
-      }).trim();
-
-      repos.push({
-        path: repoPath,
-        name: dirName,
-        owner: parsed.owner,
-        repoName: parsed.repoName,
-        fullName: `${parsed.owner}/${parsed.repoName}`,
-        branch: branch || "HEAD",
-      });
+      const stats = lstatSync(repoPath);
+      if (!stats.isDirectory() || stats.isSymbolicLink()) continue;
     } catch {
-      // Skip repos where git commands fail (no remote, detached HEAD, etc.)
       continue;
+    }
+
+    let childNames: string[];
+    try {
+      childNames = readdirSync(repoPath);
+    } catch {
+      continue;
+    }
+
+    const childRepos = childNames.filter((childName) =>
+      existsSync(join(repoPath, childName, ".git")));
+    const droppedCount = childRepos.length - NAMESPACE_SCAN_CAP;
+    if (droppedCount > 0) {
+      console.warn(
+        `Repo discovery truncated namespace ${repoPath}: dropped ${droppedCount} candidate repos`,
+      );
+    }
+    for (const childName of childRepos.slice(0, NAMESPACE_SCAN_CAP)) {
+      candidates.push({
+        path: join(repoPath, childName),
+        name: `${dirName}/${childName}`,
+      });
     }
   }
 
-  repoCache = { repos, cachedAt: now };
+  const repos: RepoInfo[] = [];
+  for (let index = 0; index < candidates.length; index += GIT_SCAN_CONCURRENCY) {
+    const batch = candidates.slice(index, index + GIT_SCAN_CONCURRENCY);
+    const results = await Promise.all(batch.map(async (candidate): Promise<RepoInfo | null> => {
+      try {
+        const remoteUrl = (await execGit([
+          "-C", candidate.path, "remote", "get-url", "origin",
+        ])).trim();
+        const parsed = parseGitRemote(remoteUrl);
+        if (!parsed) return null;
+
+        const branch = (await execGit([
+          "-C", candidate.path, "rev-parse", "--abbrev-ref", "HEAD",
+        ])).trim();
+        return {
+          path: candidate.path,
+          name: candidate.name,
+          owner: parsed.owner,
+          repoName: parsed.repoName,
+          fullName: `${parsed.owner}/${parsed.repoName}`,
+          branch: branch || "HEAD",
+        };
+      } catch {
+        // Skip repos where git commands fail (no remote, detached HEAD, etc.)
+        return null;
+      }
+    }));
+    for (const repo of results) {
+      if (repo) repos.push(repo);
+    }
+  }
+
   return repos;
+}
+
+export function discoverRepos(): Promise<RepoInfo[]> {
+  const now = Date.now();
+  if (repoCache && now - repoCache.cachedAt < REPO_DISCOVERY_TTL_MS) {
+    return Promise.resolve(repoCache.repos);
+  }
+  if (repoScanInFlight) return repoScanInFlight;
+
+  repoScanInFlight = scanRepos()
+    .then((repos) => {
+      repoCache = { repos, cachedAt: Date.now() };
+      return repos;
+    })
+    .finally(() => {
+      repoScanInFlight = null;
+    });
+  return repoScanInFlight;
 }
 
 /** Allow tests to reset the repo discovery cache */
 export function __resetRepoCacheForTests() {
   repoCache = null;
+  repoScanInFlight = null;
 }
 
 // --- gh CLI wrapper ---
@@ -207,6 +282,39 @@ function parseGhPrs(jsonStr: string, repoFullName: string, now: number): PrRow[]
   }));
 }
 
+interface GhIssueJson {
+  number: number;
+  title: string;
+  state: string;
+  author: { login: string } | null;
+  updatedAt: string;
+  labels: Array<{ name: string }>;
+  url: string;
+}
+
+function parseGhIssues(jsonStr: string, repoFullName: string): IssueRow[] {
+  let raw: GhIssueJson[];
+  try {
+    raw = JSON.parse(jsonStr);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.map((issue) => ({
+    key: `${repoFullName}#${issue.number}`,
+    repo: repoFullName,
+    number: issue.number,
+    title: issue.title,
+    state: issue.state?.toUpperCase() === "CLOSED" ? "CLOSED" : "OPEN",
+    author: issue.author?.login ?? "unknown",
+    updatedAt: issue.updatedAt,
+    labels: Array.isArray(issue.labels)
+      ? issue.labels.map((label) => label?.name).filter((name): name is string => typeof name === "string")
+      : [],
+    url: issue.url,
+  }));
+}
+
 // --- PrPoller ---
 
 const TRACKED_CHANGE_FIELDS: (keyof PrRow)[] = [
@@ -265,6 +373,7 @@ export class PrPoller {
   private backoff: BackoffState = { failures: 0, nextAllowedAt: 0 };
   private staticRepos: { owner: string; name: string }[] | null;
   private pollIntervalMs: number;
+  private pollInFlight: Promise<PrDiff> | null = null;
 
   constructor(
     repos?: { owner: string; name: string }[],
@@ -288,7 +397,15 @@ export class PrPoller {
     }
   }
 
-  async pollOnce(): Promise<PrDiff> {
+  pollOnce(): Promise<PrDiff> {
+    if (this.pollInFlight) return this.pollInFlight;
+    this.pollInFlight = this.runPollOnce().finally(() => {
+      this.pollInFlight = null;
+    });
+    return this.pollInFlight;
+  }
+
+  private async runPollOnce(): Promise<PrDiff> {
     const now = Date.now();
 
     // Respect backoff
@@ -302,7 +419,7 @@ export class PrPoller {
       repoList = this.staticRepos.map((r) => ({ fullName: `${r.owner}/${r.name}` }));
       this.discoveredRepos = [];
     } else {
-      const discovered = discoverRepos();
+      const discovered = await discoverRepos();
       this.discoveredRepos = discovered;
       // Deduplicate by fullName (multiple worktrees for same repo)
       const seen = new Set<string>();
@@ -390,7 +507,7 @@ export async function currentBranchScope(): Promise<string[]> {
   const branches: string[] = [];
 
   // Scan all discovered repos for branches (main worktree + linked worktrees)
-  const repos = discoverRepos();
+  const repos = await discoverRepos();
 
   // Deduplicate by repo path (worktrees share the same .git)
   const seenRepoPaths = new Set<string>();
@@ -436,6 +553,87 @@ export async function currentBranchScope(): Promise<string[]> {
 // Allow tests to reset scope cache
 export function __resetScopeCacheForTests() {
   scopeCache = null;
+}
+
+// --- On-demand issues and repository icons ---
+
+let issueCache = new Map<string, { issues: IssueRow[]; cachedAt: number }>();
+let iconCache: { icons: Record<string, string>; cachedAt: number } | null = null;
+
+const ICON_CANDIDATES = [
+  "favicon.svg",
+  "favicon.ico",
+  "favicon.png",
+  "public/favicon.svg",
+  "public/favicon.ico",
+  "public/favicon.png",
+  "app/favicon.ico",
+  "app/favicon.png",
+  "app/icon.svg",
+  "app/icon.png",
+  "assets/icon.svg",
+  "assets/icon.png",
+  "assets/logo.svg",
+  "assets/logo.png",
+] as const;
+
+const ICON_MIME: Record<string, string> = {
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  png: "image/png",
+};
+
+async function readRepoIcon(repoPath: string): Promise<string | null> {
+  let realRepoPath: string;
+  try {
+    realRepoPath = await realpath(repoPath);
+  } catch {
+    return null;
+  }
+
+  for (const candidate of ICON_CANDIDATES) {
+    const candidatePath = join(repoPath, candidate);
+    const opened = await openAllowedForRead(candidatePath, [realRepoPath]);
+    if (!opened.ok) continue;
+    try {
+      const stat = await opened.handle.stat();
+      if (!stat.isFile() || stat.size > MAX_ICON_BYTES) continue;
+
+      const extension = candidate.slice(candidate.lastIndexOf(".") + 1);
+      const mime = ICON_MIME[extension];
+      if (!mime) continue;
+
+      // Read from the validated descriptor, never by path. The extra byte
+      // detects a file that grows after fstat without staging an unbounded read.
+      const buffer = Buffer.alloc(MAX_ICON_BYTES + 1);
+      let total = 0;
+      while (total < buffer.length) {
+        const { bytesRead } = await opened.handle.read(
+          buffer,
+          total,
+          buffer.length - total,
+          total,
+        );
+        if (bytesRead === 0) break;
+        total += bytesRead;
+      }
+      if (total > MAX_ICON_BYTES) continue;
+      const contents = buffer.subarray(0, total);
+      const encoded = contents.toString("base64");
+      return `data:${mime};base64,${encoded}`;
+    } catch {
+      // Unreadable/broken candidates are skipped in favor of the next one.
+    } finally {
+      await opened.handle.close().catch(() => {});
+    }
+  }
+
+  return null;
+}
+
+export function __resetPrAuxCachesForTests() {
+  issueCache = new Map();
+  iconCache = null;
 }
 
 // --- Singleton poller instance ---
@@ -517,6 +715,56 @@ app.post("/refresh", async (c) => {
       changed: diff.changed.length,
     },
   });
+});
+
+app.get("/issues", async (c) => {
+  const requestedRepo = c.req.query("repo");
+  const repos = await discoverRepos();
+  const repo = repos.find((candidate) => candidate.fullName === requestedRepo);
+  if (!requestedRepo || !repo) {
+    return c.json({ ok: false, error: "Unknown repository" }, 400);
+  }
+
+  const force = c.req.query("force") === "1";
+  const now = Date.now();
+  const cached = issueCache.get(repo.fullName);
+  if (!force && cached && now - cached.cachedAt < ISSUE_CACHE_TTL_MS) {
+    return c.json({ ok: true, repo: repo.fullName, issues: cached.issues });
+  }
+
+  try {
+    const stdout = await execGh([
+      "issue", "list",
+      "--repo", repo.fullName,
+      "--json", "number,title,state,author,updatedAt,labels,url",
+      "--limit", "30",
+    ]);
+    const issues = parseGhIssues(stdout, repo.fullName);
+    issueCache.set(repo.fullName, { issues, cachedAt: now });
+    return c.json({ ok: true, repo: repo.fullName, issues });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error("issues fetch failed", error);
+    return c.json({ ok: false, error: "issues fetch failed" }, 502);
+  }
+});
+
+app.get("/icons", async (c) => {
+  const now = Date.now();
+  if (iconCache && now - iconCache.cachedAt < ICON_CACHE_TTL_MS) {
+    return c.json({ ok: true, icons: iconCache.icons });
+  }
+
+  const icons: Record<string, string> = Object.create(null) as Record<string, string>;
+  const repos = await discoverRepos();
+  await Promise.all(repos.map(async (repo) => {
+    if (icons[repo.fullName]) return;
+    const icon = await readRepoIcon(repo.path);
+    if (icon) icons[repo.fullName] = icon;
+  }));
+
+  iconCache = { icons, cachedAt: now };
+  return c.json({ ok: true, icons });
 });
 
 app.get("/current-branch-scope", async (c) => {

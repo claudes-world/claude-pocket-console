@@ -12,15 +12,13 @@ import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
+import {
+  buildLandingUrl,
+  resolveInitialAppState,
+  type AppTab as Tab,
+} from "./lib/app-routing";
 import { resolveSessionPickerProps } from "./lib/session-picker";
 
-// Client-side mirror of the server's session-name allowlist (SESSION_NAME_RE
-// in apps/server/src/routes/utils.ts). Applied to the hash deep-link value —
-// the server re-validates regardless; this just drops junk before it ever
-// becomes a WS param.
-const SESSION_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
-
-type Tab = "terminal" | "files" | "links" | "voice" | "prs";
 const TABS: Tab[] = ["terminal", "files", "links", "voice", "prs"];
 const SWIPE_THRESHOLD = 120;
 
@@ -104,30 +102,30 @@ const VALID_SORTS: SortMode[] = ["name-asc", "name-desc", "date-asc", "date-desc
 export function App() {
   const [authed, setAuthed] = useState(() => hasAuth());
   const [connected, setConnected] = useState(false);
-  const hashParams = window.location.hash.replace("#", "");
-  const initialFile = hashParams.match(/file=([^&]+)/)?.[1] ? decodeURIComponent(hashParams.match(/file=([^&]+)/)![1]) : null;
-  const initialTab = initialFile ? "files" : (hashParams.split("&")[0] || "terminal") as Tab;
-  const [activeTab, setActiveTab] = useState<Tab>(
-    TABS.includes(initialTab as Tab) ? initialTab : "terminal"
-  );
+  // dev's resolver (cpc-ui group) supersedes this branch's inline hash parse;
+  // it carries the same guarded decodeURIComponent for malformed deep links.
+  const [initialRoute] = useState(() =>
+    resolveInitialAppState(window.location.pathname, window.location.hash));
+
+  useEffect(() => {
+    // Redirects only originate at exact "/", so path-prefixed dev deployments are naturally excluded.
+    const isInitialDev = window.location.hostname.includes("cpc-dev");
+    if (initialRoute.redirectPath && !isInitialDev) {
+      window.history.replaceState(
+        null,
+        "",
+        buildLandingUrl(initialRoute.redirectPath, window.location.search, window.location.hash),
+      );
+    }
+  }, [initialRoute.redirectPath]);
+
+  const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab);
   const [reconnectKey, setReconnectKey] = useState(0);
 
   // Multi-session terminal (world-os#218): which tmux session the terminal
   // tab views. null = the server's default (writable) session. Deep-linkable
   // via #terminal&session=<name>, same convention as #files&file=<path>.
-  const initialSessionRaw = hashParams.match(/(?:^|&)session=([^&]+)/)?.[1];
-  let initialSession: string | null = null;
-  if (initialSessionRaw) {
-    try {
-      const decoded = decodeURIComponent(initialSessionRaw);
-      if (SESSION_NAME_RE.test(decoded)) initialSession = decoded;
-    } catch {
-      // Malformed percent-encoding in a hand-typed/truncated deep link
-      // (e.g. "#terminal&session=%") — treat as no session rather than
-      // throwing during initial render.
-    }
-  }
-  const [activeSession, setActiveSession] = useState<string | null>(initialSession);
+  const [activeSession, setActiveSession] = useState<string | null>(initialRoute.session);
   const [sessionList, setSessionList] = useState<TmuxSessionInfo[]>([]);
   const [defaultSession, setDefaultSession] = useState<string | null>(null);
   // Non-default session the restricted command palette targets, or null
@@ -137,7 +135,12 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
-  const [initialFilePath] = useState<string | null>(initialFile);
+  const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialRoute.file, sequence: 0 });
+  // FileViewer is keyed by this request sequence. Keep the latest request in
+  // a ref so callbacks retained by an unmounted viewer cannot publish a late
+  // file/path result over the replacement viewer's state.
+  const fileOpenRequestRef = useRef(fileOpenRequest);
+  fileOpenRequestRef.current = fileOpenRequest;
   const [fileShowHidden, setFileShowHidden] = useState<boolean>(() => {
     try { return localStorage.getItem(HIDDEN_KEY) === "1"; } catch { return false; }
   });
@@ -159,6 +162,21 @@ export function App() {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
   const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
+
+  const fileViewerSequence = fileOpenRequest.sequence;
+  const handleFileViewChange = useCallback((file: { path: string; name: string } | null) => {
+    if (fileViewerSequence === fileOpenRequestRef.current.sequence) setViewingFile(file);
+  }, [fileViewerSequence]);
+  const handleFilePathChange = useCallback((path: string) => {
+    if (fileViewerSequence === fileOpenRequestRef.current.sequence) setCurrentFolder(path);
+  }, [fileViewerSequence]);
+
+  const openFileFromReadingList = useCallback((path: string) => {
+    setViewingFile(null);
+    setFileOpenRequest((request) => ({ path, sequence: request.sequence + 1 }));
+    setIsAnimating(true);
+    setActiveTab("files");
+  }, []);
 
   const onConnectionChange = useCallback((c: boolean) => setConnected(c), []);
   const onReconnect = useCallback(() => {
@@ -559,10 +577,10 @@ export function App() {
             />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <FileViewer onClose={() => setActiveTab("terminal")} initialFile={initialFilePath} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={setViewingFile} onPathChange={setCurrentFolder} />
+            <FileViewer key={fileOpenRequest.sequence} onClose={() => setActiveTab("terminal")} initialFile={fileOpenRequest.path} showHidden={fileShowHidden} sortMode={fileSortMode} onSortModeChange={setFileSortMode} onViewChange={handleFileViewChange} onPathChange={handleFilePathChange} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
-            <Links onClose={() => setActiveTab("terminal")} />
+            <Links onClose={() => setActiveTab("terminal")} onOpenFile={openFileFromReadingList} />
           </div>
           <div style={{ width: `${100 / TABS.length}%`, height: "100%", flexShrink: 0 }}>
             <VoiceRecorder />

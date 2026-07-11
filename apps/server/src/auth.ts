@@ -98,6 +98,12 @@ export function getAllowedUsers(): Set<string> {
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
 }
 
+/** Explicit dev-only opt-in for allowing all Telegram users. */
+export function allowAllTelegramUsers(): boolean {
+  const raw = process.env.ALLOW_ALL_TELEGRAM_USERS?.trim().toLowerCase();
+  return raw === "1" || raw === "true";
+}
+
 /**
  * Validate Telegram Login Widget data.
  * https://core.telegram.org/widgets/login#checking-authorization
@@ -160,8 +166,9 @@ export function validateJwtToken(
     // Decode payload
     const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
 
-    // Check expiry
-    if (payload.exp && Date.now() / 1000 > payload.exp) return { valid: false };
+    // Tokens without a numeric expiry would otherwise remain valid forever.
+    if (typeof payload.exp !== "number") return { valid: false };
+    if (Date.now() / 1000 > payload.exp) return { valid: false };
 
     return {
       valid: true,
@@ -264,7 +271,9 @@ export function checkAuth(initData: string): { ok: boolean; user?: TelegramUser;
   if (!valid) return { ok: false, error: "Invalid auth" };
 
   const allowed = getAllowedUsers();
-  if (allowed.size > 0) {
+  if (allowed.size === 0) {
+    if (!allowAllTelegramUsers()) return { ok: false, error: "Not authorized" };
+  } else {
     if (!user) return { ok: false, error: "User identification required" };
     if (!allowed.has(String(user.id))) return { ok: false, error: "Not authorized" };
   }

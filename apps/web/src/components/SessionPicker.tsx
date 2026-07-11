@@ -22,9 +22,10 @@ interface SessionPickerProps {
  * Horizontal pill strip above the terminal for switching which tmux session
  * the terminal tab views. Server order is preserved (writable default
  * first, then most recently active). The writable session carries a pencil
- * mark; every other session is view-only, which the ActionBar communicates
- * separately. Only rendered when there's actually a choice to make
- * (App.tsx hides it for 0-1 sessions).
+ * mark; every other session gets the restricted palette (the ActionBar
+ * communicates this separately) — not the full command set, but not strictly
+ * view-only either (gated free-text is allowed, Option A). Only rendered when
+ * there's actually a choice to make (App.tsx hides it for 0-1 sessions).
  */
 export function SessionPicker({ sessions, active, onSelect }: SessionPickerProps) {
   return (

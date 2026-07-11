@@ -1,4 +1,4 @@
-import './lib/otel.js';
+import { registerDbSizeGauge, getTracer, shutdownTelemetry } from "./lib/otel.js";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,10 +9,15 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { telegramAuth } from "./middleware.js";
-import { validateTelegramLoginWidget, createSession } from "./auth.js";
+import {
+  allowAllTelegramUsers,
+  createSession,
+  getAllowedUsers,
+  validateTelegramLoginWidget,
+} from "./auth.js";
 import { isAllowedUser } from "./lib/allowed-users.js";
 import { ALLOWED_ORIGINS } from "./lib/allowed-origins.js";
-import { registerDbSizeGauge, getTracer } from "./lib/otel.js";
+import { drainServer } from "./lib/graceful-shutdown.js";
 import { propagation, context as otelContext, trace, SpanStatusCode } from "@opentelemetry/api";
 import { DB_PATH } from "./db.js";
 import { terminalRoute } from "./routes/terminal/index.js";
@@ -26,6 +31,7 @@ import { voiceRoute } from "./routes/voice.js";
 import { markdownRoute } from "./routes/markdown.js";
 import { readingListRoute } from "./routes/reading-list.js";
 import { prsRoute } from "./routes/prs.js";
+import { shareRoute } from "./routes/share.js";
 import { isAssetLikePath } from "./lib/spa-fallback.js";
 
 // Load env from secrets file if not already set
@@ -50,11 +56,21 @@ function loadEnv(path: string) {
 
 loadEnv(`${process.env.HOME}/.secrets/cpc.env`);
 
+if (getAllowedUsers().size === 0 && !allowAllTelegramUsers()) {
+  console.error([
+    "!!!!!!!!!!!!!!!!!!!! CPC AUTH WARNING !!!!!!!!!!!!!!!!!!!!",
+    "Allowlist admission is DISABLED: ALLOWED_TELEGRAM_USERS is empty or unset.",
+    "All Telegram users are BLOCKED until ALLOWED_TELEGRAM_USERS is populated",
+    "or ALLOW_ALL_TELEGRAM_USERS=1 is explicitly set for development.",
+    "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+  ].join("\n"));
+}
+
 // Register DB size gauge after env is loaded so DB_PATH is stable
 registerDbSizeGauge(DB_PATH);
 
 const app = new Hono<{ Bindings: HttpBindings }>();
-const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({ app });
 
 app.use("*", cors({
   origin: [...ALLOWED_ORIGINS],
@@ -159,6 +175,7 @@ app.route("/api/voice", voiceRoute);
 app.route("/api/markdown", markdownRoute);
 app.route("/api/reading-list", readingListRoute);
 app.route("/api/prs", prsRoute);
+app.route("/api/share", shareRoute);
 
 // WebSocket terminal (auth handled in upgrade via query param)
 app.get("/ws/terminal", upgradeWebSocket(terminalWsRoute));
@@ -233,3 +250,29 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 });
 
 injectWebSocket(server);
+
+let shuttingDown = false;
+const shutdown = async (signal: NodeJS.Signals) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received; draining HTTP and WebSocket connections`);
+
+  // Covers both connection draining and the subsequent telemetry flush.
+  const hardKill = setTimeout(() => process.exit(1), 15_000);
+  hardKill.unref();
+
+  try {
+    await drainServer(server, wss, shutdownTelemetry);
+  } catch (error) {
+    console.error("[shutdown] graceful drain failed:", error);
+    // A close error must not prevent the telemetry providers from releasing
+    // their handles. This still occurs after the drain attempt has settled.
+    await shutdownTelemetry();
+  } finally {
+    clearTimeout(hardKill);
+    process.exit(0);
+  }
+};
+
+process.on("SIGTERM", () => { void shutdown("SIGTERM"); });
+process.on("SIGINT", () => { void shutdown("SIGINT"); });

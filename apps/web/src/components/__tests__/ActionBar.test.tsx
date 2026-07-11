@@ -10,9 +10,10 @@ vi.mock("../../lib/telegram", () => ({
 
 // Stub BottomSheet to render children directly
 vi.mock("../BottomSheet", () => ({
-  BottomSheet: ({ children, title }: { children: React.ReactNode; title?: string }) => (
+  BottomSheet: ({ children, title, onClose }: { children: React.ReactNode; title?: string; onClose?: () => void }) => (
     <div data-testid="bottom-sheet">
       {title && <div data-testid="bottom-sheet-title">{title}</div>}
+      {onClose && <button aria-label="Close sheet" onClick={onClose}>Close</button>}
       {children}
     </div>
   ),
@@ -50,6 +51,9 @@ const mockGenerateAudio = vi.fn();
 const mockSendAudioTelegram = vi.fn();
 const mockRestartSession = vi.fn();
 const mockSendFileToChat = vi.fn();
+const mockPublishShared = vi.fn();
+const mockCheckReadingListPaths = vi.fn();
+const mockSaveReadingListItem = vi.fn();
 
 vi.mock("../action-bar/api", () => ({
   postAction: (...args: unknown[]) => mockPostAction(...args),
@@ -68,10 +72,14 @@ vi.mock("../action-bar/api", () => ({
   sendAudioTelegram: (...args: unknown[]) => mockSendAudioTelegram(...args),
   restartSession: (...args: unknown[]) => mockRestartSession(...args),
   sendFileToChat: (...args: unknown[]) => mockSendFileToChat(...args),
+  publishShared: (...args: unknown[]) => mockPublishShared(...args),
+  checkReadingListPaths: (...args: unknown[]) => mockCheckReadingListPaths(...args),
+  saveReadingListItem: (...args: unknown[]) => mockSaveReadingListItem(...args),
   summarizeMarkdown: vi.fn().mockResolvedValue({ ok: true, summary: "Test summary", cached: false, ms: 100 }),
 }));
 
 import { ActionBar } from "../action-bar";
+import { haptic } from "../../lib/haptic";
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -92,6 +100,9 @@ beforeEach(() => {
   mockSendAudioTelegram.mockResolvedValue({ ok: true });
   mockRestartSession.mockResolvedValue({ ok: true });
   mockSendFileToChat.mockResolvedValue({ ok: true });
+  mockPublishShared.mockResolvedValue({ ok: true, url: "https://shared.claude.do/public/test-abc" });
+  mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
+  mockSaveReadingListItem.mockResolvedValue({ ok: true, id: 1 });
   mockDeleteSessionName.mockResolvedValue(undefined);
 });
 
@@ -143,6 +154,331 @@ describe("ActionBar", () => {
     // Search and Options should be hidden when viewing a file
     expect(screen.queryByText("Search")).not.toBeInTheDocument();
     expect(screen.queryByText("Options")).not.toBeInTheDocument();
+  });
+
+  it("shows Share button when viewing any file", () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    expect(screen.getByText("Share")).toBeInTheDocument();
+  });
+
+  it("saves the viewed file and flips the button to Saved", async () => {
+    const file = { path: "/tmp/app.ts", name: "app.ts" };
+    mockCheckReadingListPaths
+      .mockResolvedValueOnce({ saved: { [file.path]: false } })
+      .mockResolvedValue({ saved: { [file.path]: true } });
+    render(<ActionBar activeTab="files" viewingFile={file} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    await waitFor(() => {
+      expect(mockSaveReadingListItem).toHaveBeenCalledWith(file.path, file.name);
+      expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled();
+      expect(screen.getByText("Saved to reading list")).toBeInTheDocument();
+    });
+  });
+
+  it("marks a pre-saved viewed file from the initial check", async () => {
+    mockCheckReadingListPaths.mockResolvedValue({ saved: { "/tmp/saved.ts": true } });
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/saved.ts", name: "saved.ts" }} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled());
+    expect(mockCheckReadingListPaths).toHaveBeenCalledWith(["/tmp/saved.ts"]);
+  });
+
+  it("drops a stale saved check after the viewed file changes", async () => {
+    let resolveOld!: (value: { saved: Record<string, boolean> }) => void;
+    mockCheckReadingListPaths
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ saved: { "/tmp/new.ts": false } });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/old.ts", name: "old.ts" }} />,
+    );
+    await waitFor(() => expect(mockCheckReadingListPaths).toHaveBeenCalledWith(["/tmp/old.ts"]));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/new.ts", name: "new.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+
+    await act(async () => {
+      resolveOld({ saved: { "/tmp/old.ts": true } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("button", { name: "Saved ✓" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
+  });
+
+  it("keeps B saving through A's refresh and clears it when B settles", async () => {
+    let resolveSaveA!: (value: { ok: boolean }) => void;
+    let resolveSaveB!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveB = resolve; }));
+    mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    // Navigate to another file while A's save is still pending: B's button
+    // must be enabled and tappable, not stuck on "Saving…".
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    await act(async () => {
+      resolveSaveA({ ok: true });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockCheckReadingListPaths).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    await act(async () => {
+      resolveSaveB({ ok: true });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows concurrent saves on A and B while blocking a second save on pending A", async () => {
+    let resolveSaveA!: (value: { ok: boolean }) => void;
+    let resolveSaveB!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSaveB = resolve; }));
+    mockCheckReadingListPaths.mockResolvedValue({ saved: {} });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+
+    // Returning to A while its save is still pending must show "Saving…"
+    // (disabled), not an enabled button whose tap would silently no-op.
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled());
+    expect(mockSaveReadingListItem).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveSaveA({ ok: true });
+      resolveSaveB({ ok: true });
+      await Promise.resolve();
+    });
+  });
+
+  it("reports a reading-list save failure and leaves Save available", async () => {
+    mockSaveReadingListItem.mockRejectedValue(new Error("Access denied"));
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Access denied")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
+    });
+  });
+
+  it("commits a save when an unrelated reading-list change invalidates its check", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    mockCheckReadingListPaths
+      .mockResolvedValueOnce({ saved: { "/tmp/app.ts": false } })
+      .mockImplementation(() => new Promise(() => {}));
+    mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    act(() => window.dispatchEvent(new Event("cpc:reading-list-changed")));
+
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled();
+    expect(screen.getByText("Saved to reading list")).toBeInTheDocument();
+  });
+
+  it("keeps a same-file save pending when a global refresh check resolves unsaved", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    let resolveRefreshCheck!: (value: { saved: Record<string, boolean> }) => void;
+    const file = { path: "/tmp/app.ts", name: "app.ts" };
+    mockCheckReadingListPaths
+      .mockResolvedValueOnce({ saved: { [file.path]: false } })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRefreshCheck = resolve; }))
+      .mockImplementation(() => new Promise(() => {}));
+    mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<ActionBar activeTab="files" viewingFile={file} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+    act(() => window.dispatchEvent(new Event("cpc:reading-list-changed")));
+    await waitFor(() => expect(mockCheckReadingListPaths).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveRefreshCheck({ saved: { [file.path]: false } });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Saved ✓" })).toBeDisabled();
+  });
+
+  it("settles a stale reading-list save silently after viewing another file", async () => {
+    let resolveSave!: (value: { ok: boolean }) => void;
+    mockSaveReadingListItem.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    const successSpy = vi.spyOn(haptic, "success");
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await act(async () => {
+      resolveSave({ ok: true });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Saved to reading list")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Saved ✓" })).not.toBeInTheDocument();
+    expect(successSpy).not.toHaveBeenCalled();
+  });
+
+  it("settles a stale reading-list save failure silently after viewing another file", async () => {
+    let rejectSave!: (reason: Error) => void;
+    mockSaveReadingListItem.mockImplementation(() => new Promise((_resolve, reject) => { rejectSave = reject; }));
+    const errorSpy = vi.spyOn(haptic, "error");
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save to reading list" }));
+
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    await act(async () => {
+      rejectSave(new Error("stale failure"));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Failed: stale failure")).not.toBeInTheDocument();
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save to reading list" })).toBeEnabled();
+  });
+
+  it("publishes with the selected share mode", async () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Private · temp"));
+
+    await waitFor(() => {
+      expect(mockPublishShared).toHaveBeenCalledWith(
+        "/tmp/app.ts",
+        "private",
+        true,
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it("renders the URL returned by a successful publish", async () => {
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => {
+      expect(screen.getByText("https://shared.claude.do/public/test-abc")).toBeInTheDocument();
+    });
+  });
+
+  it("publishes B while A is pending and drops A's late result", async () => {
+    let resolveA!: (value: { ok: true; url: string }) => void;
+    mockPublishShared
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce({ ok: true, url: "https://shared.claude.do/public/b-current" });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.ts", name: "a.ts" }} />,
+    );
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => expect(mockPublishShared).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("Close sheet"));
+    rerender(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.ts", name: "b.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+
+    expect(screen.getByText("b.ts")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => {
+      expect(mockPublishShared).toHaveBeenCalledTimes(2);
+      expect(mockPublishShared).toHaveBeenLastCalledWith(
+        "/tmp/b.ts",
+        "public",
+        false,
+        expect.any(AbortSignal),
+      );
+      expect(screen.getByText("https://shared.claude.do/public/b-current")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveA({ ok: true, url: "https://shared.claude.do/public/a-stale" });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("https://shared.claude.do/public/b-current")).toBeInTheDocument();
+    expect(screen.queryByText("https://shared.claude.do/public/a-stale")).not.toBeInTheDocument();
+  });
+
+  it("reopens Share in the publishing state for the same in-flight file", async () => {
+    mockPublishShared.mockImplementation(() => new Promise(() => {}));
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+    await waitFor(() => expect(mockPublishShared).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("Close sheet"));
+    fireEvent.click(screen.getByText("Share"));
+
+    expect(screen.getByLabelText("Publishing file")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Public" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Private" })).not.toBeInTheDocument();
+  });
+
+  it("opens a published URL without granting window.opener", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/app.ts", name: "app.ts" }} />);
+    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Public"));
+
+    await waitFor(() => {
+      expect(screen.getByText("https://shared.claude.do/public/test-abc")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Open"));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://shared.claude.do/public/test-abc",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("shows TL;DR and Audio buttons for markdown files", () => {
@@ -199,6 +535,256 @@ describe("ActionBar", () => {
         expect(mockGenerateAudio).toHaveBeenCalledWith("/tmp/README.md", expect.any(AbortSignal));
       });
     }
+  });
+
+  it("automatically sends generated audio to Telegram exactly once", async () => {
+    let resolveGenerate!: (value: { ok: true; path: string }) => void;
+    let resolveSend!: (value: { ok: true }) => void;
+    mockCheckAudio.mockResolvedValue({ exists: true, path: "/tmp/cached.ogg" });
+    mockGenerateAudio.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve; }));
+    mockSendAudioTelegram.mockImplementation(() => new Promise((resolve) => { resolveSend = resolve; }));
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Regenerate")).toBeInTheDocument());
+    const generateButton = screen.getByText("Regenerate");
+    const sendButton = screen.getByText("Send to Telegram");
+
+    fireEvent.click(generateButton);
+    fireEvent.click(generateButton);
+    fireEvent.click(sendButton);
+
+    expect(mockGenerateAudio).toHaveBeenCalledTimes(1);
+    expect(mockSendAudioTelegram).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveGenerate({ ok: true, path: "/tmp/generated.ogg" });
+    });
+
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/generated.ogg", expect.any(AbortSignal));
+    });
+
+    await act(async () => {
+      resolveSend({ ok: true });
+    });
+
+    await waitFor(() => expect(screen.getByText("Send to Telegram")).toBeInTheDocument());
+    expect(mockSendAudioTelegram).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores a pending audio generation after navigating away and back", async () => {
+    let resolveGenerate!: (value: { ok: true; path: string }) => void;
+    let resolveSend!: (value: { ok: true }) => void;
+    mockCheckAudio.mockResolvedValue({ exists: false });
+    mockGenerateAudio.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve; }));
+    mockSendAudioTelegram.mockImplementation(() => new Promise((resolve) => { resolveSend = resolve; }));
+
+    const fileA = { path: "/tmp/a.md", name: "a.md" };
+    const fileB = { path: "/tmp/b.md", name: "b.md" };
+    const { rerender } = render(<ActionBar activeTab="files" viewingFile={fileA} />);
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+    await waitFor(() => expect(mockGenerateAudio).toHaveBeenCalledTimes(1));
+
+    rerender(<ActionBar activeTab="files" viewingFile={fileB} />);
+    await waitFor(() => expect(screen.getByText("No audio file found")).toBeInTheDocument());
+    rerender(<ActionBar activeTab="files" viewingFile={fileA} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: "Audio operation in progress" })).toBeInTheDocument();
+      expect(screen.getByText("Generating audio…")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("No audio file found")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate Audio" })).not.toBeInTheDocument();
+    expect(mockGenerateAudio).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveGenerate({ ok: true, path: "/tmp/a.ogg" });
+    });
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/a.ogg", expect.any(AbortSignal));
+      expect(screen.getByText("Sending to Telegram…")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveSend({ ok: true });
+    });
+    await waitFor(() => expect(screen.getByText("Audio file exists")).toBeInTheDocument());
+  });
+
+  it("does not auto-send generated audio after navigating away and exposes it on return", async () => {
+    let resolveGenerate!: (value: { ok: true; path: string }) => void;
+    let generated = false;
+    mockCheckAudio.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/tmp/a.md" && generated
+          ? { exists: true, path: "/tmp/a.ogg" }
+          : { exists: false },
+      ),
+    );
+    mockGenerateAudio.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve; }));
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.md", name: "a.md" }} />,
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+    await waitFor(() => expect(mockGenerateAudio).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close sheet" }));
+    rerender(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/b.md", name: "b.md" }} />,
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/b.md");
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+
+    generated = true;
+    await act(async () => {
+      resolveGenerate({ ok: true, path: "/tmp/a.ogg" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Audio ready — reopen the file to send")).toBeInTheDocument();
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+    expect(mockSendAudioTelegram).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close sheet" }));
+    rerender(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/a.md", name: "a.md" }} />,
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/a.md");
+      expect(screen.getByText("Send to Telegram")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Send to Telegram"));
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/a.ogg", expect.any(AbortSignal));
+    });
+  });
+
+  it("does not let a stale audio check overwrite generated audio", async () => {
+    let resolveStaleCheck!: (value: { exists: true; path: string }) => void;
+    mockCheckAudio
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveStaleCheck = resolve; }))
+      .mockResolvedValueOnce({ exists: false });
+    mockGenerateAudio.mockResolvedValue({ ok: true, path: "/tmp/generated.ogg" });
+
+    const { rerender } = render(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/old.md", name: "old.md" }} />
+    );
+    fireEvent.click(screen.getByText("Audio"));
+    await waitFor(() => expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/old.md"));
+
+    rerender(
+      <ActionBar activeTab="files" viewingFile={{ path: "/tmp/new.md", name: "new.md" }} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Audio" }));
+    await waitFor(() => {
+      expect(mockCheckAudio).toHaveBeenCalledWith("/tmp/new.md");
+      expect(screen.getByText("Generate Audio")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => {
+      expect(mockSendAudioTelegram).toHaveBeenCalledWith("/tmp/generated.ogg", expect.any(AbortSignal));
+      expect(screen.getByText("Send to Telegram")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveStaleCheck({ exists: true, path: "/tmp/stale-old.ogg" });
+    });
+
+    fireEvent.click(screen.getByText("Send to Telegram"));
+    await waitFor(() => expect(mockSendAudioTelegram).toHaveBeenCalledTimes(2));
+    expect(mockSendAudioTelegram).toHaveBeenLastCalledWith("/tmp/generated.ogg", expect.any(AbortSignal));
+    expect(mockSendAudioTelegram).not.toHaveBeenCalledWith("/tmp/stale-old.ogg", expect.anything());
+  });
+
+  it("does not send audio to Telegram when generation fails", async () => {
+    mockGenerateAudio.mockResolvedValue({ ok: false, error: "Generation failed" });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: Generation failed")).toBeInTheDocument());
+    expect(mockSendAudioTelegram).not.toHaveBeenCalled();
+  });
+
+  it("clears stale audio status when regeneration fails", async () => {
+    mockCheckAudio.mockResolvedValue({ exists: true, path: "/tmp/stale.ogg" });
+    mockGenerateAudio.mockResolvedValue({ ok: false, error: "Generation failed" });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Audio file exists")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Regenerate"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Generation failed")).toBeInTheDocument();
+      expect(screen.getByText("No audio file found")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Send to Telegram")).not.toBeInTheDocument();
+  });
+
+  it("shows an unknown error when audio generation fails without an error message", async () => {
+    mockGenerateAudio.mockResolvedValue({ ok: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: unknown error")).toBeInTheDocument());
+  });
+
+  it("allows a manual retry after automatic sending fails", async () => {
+    mockSendAudioTelegram
+      .mockResolvedValueOnce({ ok: false, error: "Telegram unavailable" })
+      .mockResolvedValueOnce({ ok: true });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed: Telegram unavailable")).toBeInTheDocument();
+      expect(screen.getByText("Send to Telegram")).toBeInTheDocument();
+    });
+    expect(mockSendAudioTelegram).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("Send to Telegram"));
+
+    await waitFor(() => expect(mockSendAudioTelegram).toHaveBeenCalledTimes(2));
+    expect(mockSendAudioTelegram).toHaveBeenLastCalledWith("/tmp/audio.ogg", expect.any(AbortSignal));
+  });
+
+  it("shows an unknown error when sending audio fails without an error message", async () => {
+    mockSendAudioTelegram.mockResolvedValue({ ok: false });
+
+    render(<ActionBar activeTab="files" viewingFile={{ path: "/tmp/README.md", name: "README.md" }} />);
+    fireEvent.click(screen.getByText("Audio"));
+
+    await waitFor(() => expect(screen.getByText("Generate Audio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Generate Audio"));
+
+    await waitFor(() => expect(screen.getByText("Failed: unknown error")).toBeInTheDocument());
   });
 
   it("hides Reconnect button when onReconnect is not provided", () => {

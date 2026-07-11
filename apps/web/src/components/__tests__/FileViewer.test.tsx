@@ -25,7 +25,7 @@ vi.mock("../file-icons", () => ({
   getFileIcon: () => null,
 }));
 
-import { FileViewer, SORT_OPTIONS } from "../FileViewer";
+import { FileViewer, SORT_OPTIONS, middleTruncatePath } from "../FileViewer";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -171,6 +171,49 @@ describe("FileViewer", () => {
       expect.objectContaining({ name: "README.md" }),
     );
   });
+
+  it("caps the expanded parent path and ellipsizes the collapsed path", async () => {
+    render(<FileViewer onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("README.md")).toBeInTheDocument();
+    });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/api/files/read")) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: "# Test",
+            path: "/home/claude/claudes-world/README.md",
+            name: "README.md",
+          }),
+        };
+      }
+      if (typeof url === "string" && url.includes("/api/terminal/dir-branch")) {
+        return makeDirBranchResponse();
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    fireEvent.click(screen.getByText("README.md"));
+
+    const collapsedButton = await screen.findByRole("button", {
+      name: "Expand parent directory path",
+    });
+    expect(collapsedButton).toHaveStyle({ overflow: "hidden", textOverflow: "ellipsis" });
+
+    fireEvent.click(collapsedButton);
+
+    const expandedButton = screen.getByRole("button", {
+      name: "Collapse parent directory path",
+    });
+    expect(expandedButton).toHaveStyle({
+      maxHeight: "72px",
+      overflowX: "hidden",
+      overflowY: "auto",
+    });
+  });
 });
 
 describe("SORT_OPTIONS export", () => {
@@ -188,5 +231,60 @@ describe("SORT_OPTIONS export", () => {
       expect(opt.short).toBeTruthy();
       expect(opt.long).toBeTruthy();
     }
+  });
+});
+
+describe("middleTruncatePath", () => {
+  it("leaves a short path unchanged", () => {
+    expect(middleTruncatePath("/home/claude/code/")).toBe("/home/claude/code/");
+  });
+
+  it("middle-truncates a long path while preserving prefix and trailing directories", () => {
+    const path = "/home/claude/claudes-world/.claude/skills/some/really/deeply/nested/foo/";
+    const truncated = middleTruncatePath(path);
+    const [prefix, suffix] = truncated.split("\u2026");
+
+    expect(truncated).toContain("\u2026");
+    expect(truncated).toMatch(/^\/home\/claude\//);
+    expect(truncated).toMatch(/\/deeply\/nested\/foo\/$/);
+    expect(prefix.endsWith("/")).toBe(true);
+    expect(suffix.startsWith("/")).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(60);
+  });
+
+  it("falls back to a hard suffix cut when a boundary would waste most of the budget", () => {
+    const maxLength = 60;
+    const path = "/home/claude/code/claude-pocket-console-worktrees/feat-issue-243-fileviewer-path/";
+    const truncated = middleTruncatePath(path, maxLength);
+
+    expect(path).toHaveLength(81);
+    expect(truncated).toContain("\u2026");
+    expect(truncated).toMatch(/fileviewer-path\/$/);
+    expect(truncated.length).toBeGreaterThanOrEqual(maxLength - 12);
+    expect(truncated.length).toBeLessThanOrEqual(maxLength);
+  });
+
+  it("falls back to a hard prefix cut when a boundary would waste most of the budget", () => {
+    const path = `/a/${"p".repeat(50)}/meaningful/suffix/`;
+    const truncated = middleTruncatePath(path, 60);
+    const [prefix] = truncated.split("\u2026");
+
+    expect(prefix).toHaveLength(30);
+    expect(prefix.endsWith("p")).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(60);
+  });
+
+  it("does not split surrogate pairs at hard cuts", () => {
+    const truncated = middleTruncatePath("abcd\ud83d\ude00efghi\ud83d\ude80jkl", 10);
+
+    expect(truncated).toBe("abcd\u2026jkl");
+    expect(truncated).not.toMatch(/[\uD800-\uDFFF]/);
+    expect(truncated.length).toBeLessThanOrEqual(10);
+  });
+
+  it("leaves a path at the exact boundary unchanged", () => {
+    const path = `/${"a".repeat(58)}/`;
+    expect(path).toHaveLength(60);
+    expect(middleTruncatePath(path)).toBe(path);
   });
 });

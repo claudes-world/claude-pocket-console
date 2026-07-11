@@ -7,7 +7,10 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, createEvent } from "@testing-library/react";
-import { MarkdownViewer } from "../components/MarkdownViewer";
+import {
+  extractFrontmatter,
+  MarkdownViewer,
+} from "../components/MarkdownViewer";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -117,6 +120,156 @@ describe("MarkdownViewer — rendering basics", () => {
     const { container } = renderMd("> This is a quote");
     const bq = container.querySelector("blockquote");
     expect(bq).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// YAML frontmatter
+// ---------------------------------------------------------------------------
+
+describe("MarkdownViewer — YAML frontmatter", () => {
+  it("strips frontmatter from the document and reveals it from a collapsed metadata pill", () => {
+    const { container } = renderMd(
+      "---\ntitle: Hidden metadata\ntags:\n  - cpc\n---\n# Visible title\n\nVisible body.",
+    );
+
+    const metadataButton = screen.getByRole("button", { name: "metadata" });
+    expect(metadataButton.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector(".md-content")!.textContent).not.toContain(
+      "Hidden metadata",
+    );
+    expect(screen.getByRole("heading", { name: "Visible title" })).toBeTruthy();
+
+    fireEvent.click(metadataButton);
+
+    expect(metadataButton.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("pre")!.textContent).toContain(
+      "title: Hidden metadata",
+    );
+  });
+
+  it("renders a document without frontmatter unchanged", () => {
+    const content = "# Plain document\n\nFirst paragraph.";
+    const { container } = renderMd(content);
+
+    expect(extractFrontmatter(content)).toEqual({ body: content, metadata: null });
+    expect(screen.queryByRole("button", { name: "metadata" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Plain document" })).toBeTruthy();
+    expect(container.querySelector(".md-content p")!.textContent).toBe(
+      "First paragraph.",
+    );
+  });
+
+  it("does not treat an unterminated opening fence as frontmatter", () => {
+    const { container } = renderMd("---\n\n# Heading after a horizontal rule");
+
+    expect(screen.queryByRole("button", { name: "metadata" })).toBeNull();
+    expect(container.querySelector(".md-content hr")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Heading after a horizontal rule" }),
+    ).toBeTruthy();
+  });
+
+  it("does not close frontmatter when a value contains three dashes", () => {
+    const { container } = renderMd(
+      "---\nsummary: before --- after\nowner: cpc\n---\n# Actual document",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "metadata" }));
+
+    expect(container.querySelector("pre")!.textContent).toContain(
+      "summary: before --- after",
+    );
+    expect(container.querySelector("pre")!.textContent).toContain("owner: cpc");
+    expect(screen.getByRole("heading", { name: "Actual document" })).toBeTruthy();
+  });
+
+  it("handles CRLF frontmatter and a closing fence with trailing whitespace", () => {
+    const { container } = renderMd(
+      "---\r\ntitle: Windows\r\nowner: cpc\r\n---   \r\n# CRLF document\r\n\r\nBody text.",
+    );
+
+    expect(screen.getByRole("heading", { name: "CRLF document" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).not.toContain(
+      "title: Windows",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "metadata" }));
+    expect(container.querySelector("pre")!.textContent).toContain("title: Windows");
+    expect(container.querySelector("pre")!.textContent).toContain("owner: cpc");
+  });
+
+  it("strips an empty frontmatter block cleanly", () => {
+    const { container } = renderMd("---\n---\nBody only.");
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Body only.");
+  });
+
+  it("leaves a horizontal rule followed by a setext heading unchanged", () => {
+    const content = "---\nTitle\n---\nbody";
+    const { container } = renderMd(content);
+
+    expect(extractFrontmatter(content)).toEqual({ body: content, metadata: null });
+    expect(screen.queryByRole("button", { name: "metadata" })).toBeNull();
+    expect(container.querySelector(".md-content hr")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Title" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toContain("body");
+  });
+
+  it("leaves adjacent horizontal rules unchanged", () => {
+    const content = "---\n\n---\n\nBody after rules.";
+    const { container } = renderMd(content);
+
+    expect(extractFrontmatter(content)).toEqual({ body: content, metadata: null });
+    expect(screen.queryByRole("button", { name: "metadata" })).toBeNull();
+    expect(container.querySelectorAll(".md-content hr")).toHaveLength(2);
+    expect(container.querySelector(".md-content")!.textContent).toContain(
+      "Body after rules.",
+    );
+  });
+
+  it("strips frontmatter containing an indented nested list", () => {
+    const content = "---\nkey:\n  - item\n---\nNested body.";
+    const { container } = renderMd(content);
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Nested body.");
+  });
+
+  it("strips frontmatter containing an unindented block sequence", () => {
+    const content = "---\ntags:\n- cpc\n- webapp\n---\nSequence body.";
+    const { container } = renderMd(content);
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Sequence body.");
+  });
+
+  it("strips frontmatter containing a comment", () => {
+    const content = "---\n# metadata comment\nkey: value\n---\nComment body.";
+    const { container } = renderMd(content);
+
+    expect(screen.getByRole("button", { name: "metadata" })).toBeTruthy();
+    expect(container.querySelector(".md-content")!.textContent).toBe("Comment body.");
+  });
+
+  it("collapses metadata when its contents change", () => {
+    const { rerender } = renderMd("---\ntitle: First\n---\nFirst body.");
+    const metadataButton = screen.getByRole("button", { name: "metadata" });
+
+    fireEvent.click(metadataButton);
+    expect(metadataButton.getAttribute("aria-expanded")).toBe("true");
+
+    rerender(
+      <MarkdownViewer
+        content={"---\ntitle: Second\n---\nSecond body."}
+        fileName="second.md"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "metadata" }).getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 });
 

@@ -12,16 +12,18 @@ import { FileOptionsSheet } from "./FileOptionsSheet";
 import { FileSearchSheet } from "./FileSearchSheet";
 import { TldrModal } from "./TldrModal";
 import { AudioGenModal } from "./AudioGenModal";
+import { ShareSheet } from "./ShareSheet";
 import { StatusLine } from "./StatusLine";
 import { btnStyle, type ActionBarProps, type AudioStatus, type GitBranch, type Modal, type SearchResult, type SessionName } from "./types";
 import {
-  checkAudio, deleteSessionName, fetchGitBranch, fetchGitStatus,
+  checkAudio, checkReadingListPaths, deleteSessionName, fetchGitBranch, fetchGitStatus,
   fetchSessionNames, fetchTodo, generateAudio, postAction,
   renameSession, restartSession, runGitCommand, searchFiles,
-  sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux,
+  publishShared, saveReadingListItem, sendAudioTelegram, sendCompactCommand, sendFileToChat, sendToTmux,
 } from "./api";
 import { haptic } from "../../lib/haptic";
 import { usePreferences } from "../../hooks/usePreferences";
+import { emitReadingListChanged, READING_LIST_CHANGED_EVENT } from "../../lib/reading-list-events";
 
 // Preference key for the "current folder only" search toggle. Stored under
 // the unified cpc_dashboard_prefs aggregate via CloudStorage (Bot API 8.0+)
@@ -61,13 +63,43 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   searchScopeRef.current = searchCurrentFolderOnly && currentFolder ? currentFolder : null;
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
-  const [audioOp, setAudioOp] = useState<"idle" | "checking" | "generating" | "sending">("idle");
+  type AudioOp = "idle" | "checking" | "generating" | "sending";
+  const [audioOp, setAudioOp] = useState<AudioOp>("idle");
   // Synchronous in-flight guard for audio generation/send. Mirrors the
   // TldrModal pattern (PR #121): React hasn't necessarily committed
   // setAudioLoading(true) by the time a fast double-tap fires the second
   // click handler, so a ref-based lock is the only way to prevent two
   // concurrent backend audio jobs racing each other.
   const audioInFlightRef = useRef(false);
+  // Own generation/send state by the file that started it. The global lock
+  // still prevents duplicate backend jobs, while this path prevents a late
+  // completion from painting (or auto-sending from) a different file's UI.
+  const audioOpPathRef = useRef<string | null>(null);
+  const audioOpStageRef = useRef<AudioOp>("idle");
+  const viewedFilePathRef = useRef<string | null>(viewingFile?.path ?? null);
+  // Monotonically versions cache checks so a response from an older sheet
+  // open/file cannot overwrite the state established by a newer check or by
+  // the generate-and-send chain.
+  const audioCheckSeqRef = useRef(0);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const shareInFlightRef = useRef(new Set<string>());
+  const shareSeqRef = useRef(0);
+  const [readingListSaved, setReadingListSaved] = useState(false);
+  const [readingListChecking, setReadingListChecking] = useState(false);
+  const [readingListSaving, setReadingListSaving] = useState(false);
+  const [readingListRefreshVersion, setReadingListRefreshVersion] = useState(0);
+  // Track every path being saved. Navigating to another file must not lock
+  // that file's Save button, while returning to any pending path must still
+  // block a duplicate save.
+  const readingListInFlightRef = useRef(new Set<string>());
+  // A check started for the previous file must never mark the newly viewed
+  // file as saved. Saving bumps this token to invalidate an older GET; the
+  // save completion itself is owned by readingListViewedPathRef so unrelated
+  // reading-list events cannot suppress its commit.
+  const readingListCheckSeqRef = useRef(0);
+  const readingListViewedPathRef = useRef<string | null>(null);
   const [gitBranch, setGitBranch] = useState<GitBranch | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -107,6 +139,73 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     const timer = setTimeout(() => setStatus(null), 4000);
     return () => clearTimeout(timer);
   }, [status]);
+
+  useEffect(() => {
+    const refresh = () => setReadingListRefreshVersion((version) => version + 1);
+    window.addEventListener(READING_LIST_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(READING_LIST_CHANGED_EVENT, refresh);
+  }, []);
+
+  useEffect(() => {
+    const seq = ++readingListCheckSeqRef.current;
+    const path = viewingFile?.path ?? null;
+    const audioPathChanged = path !== viewedFilePathRef.current;
+    viewedFilePathRef.current = path;
+    if (audioPathChanged) {
+      // Invalidate the previous file's cache check and immediately clear its
+      // presentation. A generate/send that still belongs to that old path
+      // may finish, but its guarded completion must not alter these values.
+      ++audioCheckSeqRef.current;
+      setAudioStatus(null);
+      if (audioInFlightRef.current && audioOpPathRef.current === path) {
+        setAudioLoading(true);
+        setAudioOp(audioOpStageRef.current);
+      } else {
+        setAudioLoading(false);
+        setAudioOp("idle");
+      }
+    }
+    const pathChanged = path !== readingListViewedPathRef.current;
+    readingListViewedPathRef.current = path;
+    // Clear the prior file's result immediately. A same-file refresh (for
+    // example the event emitted by a successful save) keeps the confirmed
+    // Saved state visible while the authoritative re-check runs. Saving
+    // state is per-file: derive it from the in-flight set, so a save still
+    // pending for the PREVIOUS file doesn't label this one "Saving…", while
+    // returning to a file whose save is pending shows "Saving…" again
+    // instead of an enabled button whose tap would silently no-op.
+    if (pathChanged) {
+      setReadingListSaved(false);
+      setReadingListSaving(path !== null && readingListInFlightRef.current.has(path));
+    }
+    if (!viewingFile) {
+      setReadingListChecking(false);
+      return;
+    }
+
+    setReadingListChecking(true);
+    void checkReadingListPaths([viewingFile.path])
+      .then((data) => {
+        if (
+          seq === readingListCheckSeqRef.current
+          && !readingListInFlightRef.current.has(viewingFile.path)
+        ) {
+          setReadingListSaved(data.saved[viewingFile.path] === true);
+        }
+      })
+      .catch(() => {
+        // A failed check leaves Save enabled; the POST remains authoritative.
+        if (seq === readingListCheckSeqRef.current) setReadingListSaved(false);
+      })
+      .finally(() => {
+        if (seq === readingListCheckSeqRef.current) setReadingListChecking(false);
+      });
+    // Invalidate the in-flight check on unmount so it can't setState after
+    // teardown (same defensive bump ReadingList's loadSeqRef does).
+    return () => {
+      ++readingListCheckSeqRef.current;
+    };
+  }, [viewingFile?.path, readingListRefreshVersion]);
 
   // Replace the optimistic "Fit screen requested" status (set the instant
   // the button is tapped, in the reconnect-menu case below) with the real
@@ -283,81 +382,58 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
   }, [searchCurrentFolderOnly, currentFolder, modal]);
 
   const handleCheckAudio = async (filePath: string) => {
+    const seq = ++audioCheckSeqRef.current;
+    const hasInFlightOpForFile = () =>
+      audioInFlightRef.current && audioOpPathRef.current === filePath;
     // If a generate or send is already in-flight, don't clobber its
     // loading/op state with a check — just show the in-progress panel.
-    if (audioInFlightRef.current) return;
+    if (hasInFlightOpForFile()) {
+      setAudioLoading(true);
+      setAudioOp(audioOpStageRef.current);
+      return;
+    }
     setAudioStatus(null);
     setAudioLoading(true);
     setAudioOp("checking");
     try {
       const status = await checkAudio(filePath);
-      // Guard: if generate/send started while check was in-flight, don't
-      // overwrite their loading/op state with a stale check result.
-      if (!audioInFlightRef.current) setAudioStatus(status);
+      // Guards: a newer check (or the generate chain, which bumps the seq)
+      // owns the UI now — a stale result must not overwrite it. Same for a
+      // generate/send that started while this check was in-flight.
+      if (seq !== audioCheckSeqRef.current) return;
+      if (!hasInFlightOpForFile()) setAudioStatus(status);
     } catch {
-      if (!audioInFlightRef.current) setAudioStatus(null);
+      if (seq !== audioCheckSeqRef.current) return;
+      if (!hasInFlightOpForFile()) setAudioStatus(null);
     } finally {
-      // Only clear loading if no generate/send started while we were checking
-      if (!audioInFlightRef.current) {
+      // Only clear loading if this check still owns the UI and no
+      // generate/send started while we were checking.
+      if (seq === audioCheckSeqRef.current && !hasInFlightOpForFile()) {
         setAudioOp("idle");
         setAudioLoading(false);
       }
     }
   };
-  const handleGenerateAudio = async (filePath: string) => {
-    if (audioInFlightRef.current) return;
-    audioInFlightRef.current = true;
-    setAudioLoading(true);
-    setAudioOp("generating");
-    setStatus("Generating audio...");
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
-      try {
-        const data = await generateAudio(filePath, controller.signal);
-        if (data.ok) {
-          haptic.success();
-          setAudioStatus({ exists: true, path: data.path });
-          setStatus("Audio generated");
-        } else {
-          haptic.error();
-          setStatus(`Failed: ${data.error}`);
-        }
-      } finally {
-        // clearTimeout in finally so a thrown fetch doesn't leave the
-        // 60s timeout dangling and accumulating. (Copilot round-3 review.)
-        clearTimeout(timeout);
-      }
-    } catch (err) {
-      haptic.error();
-      setStatus(
-        err instanceof DOMException && err.name === "AbortError"
-          ? "Timed out"
-          : `Error: ${err instanceof Error ? err.message : String(err)}`
-      );
-    } finally {
-      audioInFlightRef.current = false;
-      setAudioOp("idle");
-      setAudioLoading(false);
+  const sendAudio = async (audioPath: string, filePath: string, pendingStatus = "Sending to Telegram...") => {
+    const ownsViewedFile = () =>
+      audioOpPathRef.current === filePath && viewedFilePathRef.current === filePath;
+    audioOpStageRef.current = "sending";
+    if (ownsViewedFile()) {
+      setAudioOp("sending");
+      setStatus(pendingStatus);
     }
-  };
-  const handleSendAudio = async (audioPath: string) => {
-    if (audioInFlightRef.current) return;
-    audioInFlightRef.current = true;
-    setAudioLoading(true);
-    setAudioOp("sending");
-    setStatus("Sending to Telegram...");
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const data = await sendAudioTelegram(audioPath, controller.signal);
+        if (!ownsViewedFile()) return;
         if (data.ok) {
           haptic.success();
           setStatus("Sent to Telegram");
         } else {
           haptic.error();
-          setStatus(`Failed: ${data.error}`);
+          setStatus(`Failed: ${data.error || "unknown error"}`);
         }
       } finally {
         // clearTimeout in finally so a thrown fetch doesn't leave the
@@ -365,6 +441,51 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
         clearTimeout(timeout);
       }
     } catch (err) {
+      if (!ownsViewedFile()) return;
+      haptic.error();
+      setStatus(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Timed out"
+          : `Error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
+  const handleGenerateAudio = async (filePath: string) => {
+    ++audioCheckSeqRef.current;
+    if (audioInFlightRef.current) return;
+    audioInFlightRef.current = true;
+    audioOpPathRef.current = filePath;
+    audioOpStageRef.current = "generating";
+    setAudioStatus(null);
+    setAudioLoading(true);
+    setAudioOp("generating");
+    setStatus("Generating audio...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+      let data: Awaited<ReturnType<typeof generateAudio>>;
+      try {
+        data = await generateAudio(filePath, controller.signal);
+      } finally {
+        // clearTimeout in finally so a thrown fetch doesn't leave the
+        // 60s timeout dangling and accumulating. (Copilot round-3 review.)
+        clearTimeout(timeout);
+      }
+      if (data.ok && data.path) {
+        haptic.success();
+        if (viewedFilePathRef.current !== filePath) {
+          setStatus("Audio ready — reopen the file to send");
+          return;
+        }
+        setAudioStatus({ exists: true, path: data.path });
+        await sendAudio(data.path, filePath, "Audio generated — sending to Telegram…");
+      } else {
+        if (viewedFilePathRef.current !== filePath) return;
+        haptic.error();
+        setStatus(`Failed: ${data.error || (data.ok ? "Missing audio path" : "unknown error")}`);
+      }
+    } catch (err) {
+      if (viewedFilePathRef.current !== filePath) return;
       haptic.error();
       setStatus(
         err instanceof DOMException && err.name === "AbortError"
@@ -372,9 +493,35 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           : `Error: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
-      audioInFlightRef.current = false;
-      setAudioOp("idle");
-      setAudioLoading(false);
+      if (audioOpPathRef.current === filePath) {
+        audioInFlightRef.current = false;
+        audioOpPathRef.current = null;
+        audioOpStageRef.current = "idle";
+      }
+      if (viewedFilePathRef.current === filePath) {
+        setAudioOp("idle");
+        setAudioLoading(false);
+      }
+    }
+  };
+  const handleSendAudio = async (audioPath: string, filePath: string) => {
+    if (audioInFlightRef.current) return;
+    audioInFlightRef.current = true;
+    audioOpPathRef.current = filePath;
+    audioOpStageRef.current = "sending";
+    setAudioLoading(true);
+    try {
+      await sendAudio(audioPath, filePath);
+    } finally {
+      if (audioOpPathRef.current === filePath) {
+        audioInFlightRef.current = false;
+        audioOpPathRef.current = null;
+        audioOpStageRef.current = "idle";
+      }
+      if (viewedFilePathRef.current === filePath) {
+        setAudioOp("idle");
+        setAudioLoading(false);
+      }
     }
   };
   const handleRestartSession = async () => {
@@ -412,6 +559,107 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
     } catch {
       haptic.error();
       setStatus("Failed");
+    }
+  };
+  const handleSaveToReadingList = async () => {
+    if (!viewingFile || readingListSaved) return;
+    const path = viewingFile.path;
+    if (readingListInFlightRef.current.has(path)) return;
+    readingListInFlightRef.current.add(path);
+    ++readingListCheckSeqRef.current;
+    setReadingListSaving(true);
+    try {
+      await saveReadingListItem(path, viewingFile.name);
+      if (readingListViewedPathRef.current === path) {
+        setReadingListSaved(true);
+        haptic.success();
+        setStatus("Saved to reading list");
+      }
+      emitReadingListChanged();
+    } catch (err) {
+      if (readingListViewedPathRef.current === path) {
+        setReadingListSaved(false);
+        haptic.error();
+        setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      readingListInFlightRef.current.delete(path);
+      if (readingListViewedPathRef.current === path) setReadingListSaving(false);
+    }
+  };
+  const handlePublishShared = async (scope: "public" | "private", tmp: boolean) => {
+    if (!viewingFile) return;
+    const path = viewingFile.path;
+    if (shareInFlightRef.current.has(path)) return;
+    shareInFlightRef.current.add(path);
+    const seq = ++shareSeqRef.current;
+    setShareLoading(true);
+    setShareUrl(null);
+    setShareError(null);
+    setStatus("Publishing...");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const data = await publishShared(path, scope, tmp, controller.signal);
+        if (seq !== shareSeqRef.current) return;
+        if (data.ok && data.url) {
+          haptic.success();
+          setShareUrl(data.url);
+          setStatus("Published");
+        } else {
+          const message = data.error || "Publish failed";
+          haptic.error();
+          setShareError(message);
+          setStatus(`Failed: ${message}`);
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      if (seq !== shareSeqRef.current) return;
+      const message = err instanceof DOMException && err.name === "AbortError"
+        ? "Timed out"
+        : err instanceof Error ? err.message : String(err);
+      haptic.error();
+      setShareError(message);
+      setStatus(`Failed: ${message}`);
+    } finally {
+      shareInFlightRef.current.delete(path);
+      if (seq === shareSeqRef.current) setShareLoading(false);
+    }
+  };
+  const handleCopyShareLink = async () => {
+    if (!shareUrl) return;
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        copied = true;
+      }
+    } catch {
+      // Fall through to the selected-text fallback for restricted WebViews.
+    }
+    if (!copied) {
+      const textarea = document.createElement("textarea");
+      textarea.value = shareUrl;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        copied = false;
+      }
+      document.body.removeChild(textarea);
+    }
+    if (copied) {
+      haptic.success();
+      setStatus("Link copied");
+    } else {
+      haptic.error();
+      setStatus("Copy failed — long-press the link to copy manually");
     }
   };
 
@@ -514,17 +762,27 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           value={compactFocus}
           onChange={setCompactFocus}
           onBack={() => setModal("compact-confirm")}
-          onSubmit={() => void handleCompact(compactFocus.trim() ? `/compact ${compactFocus.trim()}` : "/compact")}
+          // Single-line the free-text focus for the same reason as the
+          // continuity note: a non-default session rejects multi-line payloads.
+          onSubmit={() => {
+            const focus = compactFocus.trim().replace(/\s+/g, " ");
+            void handleCompact(focus ? `/compact ${focus}` : "/compact");
+          }}
         />
       );
       break;
     case "continuity-notes": {
+      // Collapse the free-text note to a single line: a restricted (non-default)
+      // session rejects multi-line payloads server-side (newline = an extra
+      // submitted command line), so a pasted multi-line note would otherwise
+      // 400. Single-lining keeps the flow working against any target.
+      const notes = continuityNotes.trim().replace(/\s+/g, " ");
       const continuityMsg = [
         "Before compacting, please ensure:",
         "1) README.md is up to date with recent changes.",
         "2) Anything important from this session is saved to the knowledge base or memory.",
         "3) Open work and next steps are captured in NEXT-SESSION.md and TODO.md.",
-        continuityNotes.trim() ? `Additional context from user: "${continuityNotes.trim()}".` : "",
+        notes ? `Additional context from user: "${notes}".` : "",
       ].filter(Boolean).join(" ");
       modalNode = (
         <ContinuityNotesModal
@@ -577,7 +835,21 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           audioStatus={audioStatus}
           onClose={() => setModal(null)}
           onGenerate={() => void handleGenerateAudio(viewingFile.path)}
-          onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path); }}
+          onSend={() => { if (audioStatus?.path) void handleSendAudio(audioStatus.path, viewingFile.path); }}
+        />
+      ) : null;
+      break;
+    case "share":
+      modalNode = viewingFile ? (
+        <ShareSheet
+          viewingFile={viewingFile}
+          loading={shareLoading}
+          url={shareUrl}
+          error={shareError}
+          onClose={() => setModal(null)}
+          onPublish={(scope, tmp) => void handlePublishShared(scope, tmp)}
+          onCopy={() => void handleCopyShareLink()}
+          onOpen={() => { if (shareUrl) window.open(shareUrl, "_blank", "noopener,noreferrer"); }}
         />
       ) : null;
       break;
@@ -673,12 +945,43 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           </>}
 
           {activeTab === "files" && viewingFile && (
-            <button
-              onClick={() => { haptic.impact("light"); void handleSendToChat(); }}
-              style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}
-            >
-              Send to Chat
-            </button>
+            <>
+              <button
+                onClick={() => { haptic.impact("light"); void handleSendToChat(); }}
+                style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d4a5a" }}
+              >
+                Send to Chat
+              </button>
+              <button
+                disabled={readingListChecking || readingListSaving || readingListSaved}
+                onClick={() => { haptic.impact("light"); void handleSaveToReadingList(); }}
+                style={{
+                  ...btnStyle,
+                  background: "var(--color-surface)",
+                  color: readingListSaved ? "var(--color-accent-green)" : "var(--color-accent-blue)",
+                  border: "1px solid var(--color-border-alt)",
+                  opacity: readingListChecking || readingListSaving ? 0.65 : 1,
+                }}
+              >
+                {readingListSaved ? "Saved ✓" : readingListSaving ? "Saving…" : "Save to reading list"}
+              </button>
+              <button
+                onClick={() => {
+                  haptic.impact("light");
+                  ++shareSeqRef.current;
+                  const inFlight = viewingFile
+                    ? shareInFlightRef.current.has(viewingFile.path)
+                    : false;
+                  setShareLoading(inFlight);
+                  setShareUrl(null);
+                  setShareError(null);
+                  setModal("share");
+                }}
+                style={{ ...btnStyle, background: "#1a3a3a", color: "var(--color-accent-cyan)", border: "1px solid #2d5a5a" }}
+              >
+                Share
+              </button>
+            </>
           )}
 
           {activeTab === "files" && isViewingMd && (
