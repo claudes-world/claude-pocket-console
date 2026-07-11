@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
+import { execFile } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const execFileAsync = promisify(execFile);
 
 /**
  * Regression test for the reading_list TEXT → INTEGER migration.
@@ -10,9 +19,9 @@ import Database from "better-sqlite3";
  * bootstrap in db.ts must detect the legacy column type and rebuild the
  * table in place.
  *
- * This test replays that bootstrap logic against an in-memory DB pre-seeded
- * with the legacy schema + a couple rows, and asserts that the rebuild
- * preserves data while converting timestamps.
+ * The primary regression test imports the real db.ts in a child process
+ * against a pre-seeded on-disk legacy database. The remaining tests replay
+ * the SQL against in-memory databases as fast checks of individual semantics.
  */
 
 function runMigration(db: Database.Database) {
@@ -96,6 +105,90 @@ function runMigration(db: Database.Database) {
 }
 
 describe("reading_list TEXT → INTEGER migration", () => {
+  it("boots the real db.ts migration and repairs malformed legacy timestamps", async () => {
+    const home = mkdtempSync(join(tmpdir(), "cpc-reading-list-migration-"));
+    const dbPath = join(home, "data", "cpc-voice.db");
+
+    try {
+      // Seed in a separate process before db.ts is imported. Its DATA_DIR,
+      // DB_PATH, schema bootstrap, and migration all execute at module load.
+      await execFileAsync(
+        process.execPath,
+        [
+          "-e",
+          `
+            const { mkdirSync } = require("node:fs");
+            const { dirname } = require("node:path");
+            const Database = require("better-sqlite3");
+            const dbPath = ${JSON.stringify(dbPath)};
+            mkdirSync(dirname(dbPath), { recursive: true });
+            const db = new Database(dbPath);
+            db.exec(\`
+              CREATE TABLE reading_list (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                path TEXT NOT NULL,
+                title TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(user_id, path)
+              );
+            \`);
+            const insert = db.prepare(
+              "INSERT INTO reading_list (user_id, path, title, created_at) VALUES (?, ?, ?, ?)",
+            );
+            insert.run("u1", "/valid", "Valid", "2026-07-01 12:00:00");
+            insert.run("u1", "/malformed", "Malformed", "not-a-timestamp");
+            insert.run("u1", "/empty", "Empty", "");
+            db.close();
+          `,
+        ],
+        { cwd: SERVER_DIR },
+      );
+
+      const beforeMigration = Date.now();
+      await expect(
+        execFileAsync(process.execPath, ["--import", "tsx", "-e", "import('./src/db.ts')"], {
+          cwd: SERVER_DIR,
+          env: { ...process.env, HOME: home },
+        }),
+      ).resolves.toBeDefined();
+      const afterMigration = Date.now();
+
+      const db = new Database(dbPath, { readonly: true });
+      try {
+        const columns = db.prepare("PRAGMA table_info(reading_list)").all() as Array<{
+          name: string;
+          type: string;
+        }>;
+        expect(columns.find((column) => column.name === "created_at")?.type.toUpperCase()).toBe(
+          "INTEGER",
+        );
+
+        const rows = db
+          .prepare("SELECT path, created_at FROM reading_list ORDER BY path")
+          .all() as Array<{ path: string; created_at: number }>;
+        expect(rows).toHaveLength(3);
+
+        const byPath = new Map(rows.map((row) => [row.path, row.created_at]));
+        expect(byPath.get("/valid")).toBe(Date.UTC(2026, 6, 1, 12, 0, 0));
+
+        const earliestFallback = Math.floor(beforeMigration / 1000) * 1000;
+        const latestFallback = Math.floor(afterMigration / 1000) * 1000;
+        for (const path of ["/malformed", "/empty"]) {
+          const fallback = byPath.get(path);
+          expect(typeof fallback).toBe("number");
+          expect(Number.isFinite(fallback)).toBe(true);
+          expect(fallback).toBeGreaterThanOrEqual(earliestFallback);
+          expect(fallback).toBeLessThanOrEqual(latestFallback);
+        }
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("preserves mixed valid and unparseable timestamps using a logged fallback", () => {
     const db = new Database(":memory:");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
