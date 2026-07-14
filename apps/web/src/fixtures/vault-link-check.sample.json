@@ -1,0 +1,48 @@
+{
+  "index_schema_version": 1,
+  "pages": [
+    { "path": "index.md", "kind": "index", "title": "Second Brain" },
+    { "path": "raw/inbox-voice-note.md", "kind": "raw", "title": "Inbox voice note" },
+    { "path": "wiki/concepts/agency.md", "kind": "concept", "title": "Agency" },
+    { "path": "wiki/concepts/attention.md", "kind": "concept", "title": "Attention" },
+    { "path": "wiki/entities/claude.md", "kind": "entity", "title": "Claude" },
+    { "path": "wiki/summaries/weekly-review.md", "kind": "summary", "title": "Weekly review" },
+    { "path": "doctrine/write-it-down.md", "kind": "doctrine", "title": "Write it down" },
+    { "path": "armory/vault-ingest.md", "kind": "raw", "title": "vault-ingest" }
+  ],
+  "edges": [
+    { "source": "index.md", "target": "wiki/concepts/agency", "label": "Agency", "resolved": true, "line": 8 },
+    { "source": "index.md", "target": "wiki/summaries/weekly-review", "label": "Latest review", "resolved": true, "line": 12 },
+    { "source": "wiki/concepts/agency.md", "target": "doctrine/write-it-down", "label": null, "resolved": true, "line": 16 },
+    { "source": "wiki/concepts/agency.md", "target": "wiki/concepts/unknown", "label": "Unknown concept", "resolved": false, "line": 21 },
+    { "source": "wiki/summaries/weekly-review.md", "target": "wiki/concepts/agency", "label": null, "resolved": true, "line": 6 },
+    { "source": "armory/vault-ingest.md", "target": "wiki/entities/claude", "label": "Claude", "resolved": true, "line": 10 }
+  ],
+  "findings": {
+    "broken": [
+      { "category": "broken", "path": "wiki/concepts/agency.md", "reason": "Target wiki/concepts/unknown does not exist", "line": 21 }
+    ],
+    "ambiguous": [
+      { "category": "ambiguous", "path": "index.md", "reason": "Agency could refer to more than one title", "line": 8 }
+    ],
+    "orphan": [
+      { "category": "orphan", "path": "wiki/concepts/attention.md", "reason": "No incoming links" }
+    ],
+    "unreferenced_raw": [
+      { "category": "unreferenced_raw", "path": "raw/inbox-voice-note.md", "reason": "Raw note is not referenced by an indexed page" }
+    ],
+    "receipt": [
+      { "category": "receipt", "path": "wiki/summaries/weekly-review.md", "reason": "Summary has no receipt link", "line": 18 }
+    ]
+  },
+  "counts": {
+    "broken": 1,
+    "ambiguous": 1,
+    "orphan": 1,
+    "unreferenced_raw": 1,
+    "receipt": 1
+  },
+  "status": "findings",
+  "generated_at": "2026-07-14T14:30:00Z",
+  "vault": "second-brain-sample"
+}

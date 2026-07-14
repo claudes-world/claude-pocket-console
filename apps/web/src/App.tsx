@@ -12,10 +12,12 @@ import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { CockpitPage } from "./components/CockpitPage";
+import { VaultExplorerPage } from "./components/VaultExplorerPage";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
 import {
   buildLandingUrl,
   isCockpitRoute,
+  isVaultRoute,
   resolveInitialAppState,
   type AppTab as Tab,
 } from "./lib/app-routing";
@@ -123,6 +125,7 @@ export function App() {
 
   const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab);
   const [cockpitOpen, setCockpitOpen] = useState(() => isCockpitRoute(window.location.hash));
+  const [vaultOpen, setVaultOpen] = useState(() => isVaultRoute(window.location.hash));
   const [reconnectKey, setReconnectKey] = useState(0);
 
   // Multi-session terminal (world-os#218): which tmux session the terminal
@@ -167,15 +170,24 @@ export function App() {
   const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
 
   useEffect(() => {
-    const syncCockpitRoute = () => setCockpitOpen(isCockpitRoute(window.location.hash));
-    window.addEventListener("hashchange", syncCockpitRoute);
-    return () => window.removeEventListener("hashchange", syncCockpitRoute);
+    const syncStandaloneRoutes = () => {
+      setCockpitOpen(isCockpitRoute(window.location.hash));
+      setVaultOpen(isVaultRoute(window.location.hash));
+    };
+    window.addEventListener("hashchange", syncStandaloneRoutes);
+    return () => window.removeEventListener("hashchange", syncStandaloneRoutes);
   }, []);
 
   const closeCockpit = useCallback(() => {
     setActiveTab("links");
     window.location.hash = "links";
     setCockpitOpen(false);
+  }, []);
+
+  const closeVault = useCallback(() => {
+    setActiveTab("links");
+    window.location.hash = "links";
+    setVaultOpen(false);
   }, []);
 
   const fileViewerSequence = fileOpenRequest.sequence;
@@ -452,6 +464,10 @@ export function App() {
 
   if (cockpitOpen) {
     return <CockpitPage onBack={closeCockpit} />;
+  }
+
+  if (vaultOpen) {
+    return <VaultExplorerPage onBack={closeVault} />;
   }
 
   return (
