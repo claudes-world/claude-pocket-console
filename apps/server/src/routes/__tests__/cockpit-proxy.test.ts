@@ -60,11 +60,11 @@ function makeInitData(): string {
   return params.toString();
 }
 
-function buildApp(): Hono {
+function buildApp(overrides: { internalUrl?: string } = {}): Hono {
   const app = new Hono();
   app.route("/api/cockpit-proxy", createCockpitProxyRoute({
     fetchImpl: fetchImpl as unknown as typeof fetch,
-    getConfig: () => config,
+    getConfig: () => ({ ...config, ...overrides }),
     now: () => Date.parse("2026-07-13T12:00:00Z"),
   }));
   return app;
@@ -183,6 +183,30 @@ describe("cockpit proxy", () => {
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.status).toBeLessThan(500);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects dot-segment traversal escaping a subpath internal URL", async () => {
+    const app = buildApp({ internalUrl: "http://127.0.0.1:38847/cockpit" });
+    const cookie = await proxyCookie(app);
+    fetchImpl.mockClear();
+
+    const response = await app.request("/api/cockpit-proxy/../admin/secrets", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("still proxies normally when the internal URL carries a subpath", async () => {
+    const app = buildApp({ internalUrl: "http://127.0.0.1:38847/cockpit" });
+    const cookie = await proxyCookie(app);
+    await app.request("/api/cockpit-proxy/api/fleet", {
+      headers: { Cookie: cookie },
+    });
+
+    const [target] = fetchImpl.mock.calls[0] as [URL];
+    expect(String(target)).toBe("http://127.0.0.1:38847/cockpit/api/fleet");
   });
 
   it("strips headers nominated by the incoming Connection header", async () => {
