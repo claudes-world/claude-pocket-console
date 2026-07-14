@@ -104,6 +104,13 @@ function upstreamUrl(incoming: URL, internalUrl: string): URL {
   if (target.origin !== new URL(internalUrl).origin) {
     throw new Error("Cockpit proxy target origin mismatch");
   }
+  // When the internal URL carries a subpath, dot-segment traversal in the
+  // proxy path resolves within the same origin and passes the origin check —
+  // keep the resolved target pinned under the configured base path (gemini
+  // cloud review, release PR #324).
+  if (!target.pathname.startsWith(base.pathname)) {
+    throw new Error("Cockpit proxy target escaped the configured base path");
+  }
   target.search = incoming.search;
   return target;
 }
