@@ -48,3 +48,17 @@ describe("Fleet Cockpit link", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 });
+
+describe("Vault Explorer link", () => {
+  it("always uses the local vault route without waiting for server configuration", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    render(<Links onClose={vi.fn()} onOpenFile={vi.fn()} />);
+
+    const link = screen.getByRole("link", { name: /Vault Explorer/ });
+    expect(link).toHaveAttribute("href", "#/vault");
+    expect(link).not.toHaveAttribute("target");
+
+    fireEvent.click(link);
+    expect(window.location.hash).toBe("#/vault");
+  });
+});

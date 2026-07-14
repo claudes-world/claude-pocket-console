@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLandingUrl, isCockpitRoute, resolveInitialAppState } from "../app-routing";
+import { buildLandingUrl, isCockpitRoute, isVaultRoute, resolveInitialAppState } from "../app-routing";
 
 describe("resolveInitialAppState", () => {
   it("resolves root to the default bot alias and a cosmetic redirect", () => {
@@ -79,6 +79,13 @@ describe("resolveInitialAppState", () => {
     expect(isCockpitRoute("#/cockpit&source=links")).toBe(true);
     expect(isCockpitRoute("#links")).toBe(false);
     expect(resolveInitialAppState("/", "#/cockpit").redirectPath).toBeNull();
+  });
+
+  it("recognizes #/vault as an app route without triggering the root redirect", () => {
+    expect(isVaultRoute("#/vault")).toBe(true);
+    expect(isVaultRoute("#/vault&source=links")).toBe(true);
+    expect(isVaultRoute("#links")).toBe(false);
+    expect(resolveInitialAppState("/", "#/vault").redirectPath).toBeNull();
   });
 
   it("preserves terminal session deep-link resolution and validation", () => {
