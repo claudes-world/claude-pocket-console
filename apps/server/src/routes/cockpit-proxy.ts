@@ -72,7 +72,9 @@ function validSession(value: string | undefined, token: string, now: number): bo
   if (separator <= 0) return false;
   const expires = value.slice(0, separator);
   const signature = value.slice(separator + 1);
-  if (!/^\d+$/.test(expires) || Number(expires) <= Math.floor(now / 1000)) return false;
+  // base64url SHA-256 HMAC is always 43 chars — cheap reject before the
+  // regex and HMAC work (gemini review, release PR #324).
+  if (signature.length !== 43 || !/^\d+$/.test(expires) || Number(expires) <= Math.floor(now / 1000)) return false;
 
   const actual = Buffer.from(signature);
   const expected = Buffer.from(sessionSignature(expires, token));
