@@ -75,7 +75,11 @@ function resolveHashState(hashParams: string): InitialAppState {
 
 function isAppDeepLink(hashParams: string): boolean {
   const firstSegment = hashParams.split("&", 1)[0];
-  return TABS.includes(firstSegment as AppTab) || DEEP_LINK_PARAM_RE.test(hashParams);
+  return firstSegment === "/cockpit" || TABS.includes(firstSegment as AppTab) || DEEP_LINK_PARAM_RE.test(hashParams);
+}
+
+export function isCockpitRoute(hash: string): boolean {
+  return hash.replace(/^#/, "").split("&", 1)[0] === "/cockpit";
 }
 
 /** Resolve the first-render route without reading from or mutating window. */

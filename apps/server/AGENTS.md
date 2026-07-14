@@ -88,6 +88,8 @@ WebSocket auth is handled separately in `auth.ts` via `checkAuth()`.
 | `OPENAI_API_KEY`          | `~/.secrets/openai.env`   | TTS, transcribe|
 | `BOTTOKEN`                | `common.sh` (via shell)   | Telegram sends |
 | `TELEGRAM_CHAT_ID`        | `common.sh` (via shell)   | Telegram sends |
+| `COCKPIT_AUTH_TOKEN`      | `~/.secrets/cpc.env`      | Cockpit proxy auth |
+| `COCKPIT_INTERNAL_URL`    | `~/.secrets/cpc.env`      | Cockpit loopback URL |
 
 The server loads `~/.secrets/cpc.env` at startup via `loadEnv()`. OpenAI key
 is loaded separately in `actions.ts` and `voice.ts`.

@@ -11,9 +11,11 @@ import { haptic } from "./lib/haptic";
 import { DebugOverlay } from "./debug/DebugOverlay";
 import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
+import { CockpitPage } from "./components/CockpitPage";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
 import {
   buildLandingUrl,
+  isCockpitRoute,
   resolveInitialAppState,
   type AppTab as Tab,
 } from "./lib/app-routing";
@@ -120,6 +122,7 @@ export function App() {
   }, [initialRoute.redirectPath]);
 
   const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab);
+  const [cockpitOpen, setCockpitOpen] = useState(() => isCockpitRoute(window.location.hash));
   const [reconnectKey, setReconnectKey] = useState(0);
 
   // Multi-session terminal (world-os#218): which tmux session the terminal
@@ -162,6 +165,18 @@ export function App() {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [cpcBranch, setCpcBranch] = useState<string | null>(null);
   const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false);
+
+  useEffect(() => {
+    const syncCockpitRoute = () => setCockpitOpen(isCockpitRoute(window.location.hash));
+    window.addEventListener("hashchange", syncCockpitRoute);
+    return () => window.removeEventListener("hashchange", syncCockpitRoute);
+  }, []);
+
+  const closeCockpit = useCallback(() => {
+    setActiveTab("links");
+    window.location.hash = "links";
+    setCockpitOpen(false);
+  }, []);
 
   const fileViewerSequence = fileOpenRequest.sequence;
   const handleFileViewChange = useCallback((file: { path: string; name: string } | null) => {
@@ -433,6 +448,10 @@ export function App() {
         }} />
       </div>
     );
+  }
+
+  if (cockpitOpen) {
+    return <CockpitPage onBack={closeCockpit} />;
   }
 
   return (
