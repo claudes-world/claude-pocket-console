@@ -2,6 +2,9 @@ export const VAULT_SCHEMA_VERSION = 1 as const;
 
 // Bound an uploaded/pasted export so a large or malicious link-check blob
 // can't freeze the Telegram WebView during parse/render.
+// MAX_INPUT_BYTES caps the RAW payload before JSON.parse even runs — the
+// per-array caps below only apply after a (potentially huge) parse.
+export const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const MAX_PAGES = 20000;
 export const MAX_EDGES = 100000;
 export const MAX_FINDINGS_PER_CATEGORY = 50000;
@@ -149,6 +152,15 @@ function parseFinding(value: unknown, location: string): VaultFinding | string {
 export function parseVaultIndex(input: string | unknown): VaultParseResult {
   let value = input;
   if (typeof input === "string") {
+    // Cap the raw text before JSON.parse — an oversized blob would freeze
+    // the WebView at parse time, before any array-count check could apply.
+    if (input.length > MAX_INPUT_BYTES) {
+      return {
+        ok: false,
+        code: "invalid-contract",
+        message: `Export is too large to load (over ${Math.floor(MAX_INPUT_BYTES / 1024 / 1024)} MB).`,
+      };
+    }
     try {
       value = JSON.parse(input) as unknown;
     } catch {

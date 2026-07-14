@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import sampleExport from "../fixtures/vault-link-check.sample.json";
 import {
   FINDING_CATEGORIES,
+  MAX_INPUT_BYTES,
   findPageByPath,
   getBacklinks,
   getOutgoingEdges,
@@ -105,6 +106,10 @@ export function VaultExplorerPage({ onBack }: VaultExplorerPageProps) {
   };
 
   const loadValue = (value: string | unknown) => {
+    // Any load (reset, paste, or a completed file read) advances the read
+    // guard, so a still-in-flight file read from an earlier selection sees
+    // the bump and bails instead of clobbering this newer value.
+    fileReadSeq.current++;
     const result = parseVaultIndex(value);
     if (!result.ok) {
       setLoadError(result.message);
@@ -126,8 +131,14 @@ export function VaultExplorerPage({ onBack }: VaultExplorerPageProps) {
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
+    // Reject an oversized file before reading it into memory at all.
+    if (file.size > MAX_INPUT_BYTES) {
+      setLoadError(`That file is too large to load (over ${Math.floor(MAX_INPUT_BYTES / 1024 / 1024)} MB).`);
+      return;
+    }
     // Sequence concurrent reads: only the most recent selection wins, so a
-    // slow first read can't clobber a newer one after it resolves.
+    // slow read can't clobber a newer selection, reset, or paste (all of
+    // which advance fileReadSeq via loadValue).
     const seq = ++fileReadSeq.current;
     try {
       const text = await file.text();

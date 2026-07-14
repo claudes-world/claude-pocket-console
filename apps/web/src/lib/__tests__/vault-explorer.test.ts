@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_INPUT_BYTES,
   buildPageIndex,
   getBacklinks,
   getOutgoingEdges,
@@ -156,5 +157,18 @@ describe("hardening", () => {
     const map = buildPageIndex(idx.pages);
     expect(map.get("wiki/concepts/agency")?.path).toBe("wiki/concepts/agency.md");
     expect(map.get("index")?.path).toBe("index.md");
+  });
+});
+
+describe("raw input size cap (PR #329 swarm MUST-1)", () => {
+  it("rejects an oversized raw string before JSON.parse runs", () => {
+    const huge = " ".repeat(MAX_INPUT_BYTES + 1);
+    const result = parseVaultIndex(huge);
+    expect(result).toMatchObject({ ok: false, code: "invalid-contract" });
+    if (!result.ok) expect(result.message).toMatch(/too large/i);
+  });
+
+  it("still parses a normal-size export", () => {
+    expect(parseVaultIndex(JSON.stringify(fixture())).ok).toBe(true);
   });
 });
