@@ -32,6 +32,7 @@ import { markdownRoute } from "./routes/markdown.js";
 import { readingListRoute } from "./routes/reading-list.js";
 import { prsRoute } from "./routes/prs.js";
 import { shareRoute } from "./routes/share.js";
+import { cockpitProxyRoute } from "./routes/cockpit-proxy.js";
 import { isAssetLikePath } from "./lib/spa-fallback.js";
 
 // Load env from secrets file if not already set
@@ -160,6 +161,11 @@ app.post("/api/auth/telegram-widget", async (c) => {
   const token = createSession(user);
   return c.json({ ok: true, token, user: { id: user.id, first_name: user.first_name } });
 });
+
+// The cockpit iframe/EventSource use a proxy-scoped HttpOnly session derived
+// from normal CPC auth, so this self-protected route must be mounted before the
+// generic /api/* middleware. See routes/cockpit-proxy.ts.
+app.route("/api/cockpit-proxy", cockpitProxyRoute);
 
 // Auth middleware for all other /api/* routes
 app.use("/api/*", telegramAuth);

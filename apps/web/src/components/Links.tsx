@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { getTelegramWebApp } from "../lib/telegram";
+import { useEffect, useState } from "react";
+import { getAuthHeaders, getTelegramWebApp } from "../lib/telegram";
 import { ReadingList } from "./ReadingList";
 import "./Links.css";
 
@@ -15,6 +15,7 @@ interface LinkItem {
    * don't fit.
    */
   inApp?: boolean;
+  internalRoute?: string;
 }
 
 /**
@@ -62,14 +63,12 @@ const LINKS: LinkItem[] = [
     url: "https://cockpit.claude.do",
     icon: "🛩️",
     description: "Fleet grid + live lane terminals",
-    // In-app navigation (Liam voice msg 1185) is DISABLED until two blockers
-    // clear: (1) cockpit.claude.do sits behind Cloudflare Access, which a
-    // Telegram WebView cannot pass — the link dead-ends at the Access wall;
-    // (2) window.location.assign is a one-way trip — any return to CPC that
-    // isn't a fresh Telegram launch leaves the webview without initData,
-    // stranding the user on the login screen (live incident 2026-07-10,
-    // voice 1565). Re-enable inApp only with the Access lift + BackButton
-    // return wiring (world-os#218 plan addendum).
+    internalRoute: "#/cockpit",
+    // #315 reverted top-level in-app navigation because Cloudflare Access
+    // blocks Telegram WebViews and leaving the SPA loses initData on return.
+    // The internal route now keeps CPC mounted, embeds a same-origin authenticated
+    // proxy, and wires Telegram's BackButton. If the server reports that the
+    // proxy token is absent, this entry retains #315's external-tab fallback.
   },
   {
     title: "Transcription Glossary",
@@ -116,6 +115,22 @@ interface LinksProps {
 }
 
 export function Links({ onClose, onOpenFile }: LinksProps) {
+  const [cockpitProxyAvailable, setCockpitProxyAvailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/cockpit-proxy/health", {
+      headers: getAuthHeaders(),
+      credentials: "same-origin",
+    })
+      .then(async (response) => response.ok ? response.json() : { configured: false })
+      .then((result) => {
+        if (active) setCockpitProxyAvailable(result.configured === true);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
@@ -146,24 +161,31 @@ export function Links({ onClose, onOpenFile }: LinksProps) {
 
       <div style={{ flex: 1, overflow: "auto" }}>
         <ReadingList onOpenFile={onOpenFile} />
-        {LINKS.map((link) => (
+        {LINKS.map((link) => {
+          const useInternalRoute = Boolean(link.internalRoute && cockpitProxyAvailable);
+          const href = useInternalRoute ? link.internalRoute! : link.url;
+          return (
           <a
             key={link.url}
-            href={link.url}
+            href={href}
             // In-app links navigate the webview itself (see openInApp);
             // everything else keeps the external-tab behavior. rel stays on
             // both: middle-click/context-menu can still open the href
             // without going through onClick (PR #290 gemini review, MED).
-            target={link.inApp ? undefined : "_blank"}
+            target={link.inApp || useInternalRoute ? undefined : "_blank"}
             rel="noopener noreferrer"
-            onClick={link.inApp ? (e) => {
+            onClick={link.inApp || useInternalRoute ? (e) => {
               // Respect explicit new-tab intent (ctrl/cmd/shift-click,
               // middle-click) — let the browser's default anchor behavior
               // handle those instead of hijacking into a same-tab
               // navigation. (PR #290 codex LOW / gemini MED.)
               if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
               e.preventDefault();
-              openInApp(link.url);
+              if (useInternalRoute) {
+                window.location.hash = link.internalRoute!.slice(1);
+              } else {
+                openInApp(link.url);
+              }
             } : undefined}
             style={{
               display: "flex",
@@ -187,7 +209,8 @@ export function Links({ onClose, onOpenFile }: LinksProps) {
             </div>
             <span style={{ color: "#3b4261", fontSize: 14 }}>→</span>
           </a>
-        ))}
+          );
+        })}
 
         {/* --- Apps section --- */}
         <div

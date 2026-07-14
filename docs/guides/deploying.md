@@ -49,6 +49,17 @@ curl https://cpc.claude.do/dev/api/health      # dev
 
 Both should return `{"status":"ok"}`.
 
+## Server Environment
+
+The server loads `~/.secrets/cpc.env` at startup. Fleet Cockpit embedding is
+disabled unless `COCKPIT_AUTH_TOKEN` is present; when disabled, the Links tab
+keeps opening the existing external Cockpit URL.
+
+| Variable | Required | Description |
+|---|---|---|
+| `COCKPIT_AUTH_TOKEN` | For in-app Cockpit | Must match the cockpit service's token. Never expose it to the web client. |
+| `COCKPIT_INTERNAL_URL` | No | Loopback Cockpit origin; defaults to `http://127.0.0.1:38847`. |
+
 ## URL Routing
 
 All traffic enters via Cloudflare tunnel → Caddy on `:18080` → reverse proxy.
