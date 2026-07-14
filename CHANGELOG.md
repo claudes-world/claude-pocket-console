@@ -2,6 +2,40 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.16.0] — 2026-07-13
+
+### Highlights
+
+- **Fleet Cockpit now opens inside the mini-app** — no more external-Safari hop, no more
+  cockpit `401 unauthorized`.
+
+### Added
+
+- Same-origin authenticated cockpit proxy: `/api/cockpit-proxy/*` forwards to the
+  co-located cockpit service with the auth token attached server-side (never
+  client-visible). Iframe subresources authenticate via a signed HttpOnly, path-scoped
+  session cookie (1h TTL) minted only for Telegram-authenticated callers. (#323)
+- `#/cockpit` SPA route rendering the proxied cockpit in a same-origin iframe with
+  Telegram BackButton wiring — closes the #315 login-stranding class. Links entry falls
+  back to the external tab when the server proxy is unconfigured.
+
+### Security
+
+- Proxy hardening from the review round: absolute/protocol-relative/encoded upstream
+  paths rejected before URL construction + resolved-origin assertion (token
+  exfiltration guard); session cookie cannot self-renew; cross-origin upstream
+  redirects blocked; root-relative redirects rewritten under the proxy prefix;
+  Connection-nominated headers stripped.
+
+### Deploy
+
+- New server env: `COCKPIT_AUTH_TOKEN` (required for in-app cockpit; must match the
+  cockpit service) and optional `COCKPIT_INTERNAL_URL` (default
+  `http://127.0.0.1:38847`). See docs/guides/deploying.md.
+
+> Note: entries for v1.13.0–v1.15.0 were not stamped at release time; backfill tracked
+> by the Director.
+
 ## [1.12.0] — 2026-04-18
 
 ### Highlights
