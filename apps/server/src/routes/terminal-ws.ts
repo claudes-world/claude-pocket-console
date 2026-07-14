@@ -169,7 +169,7 @@ export class FitLatchReleaseError extends Error {
   }
 }
 
-export async function applyFitResize(cols: number, rows: number): Promise<void> {
+export async function applyFitResize(session: string, cols: number, rows: number): Promise<void> {
   // TMUX_TIMEOUT_MS on both calls (round-2 review, PR #299): every other
   // tmux invocation in this file is capped so a wedged tmux server fails
   // the request instead of hanging it forever; these two were the only
@@ -177,14 +177,14 @@ export async function applyFitResize(cols: number, rows: number): Promise<void> 
   // unbounded child process and never resolve for the caller.
   await execFileAsync("tmux", [
     "resize-window",
-    "-t", TMUX_SESSION,
+    "-t", `=${session}:`,
     "-x", String(cols),
     "-y", String(rows),
   ], { timeout: TMUX_TIMEOUT_MS });
   try {
     await execFileAsync("tmux", [
       "set-option",
-      "-t", TMUX_SESSION,
+      "-t", `=${session}:`,
       "window-size", "latest",
     ], { timeout: TMUX_TIMEOUT_MS });
   } catch (err) {
@@ -406,23 +406,12 @@ export function terminalWsRoute(c: any) {
       try {
         const msg = JSON.parse(event.data.toString());
         if (msg.type === "fit") {
-          // Fit resizes the REAL tmux window (a write). Only the default
-          // session — the one the REST write endpoints already target — may
-          // be resized; every client-picked session is view-only, so the
-          // multi-session feature adds zero new write surface. Checked
-          // before validation so applyFitResize (hardwired to TMUX_SESSION)
-          // can never be reached from a view-only connection.
-          if (sessionResolution.session !== TMUX_SESSION) {
-            console.log(`[ws] fit rejected: view-only session "${sessionResolution.session}"`);
-            ws.send(JSON.stringify({
-              type: "fit-error",
-              message: "This session is view-only — fit is only available on the default session",
-            }));
-            return;
-          }
           // Explicit, user-initiated "Fit screen" action only — the client
-          // never sends this automatically (see NOTE above). Validate
-          // before touching tmux.
+          // never sends this automatically (see NOTE above). Fit is the
+          // single sanctioned WS write for a client-picked session and is
+          // scoped to the session already charset-validated by
+          // resolveRequestedSession. Validate dimensions before touching
+          // tmux.
           const result = validateFitDimensions(msg);
           if (!result.ok) {
             console.log(`[ws] fit rejected: ${result.error}`);
@@ -435,9 +424,9 @@ export function terminalWsRoute(c: any) {
             return;
           }
           const { cols, rows } = result;
-          applyFitResize(cols, rows)
+          applyFitResize(sessionResolution.session, cols, rows)
             .then(() => {
-              console.log(`[ws] fit applied: ${cols}x${rows}`);
+              console.log(`[ws] fit applied to "${sessionResolution.session}": ${cols}x${rows}`);
               ws.send(JSON.stringify({ type: "fit-ack", cols, rows }));
             })
             .catch((err: Error) => {
