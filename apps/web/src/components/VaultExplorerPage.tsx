@@ -71,6 +71,7 @@ export function VaultExplorerPage({ onBack }: VaultExplorerPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selection, setSelection] = useState<PageSelection>(() => pageSelection(SAMPLE_INDEX.pages[0]));
   const detailRef = useRef<HTMLDivElement>(null);
+  const fileReadSeq = useRef(0);
 
   useEffect(() => {
     const backButton = getTelegramWebApp()?.BackButton;
@@ -125,11 +126,16 @@ export function VaultExplorerPage({ onBack }: VaultExplorerPageProps) {
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
+    // Sequence concurrent reads: only the most recent selection wins, so a
+    // slow first read can't clobber a newer one after it resolves.
+    const seq = ++fileReadSeq.current;
     try {
       const text = await file.text();
+      if (seq !== fileReadSeq.current) return;
       setPastedJson(text);
       loadValue(text);
     } catch {
+      if (seq !== fileReadSeq.current) return;
       setLoadError("The selected file could not be read.");
     }
   };

@@ -1,5 +1,11 @@
 export const VAULT_SCHEMA_VERSION = 1 as const;
 
+// Bound an uploaded/pasted export so a large or malicious link-check blob
+// can't freeze the Telegram WebView during parse/render.
+export const MAX_PAGES = 20000;
+export const MAX_EDGES = 100000;
+export const MAX_FINDINGS_PER_CATEGORY = 50000;
+
 export const PAGE_KINDS = [
   "index",
   "raw",
@@ -163,6 +169,7 @@ export function parseVaultIndex(input: string | unknown): VaultParseResult {
   }
 
   if (!Array.isArray(value.pages)) return invalid("pages must be an array.");
+  if (value.pages.length > MAX_PAGES) return invalid(`Too many pages (max ${MAX_PAGES}).`);
   const pages: VaultPage[] = [];
   for (const [index, pageValue] of value.pages.entries()) {
     const page = parsePage(pageValue, index);
@@ -171,6 +178,7 @@ export function parseVaultIndex(input: string | unknown): VaultParseResult {
   }
 
   if (!Array.isArray(value.edges)) return invalid("edges must be an array.");
+  if (value.edges.length > MAX_EDGES) return invalid(`Too many edges (max ${MAX_EDGES}).`);
   const edges: VaultEdge[] = [];
   for (const [index, edgeValue] of value.edges.entries()) {
     const edge = parseEdge(edgeValue, index);
@@ -183,9 +191,13 @@ export function parseVaultIndex(input: string | unknown): VaultParseResult {
 
   const findings = {} as VaultFindings;
   const counts = {} as VaultCounts;
+  let anyFindings = false;
   for (const category of FINDING_CATEGORIES) {
     const categoryFindings = value.findings[category];
     if (!Array.isArray(categoryFindings)) return invalid(`findings.${category} must be an array.`);
+    if (categoryFindings.length > MAX_FINDINGS_PER_CATEGORY) {
+      return invalid(`Too many ${category} findings (max ${MAX_FINDINGS_PER_CATEGORY}).`);
+    }
     const parsedFindings: VaultFinding[] = [];
     for (const [index, findingValue] of categoryFindings.entries()) {
       const finding = parseFinding(findingValue, `findings.${category}[${index}]`);
@@ -193,12 +205,11 @@ export function parseVaultIndex(input: string | unknown): VaultParseResult {
       parsedFindings.push(finding);
     }
     findings[category] = parsedFindings;
-
-    const count = value.counts[category];
-    if (!Number.isInteger(count) || (count as number) < 0) {
-      return invalid(`counts.${category} must be a non-negative integer.`);
-    }
-    counts[category] = count as number;
+    // Derive counts/status from the actual findings arrays rather than
+    // trusting the export's self-reported values, so the display can never
+    // claim "clean"/zero while findings are present.
+    counts[category] = parsedFindings.length;
+    if (parsedFindings.length > 0) anyFindings = true;
   }
 
   if (value.status !== "clean" && value.status !== "findings") {
@@ -215,7 +226,8 @@ export function parseVaultIndex(input: string | unknown): VaultParseResult {
       edges,
       findings,
       counts,
-      status: value.status,
+      // Derived from the findings arrays, not the export's claim.
+      status: anyFindings ? "findings" : "clean",
       generated_at: value.generated_at,
       vault: value.vault,
     },
@@ -229,6 +241,16 @@ export function canonicalVaultPath(path: string): string {
 export function findPageByPath(pages: VaultPage[], path: string): VaultPage | null {
   const wanted = canonicalVaultPath(path);
   return pages.find((page) => canonicalVaultPath(page.path) === wanted) ?? null;
+}
+
+/** Canonical-path → page index for O(1) lookups over many findings/edges. */
+export function buildPageIndex(pages: VaultPage[]): Map<string, VaultPage> {
+  const index = new Map<string, VaultPage>();
+  for (const page of pages) {
+    const key = canonicalVaultPath(page.path);
+    if (!index.has(key)) index.set(key, page);
+  }
+  return index;
 }
 
 function sorted(pages: VaultPage[]): VaultPage[] {
@@ -285,11 +307,14 @@ export function getBacklinks(page: VaultPage, edges: VaultEdge[]): VaultEdge[] {
 }
 
 export function mapVaultFindings(index: VaultIndex): MappedFindings {
+  // Build the path index once instead of a linear scan per finding
+  // (was ~O(pages × findings), a WebView-freeze risk on large exports).
+  const pageIndex = buildPageIndex(index.pages);
   const mapped = {} as MappedFindings;
   for (const category of FINDING_CATEGORIES) {
     mapped[category] = index.findings[category].map((finding) => ({
       finding,
-      page: findPageByPath(index.pages, finding.path),
+      page: pageIndex.get(canonicalVaultPath(finding.path)) ?? null,
     }));
   }
   return mapped;

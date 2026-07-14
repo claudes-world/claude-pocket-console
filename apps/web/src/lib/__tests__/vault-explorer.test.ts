@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPageIndex,
   getBacklinks,
   getOutgoingEdges,
   groupVaultPages,
@@ -124,5 +125,36 @@ describe("vault view model", () => {
     expect(mapped.orphan[0].page).toBeNull();
     expect(mapped.unreferenced_raw[0].finding.category).toBe("unreferenced_raw");
     expect(mapped.receipt[0]).toMatchObject({ page: { path: "wiki/concepts/agency.md" } });
+  });
+});
+
+describe("hardening", () => {
+  it("rejects oversized arrays instead of freezing", () => {
+    const pages = Array.from({ length: 20001 }, (_, i) => ({ path: `raw/${i}.md`, kind: "raw", title: `p${i}` }));
+    expect(parseVaultIndex(fixture({ pages }))).toMatchObject({ ok: false, code: "invalid-contract" });
+  });
+
+  it("derives counts and status from findings, ignoring self-reported values", () => {
+    const result = parseVaultIndex(fixture({
+      // export lies: claims clean/zero while a finding is present
+      status: "clean",
+      counts: { broken: 0, ambiguous: 0, orphan: 0, unreferenced_raw: 0, receipt: 0 },
+      findings: {
+        broken: [{ category: "broken", path: "index.md", reason: "x", line: 2 }],
+        ambiguous: [], orphan: [], unreferenced_raw: [], receipt: [],
+      },
+    }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.status).toBe("findings");
+      expect(result.data.counts.broken).toBe(1);
+    }
+  });
+
+  it("buildPageIndex gives O(1) lookups matching findPageByPath", () => {
+    const idx = parsedIndex(fixture());
+    const map = buildPageIndex(idx.pages);
+    expect(map.get("wiki/concepts/agency")?.path).toBe("wiki/concepts/agency.md");
+    expect(map.get("index")?.path).toBe("index.md");
   });
 });
