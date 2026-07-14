@@ -32,6 +32,12 @@ interface CockpitProxyOptions {
   now?: () => number;
 }
 
+interface CockpitProxyEnv {
+  Variables: {
+    cockpitAuthVia: "cookie" | "tma";
+  };
+}
+
 function defaultConfig(): CockpitProxyConfig {
   return {
     internalUrl: process.env.COCKPIT_INTERNAL_URL || DEFAULT_INTERNAL_URL,
@@ -75,19 +81,59 @@ function validSession(value: string | undefined, token: string, now: number): bo
 
 function upstreamUrl(incoming: URL, internalUrl: string): URL {
   const base = new URL(internalUrl.endsWith("/") ? internalUrl : `${internalUrl}/`);
-  const proxyPath = incoming.pathname.slice(PROXY_PREFIX.length).replace(/^\/+/, "");
+  const rawProxyPath = incoming.pathname.slice(PROXY_PREFIX.length);
+  let decodedProxyPath: string;
+  try {
+    decodedProxyPath = decodeURIComponent(rawProxyPath);
+  } catch {
+    throw new Error("Invalid cockpit proxy path");
+  }
+  if (
+    rawProxyPath.includes("://") ||
+    rawProxyPath.includes("\\") ||
+    rawProxyPath.startsWith("//") ||
+    decodedProxyPath.includes("://") ||
+    decodedProxyPath.includes("\\") ||
+    decodedProxyPath.startsWith("//")
+  ) {
+    throw new Error("Invalid cockpit proxy path");
+  }
+
+  const proxyPath = rawProxyPath.replace(/^\/+/, "");
   const target = new URL(proxyPath, base);
+  if (target.origin !== new URL(internalUrl).origin) {
+    throw new Error("Cockpit proxy target origin mismatch");
+  }
   target.search = incoming.search;
   return target;
 }
 
 function forwardedHeaders(incoming: Headers, authToken: string): Headers {
   const headers = new Headers(incoming);
+  const connectionHeaders = (incoming.get("connection") || "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
   headers.delete("authorization");
   headers.delete("cookie");
+  for (const name of connectionHeaders) headers.delete(name);
   for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
   headers.set("authorization", `Bearer ${authToken}`);
   return headers;
+}
+
+function proxiedRedirectLocation(location: string, internalUrl: string): string | null {
+  let absolute: URL;
+  try {
+    absolute = location.startsWith("//")
+      ? new URL(location, internalUrl)
+      : new URL(location);
+  } catch {
+    return location;
+  }
+
+  if (absolute.origin !== new URL(internalUrl).origin) return null;
+  return `${PROXY_PREFIX}${absolute.pathname}${absolute.search}${absolute.hash}`;
 }
 
 function rewriteCockpitHtml(html: string): string {
@@ -98,7 +144,7 @@ function rewriteCockpitHtml(html: string): string {
 }
 
 export function createCockpitProxyRoute(options: CockpitProxyOptions = {}) {
-  const route = new Hono();
+  const route = new Hono<CockpitProxyEnv>();
   const fetchImpl = options.fetchImpl ?? fetch;
   const getConfig = options.getConfig ?? defaultConfig;
   const now = options.now ?? Date.now;
@@ -109,16 +155,20 @@ export function createCockpitProxyRoute(options: CockpitProxyOptions = {}) {
   route.use("*", async (c, next) => {
     const config = getConfig();
     if (validSession(getCookie(c, SESSION_COOKIE), config.authToken, now())) {
+      c.set("cockpitAuthVia", "cookie");
       await next();
       return;
     }
-    return telegramAuth(c, next);
+    return telegramAuth(c, async () => {
+      c.set("cockpitAuthVia", "tma");
+      await next();
+    });
   });
 
   route.get("/health", (c) => {
     const config = getConfig();
     const isConfigured = configured(config);
-    if (isConfigured) {
+    if (isConfigured && c.get("cockpitAuthVia") === "tma") {
       setCookie(c, SESSION_COOKIE, makeSession(config.authToken, now()), {
         httpOnly: true,
         maxAge: SESSION_TTL_SECONDS,
@@ -141,7 +191,7 @@ export function createCockpitProxyRoute(options: CockpitProxyOptions = {}) {
     try {
       target = upstreamUrl(incoming, config.internalUrl);
     } catch {
-      return c.json({ error: "Cockpit proxy is not configured" }, 503);
+      return c.json({ error: "Invalid cockpit proxy target" }, 400);
     }
 
     const method = c.req.method.toUpperCase();
@@ -167,6 +217,17 @@ export function createCockpitProxyRoute(options: CockpitProxyOptions = {}) {
     const responseHeaders = new Headers({ "content-type": contentType });
     const cacheControl = upstream.headers.get("cache-control");
     if (cacheControl) responseHeaders.set("cache-control", cacheControl);
+
+    if (upstream.status >= 300 && upstream.status < 400) {
+      const location = upstream.headers.get("location");
+      if (location) {
+        const proxiedLocation = proxiedRedirectLocation(location, config.internalUrl);
+        if (proxiedLocation === null) {
+          return c.json({ error: "Cockpit upstream redirected to an unsafe origin" }, 502);
+        }
+        responseHeaders.set("location", proxiedLocation);
+      }
+    }
 
     if (contentType.toLowerCase().includes("text/html")) {
       const html = rewriteCockpitHtml(await upstream.text());

@@ -115,6 +115,18 @@ describe("cockpit proxy", () => {
     expect(cookie).toContain("Path=/api/cockpit-proxy");
   });
 
+  it("does not renew a session authenticated only by its existing cookie", async () => {
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    const response = await app.request("/api/cockpit-proxy/health", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ configured: true });
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   it("forwards method, path, query and body with only the server Bearer credential", async () => {
     let receivedBody = "";
     fetchImpl.mockImplementation(async (input: URL | RequestInfo, init?: RequestInit) => {
@@ -154,6 +166,91 @@ describe("cockpit proxy", () => {
     expect(headers.get("x-cockpit-intent")).toBe("compact");
     expect(receivedBody).toBe('{"request":"compact"}');
     expect(responseBody).not.toContain(COCKPIT_TOKEN);
+  });
+
+  it.each([
+    "/api/cockpit-proxy/http://attacker.example/",
+    "/api/cockpit-proxy//attacker.example/",
+    "/api/cockpit-proxy/http:%5C%5Cattacker.example/",
+    "/api/cockpit-proxy/%2F%2Fattacker.example/",
+  ])("rejects unsafe upstream path %s without fetching", async (path) => {
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    fetchImpl.mockClear();
+
+    const response = await app.request(path, { headers: { Cookie: cookie } });
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.status).toBeLessThan(500);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("strips headers nominated by the incoming Connection header", async () => {
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    await app.request("/api/cockpit-proxy/api/fleet", {
+      headers: {
+        Cookie: cookie,
+        Connection: "X-Remove-Me, X-Also-Remove",
+        "X-Also-Remove": "private",
+        "X-Keep-Me": "public",
+        "X-Remove-Me": "private",
+      },
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as [URL, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("connection")).toBeNull();
+    expect(headers.get("x-remove-me")).toBeNull();
+    expect(headers.get("x-also-remove")).toBeNull();
+    expect(headers.get("x-keep-me")).toBe("public");
+  });
+
+  it("rewrites same-origin absolute redirects beneath the proxy prefix", async () => {
+    fetchImpl.mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { Location: "http://127.0.0.1:38847/login?next=%2Ffleet#auth" },
+    }));
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    const response = await app.request("/api/cockpit-proxy/api/fleet", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "/api/cockpit-proxy/login?next=%2Ffleet#auth",
+    );
+  });
+
+  it("passes relative upstream redirects through unchanged", async () => {
+    fetchImpl.mockResolvedValue(new Response(null, {
+      status: 307,
+      headers: { Location: "../login?next=fleet" },
+    }));
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    const response = await app.request("/api/cockpit-proxy/api/fleet", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("../login?next=fleet");
+  });
+
+  it("rejects absolute upstream redirects to another origin", async () => {
+    fetchImpl.mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { Location: "https://attacker.example/collect" },
+    }));
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    const response = await app.request("/api/cockpit-proxy/api/fleet", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("location")).toBeNull();
   });
 
   it("rewrites root-absolute cockpit API paths beneath the proxy prefix", async () => {
