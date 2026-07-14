@@ -125,7 +125,11 @@ function forwardedHeaders(incoming: Headers, authToken: string): Headers {
 function proxiedRedirectLocation(location: string, internalUrl: string): string | null {
   let absolute: URL;
   try {
-    absolute = location.startsWith("//")
+    // Any leading-slash Location (root-relative "/login" or protocol-relative
+    // "//host/…") is resolved against the cockpit origin — a root-relative
+    // path passed through unmodified would resolve against CPC's own origin
+    // root and escape the proxy prefix (delta-review finding, PR #323).
+    absolute = location.startsWith("/")
       ? new URL(location, internalUrl)
       : new URL(location);
   } catch {

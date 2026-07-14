@@ -223,6 +223,23 @@ describe("cockpit proxy", () => {
     );
   });
 
+  it("rewrites root-relative upstream redirects beneath the proxy prefix", async () => {
+    fetchImpl.mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { Location: "/login?next=%2Ffleet" },
+    }));
+    const app = buildApp();
+    const cookie = await proxyCookie(app);
+    const response = await app.request("/api/cockpit-proxy/api/fleet", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "/api/cockpit-proxy/login?next=%2Ffleet",
+    );
+  });
+
   it("passes relative upstream redirects through unchanged", async () => {
     fetchImpl.mockResolvedValue(new Response(null, {
       status: 307,
