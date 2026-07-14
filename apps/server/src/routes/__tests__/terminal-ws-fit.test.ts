@@ -9,7 +9,7 @@ import { createSession } from "../../auth.js";
  *   1. `validateFitDimensions` — bounds/type checks in isolation (no tmux
  *      involved), since this is the untrusted input surface (WebView).
  *   2. `onMessage` wiring — a valid `{ type: "fit", cols, rows }` message
- *      calls `tmux resize-window -t <session> -x <cols> -y <rows>` via
+ *      calls `tmux resize-window -t =<session>: -x <cols> -y <rows>` via
  *      `execFile` (argv array, no shell) and acks over the socket; an
  *      invalid message never reaches `execFile` and gets a `fit-error`
  *      reply instead; the legacy `resize` message type remains a no-op.
@@ -224,7 +224,7 @@ describe("terminalWsRoute onMessage: fit", () => {
 
     expect(execFileCalls[0].cmd).toBe("tmux");
     expect(execFileCalls[0].args).toEqual([
-      "resize-window", "-t", "test-session", "-x", "92", "-y", "40",
+      "resize-window", "-t", "=test-session:", "-x", "92", "-y", "40",
     ]);
 
     (ws as any)._cleanup?.();
@@ -241,7 +241,7 @@ describe("terminalWsRoute onMessage: fit", () => {
     expect(execFileCalls).toHaveLength(2);
     expect(execFileCalls[1].cmd).toBe("tmux");
     expect(execFileCalls[1].args).toEqual([
-      "set-option", "-t", "test-session", "window-size", "latest",
+      "set-option", "-t", "=test-session:", "window-size", "latest",
     ]);
 
     (ws as any)._cleanup?.();

@@ -18,6 +18,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this p
 - `#/cockpit` SPA route rendering the proxied cockpit in a same-origin iframe with
   Telegram BackButton wiring — closes the #315 login-stranding class. Links entry falls
   back to the external tab when the server proxy is unconfigured.
+- Fit Screen is available on every terminal session view and resizes only the session
+  carried by that view's validated WebSocket connection; Restart and git remain
+  default-session-only.
 
 ### Security
 
