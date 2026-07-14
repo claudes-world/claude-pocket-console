@@ -1256,13 +1256,24 @@ describe("ActionBar", () => {
 describe("ActionBar restricted session mode", () => {
   const SESSION = "do-box--lane-a";
 
-  it("shows Reconnect and /commands but hides Git and the reconnect menu", () => {
-    render(<ActionBar activeTab="terminal" onReconnect={() => {}} terminalSession={SESSION} />);
+  it("shows Reconnect, Fit Screen, and /commands but hides default-session controls", () => {
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} onFitScreen={() => {}} terminalSession={SESSION} />);
     expect(screen.getByText("Reconnect")).toBeInTheDocument();
+    expect(screen.getByText("Fit Screen")).toBeInTheDocument();
     expect(screen.getByText("/commands")).toBeInTheDocument();
     // Default-session-only actions must not be reachable.
     expect(screen.queryByText("Git")).not.toBeInTheDocument();
+    expect(screen.queryByText("Restart Claude Session")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Open reconnect menu")).not.toBeInTheDocument();
+  });
+
+  it("calls onFitScreen from the restricted session row", () => {
+    const onFitScreen = vi.fn();
+    render(<ActionBar activeTab="terminal" onReconnect={() => {}} onFitScreen={onFitScreen} terminalSession={SESSION} />);
+    fireEvent.click(screen.getByText("Fit Screen"));
+    expect(onFitScreen).toHaveBeenCalledOnce();
+    expect(screen.getByText("Fit screen requested")).toBeInTheDocument();
+    expect(screen.queryByText("Restart Claude Session")).not.toBeInTheDocument();
   });
 
   it("hides orchestrator-bookkeeping commands in the sheet and names the target", () => {

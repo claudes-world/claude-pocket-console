@@ -13,9 +13,9 @@ import { createSession } from "../../auth.js";
  *      exact-match `=<name>`; an unknown session closes 4004 after the
  *      probe; the default session starts polling with no probe (legacy
  *      restart-tolerance).
- *   3. onMessage "fit" — a view-only (non-default) session gets fit-error
- *      and `tmux resize-window` is NEVER reached; the default session
- *      keeps its existing fit behavior.
+ *   3. onMessage "fit" — the single sanctioned session-scoped write
+ *      resizes the viewed session; the default session keeps its existing
+ *      behavior. Every other WS write-shaped message remains inert.
  */
 
 const TEST_USER_ID = "999222";
@@ -272,8 +272,8 @@ describe("terminalWsRoute capture-pane poll: null (timeout) exit code is transie
   });
 });
 
-describe("terminalWsRoute onMessage: fit is default-session-only", () => {
-  it("rejects fit on a non-default session with fit-error and never reaches resize-window", async () => {
+describe("terminalWsRoute onMessage: fit targets the viewed session", () => {
+  it("applies fit to a non-default session with an exact-match target", async () => {
     existingSessions.add("do-box--lane-a");
     const { handlers, ws } = connectWs("do-box--lane-a");
     await flush();
@@ -282,10 +282,11 @@ describe("terminalWsRoute onMessage: fit is default-session-only", () => {
       ws as any,
     );
     await flush();
-    const fitError = ws._sent.map((m) => JSON.parse(m)).find((m) => m.type === "fit-error");
-    expect(fitError).toBeTruthy();
-    expect(fitError.message).toMatch(/view-only/i);
-    expect(execFileCalls.find((c) => c.args[0] === "resize-window")).toBeUndefined();
+    const resize = execFileCalls.find((c) => c.args[0] === "resize-window");
+    expect(resize?.args).toEqual(["resize-window", "-t", "=do-box--lane-a:", "-x", "100", "-y", "40"]);
+    const release = execFileCalls.find((c) => c.args[0] === "set-option");
+    expect(release?.args).toEqual(["set-option", "-t", "=do-box--lane-a:", "window-size", "latest"]);
+    expect(ws._sent.map((m) => JSON.parse(m)).some((m) => m.type === "fit-ack")).toBe(true);
     handlers.onClose(new Event("close"), ws as any);
   });
 
@@ -298,8 +299,39 @@ describe("terminalWsRoute onMessage: fit is default-session-only", () => {
     );
     await flush();
     const resize = execFileCalls.find((c) => c.args[0] === "resize-window");
-    expect(resize?.args).toEqual(["resize-window", "-t", "test-session", "-x", "100", "-y", "40"]);
+    expect(resize?.args).toEqual(["resize-window", "-t", "=test-session:", "-x", "100", "-y", "40"]);
     expect(ws._sent.map((m) => JSON.parse(m)).some((m) => m.type === "fit-ack")).toBe(true);
+    handlers.onClose(new Event("close"), ws as any);
+  });
+
+  it("still rejects malformed fit dimensions on a non-default session without a tmux write", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { handlers, ws } = connectWs("do-box--lane-a");
+    await flush();
+    handlers.onMessage(
+      { data: JSON.stringify({ type: "fit", cols: 100, rows: "40" }) } as unknown as MessageEvent,
+      ws as any,
+    );
+    await flush();
+    expect(execFileCalls.some((c) => c.args[0] === "resize-window" || c.args[0] === "set-option")).toBe(false);
+    expect(ws._sent.map((m) => JSON.parse(m)).some((m) => m.type === "fit-error")).toBe(true);
+    handlers.onClose(new Event("close"), ws as any);
+  });
+
+  it("keeps every other WS write path inert for a non-default session", async () => {
+    existingSessions.add("do-box--lane-a");
+    const { handlers, ws } = connectWs("do-box--lane-a");
+    await flush();
+    handlers.onMessage(
+      { data: JSON.stringify({ type: "resize", cols: 100, rows: 40 }) } as unknown as MessageEvent,
+      ws as any,
+    );
+    handlers.onMessage(
+      { data: JSON.stringify({ type: "send-keys", keys: "C-c" }) } as unknown as MessageEvent,
+      ws as any,
+    );
+    await flush();
+    expect(execFileCalls.some((c) => c.args[0] === "resize-window" || c.args[0] === "set-option" || c.args[0] === "send-keys")).toBe(false);
     handlers.onClose(new Event("close"), ws as any);
   });
 });

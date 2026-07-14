@@ -544,6 +544,13 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
       setStatus(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
+  const handleFitScreen = () => {
+    if (!onFitScreen) return;
+    haptic.impact("light");
+    onFitScreen();
+    setModal(null);
+    setStatus("Fit screen requested");
+  };
   const handleSendToChat = async () => {
     if (!viewingFile) return;
     setStatus("Sharing...");
@@ -718,12 +725,7 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
           onClose={() => setModal(null)}
           onReconnect={() => { onReconnect(); setModal(null); }}
           onRestart={() => void handleRestartSession()}
-          onFitScreen={onFitScreen ? () => {
-            haptic.impact("light");
-            onFitScreen();
-            setModal(null);
-            setStatus("Fit screen requested");
-          } : undefined}
+          onFitScreen={onFitScreen ? handleFitScreen : undefined}
         />
       ) : null;
       break;
@@ -871,9 +873,9 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
 
           {/* Restricted terminal row: viewing a non-default session. The
               command palette targets the viewed session (Liam voice msg
-              1188); default-session-only actions — reconnect-menu's
-              Restart/Fit, git — are hidden so they can never act on the
-              wrong terminal. */}
+              1188). Restart and git stay hidden because they use default-
+              session command channels; Fit is allowed because it is scoped
+              to this view's own WebSocket/session. */}
           {activeTab === "terminal" && restrictedSession && <>
             {onReconnect && (
               <button
@@ -881,6 +883,14 @@ export function ActionBar({ onReconnect, onFitScreen, fitResult, connected, acti
                 style={{ ...btnStyle, background: "#1a3a2a", color: "var(--color-accent-green)", border: "1px solid #2d5a3d" }}
               >
                 Reconnect
+              </button>
+            )}
+            {onFitScreen && (
+              <button
+                onClick={handleFitScreen}
+                style={{ ...btnStyle, background: "#1a2a3a", color: "var(--color-accent-blue)", border: "1px solid #2d4a5a" }}
+              >
+                Fit Screen
               </button>
             )}
             <button
