@@ -13,7 +13,8 @@ import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { CockpitPage } from "./components/CockpitPage";
 import { VaultExplorerPage } from "./components/VaultExplorerPage";
-import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
+import { type TmuxSessionInfo } from "./components/SessionPicker";
+import { SessionSwitcherSheet } from "./components/SessionSwitcherSheet";
 import {
   buildLandingUrl,
   isCockpitRoute,
@@ -141,6 +142,9 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
+  const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const activeSessionName = activeSession ?? defaultSession ?? "";
+  const activeSessionInfo = sessionPicker.sessions.find((s) => s.name === activeSessionName);
   const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialRoute.file, sequence: 0 });
   // FileViewer is keyed by this request sequence. Keep the latest request in
   // a ref so callbacks retained by an unmounted viewer cannot publish a late
@@ -568,18 +572,75 @@ export function App() {
         </div>
       )}
 
-      {/* Session picker — terminal tab only. Visibility + session list
-          (including the stale-deep-link escape hatch) are decided by
+      {/* Session bar — terminal tab only. A single big-tap-target row showing
+          the active session; tapping opens the SessionSwitcherSheet (a
+          bottom-sheet picker with full-width rows). Replaces the old cramped
+          horizontal chip strip (SessionPicker). Visibility + session list
+          (including the stale-deep-link escape hatch) are still decided by
           resolveSessionPickerProps — see its docstring for the round-2
           (PR #299) fix: an earlier inline `sessionList.length > 0` guard
           hid the picker entirely whenever /api/terminal/sessions failed
           while a stale session was active, stranding the user. */}
       {activeTab === "terminal" && sessionPicker.visible && (
-        <SessionPicker
-          sessions={sessionPicker.sessions}
-          active={activeSession ?? defaultSession ?? ""}
-          onSelect={onSelectSession}
-        />
+        <button
+          data-testid="session-bar"
+          onClick={() => { haptic.selection(); setSessionSwitcherOpen(true); }}
+          onTouchStart={(e) => e.stopPropagation()}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            width: "100%",
+            padding: "9px 14px",
+            background: "none",
+            border: "none",
+            borderBottom: "1px solid var(--color-border)",
+            flexShrink: 0,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              flexShrink: 0,
+              background: (activeSessionInfo?.alive ?? true)
+                ? "var(--color-accent-green)"
+                : "var(--color-subtle)",
+            }}
+          />
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontFamily: "monospace",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-fg)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {activeSessionName || "default"}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--color-muted)",
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {sessionPicker.sessions.length > 1 ? `${sessionPicker.sessions.length} terminals` : "switch"}
+            <span aria-hidden="true">&#9662;</span>
+          </span>
+        </button>
       )}
 
       {/* Content area — swipeable viewport */}
@@ -643,6 +704,16 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
+
+      {/* Terminal session switcher sheet — opened from the session bar */}
+      {sessionSwitcherOpen && (
+        <SessionSwitcherSheet
+          sessions={sessionPicker.sessions}
+          active={activeSessionName}
+          onSelect={onSelectSession}
+          onClose={() => setSessionSwitcherOpen(false)}
+        />
+      )}
 
       {/* Home screen prompt — rendered once, dismissed to localStorage */}
       {showHomeScreenPrompt && <HomeScreenPrompt onDismiss={handleHomeScreenDismiss} />}
