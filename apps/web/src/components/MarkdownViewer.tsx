@@ -374,6 +374,12 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           overflow-wrap: break-word;
           word-break: break-word;
           max-width: 100%;
+          /* Telegram's WebView suppresses selection/callout by default to feel
+             native. The markdown body is read-mode content, so opt back in
+             explicitly — without this, long-press selects nothing. */
+          user-select: text;
+          -webkit-user-select: text;
+          -webkit-touch-callout: default;
         }
         .md-content * {
           max-width: 100%;
@@ -609,6 +615,11 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           gap: 6px;
           border-radius: 3px;
           width: 100%;
+          /* WebKit's UA sheet applies -webkit-user-select:none to <button>.
+             "all: unset" does not dependably restore it, so heading text needs
+             its own declaration to stay selectable like the body. */
+          user-select: text;
+          -webkit-user-select: text;
         }
         .md-content .cpc-fold-label {
           flex: 1 1 auto;
@@ -622,6 +633,9 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           color: var(--color-muted);
           font-size: 10px;
           transition: transform 0.2s ease;
+          /* aria-hidden decoration — keep it out of selected/copied text. */
+          user-select: none;
+          -webkit-user-select: none;
         }
         .md-content .cpc-fold-btn:hover .cpc-toggle-chevron {
           color: var(--color-accent-blue);
