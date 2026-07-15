@@ -248,10 +248,12 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
 
       // Prefer Telegram's native downloader. In its WebView an <a download>
       // only navigates, and the WebView paints the bytes inline as uncopyable
-      // text rather than saving a file (WORLD-375).
-      if (requestTelegramDownload(url, fileName)) return;
+      // text rather than saving a file (WORLD-375). "busy" means Telegram
+      // already has a download popup open from a previous tap, so it owns the
+      // flow too — falling through would reproduce that bug on a double-tap.
+      if (requestTelegramDownload(url, fileName) !== "unsupported") return;
 
-      // Fallback for desktop/browser, where <a download> does save the file.
+      // Fallback for real browsers, where <a download> does save the file.
       // Preferred over window.open("about:blank"), which is popup-blocked.
       const anchor = document.createElement("a");
       anchor.href = url;

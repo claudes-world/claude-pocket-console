@@ -60,29 +60,41 @@ export function getInitData(): string {
 }
 
 /**
- * Hand a download off to Telegram's native file downloader. Returns true when
- * the request was accepted by the SDK (Telegram then shows its own confirm
- * dialog and owns the rest of the flow).
+ * - `handed-off`: Telegram accepted it and now owns the flow (its own confirm
+ *   dialog, its own downloader).
+ * - `busy`: we ARE in a capable Telegram client, but it refused this call right
+ *   now — in practice because a download popup is already open.
+ * - `unsupported`: no Telegram, too old, or a URL its downloader won't take.
+ */
+export type TelegramDownloadOutcome = "handed-off" | "busy" | "unsupported";
+
+/**
+ * Hand a download off to Telegram's native file downloader.
  *
  * Inside Telegram's WebView a `<a download>` navigation does not save the file:
  * the WebView renders the response bytes inline as uncopyable text instead.
  * `downloadFile` is the only path that produces a real file, so callers should
- * prefer it and keep the anchor as a fallback for desktop/browser use.
+ * prefer it and keep the anchor strictly for non-Telegram browsers.
  *
- * Returns false — rather than throwing — whenever the native path is
- * unavailable, because `downloadFile` throws on an unsupported client, a
+ * Never throws, though `downloadFile` does — on an unsupported client, a
  * non-https URL (e.g. local dev over http), or an already-open popup.
+ *
+ * The `busy` case matters: once the capability and https gates pass we know we
+ * are inside a Telegram WebView, where the anchor is broken by definition. A
+ * caller that treated a refusal as "fall back to the anchor" would re-trigger
+ * the very inline-render bug this function exists to avoid — so a throw past
+ * those gates is reported as `busy`, never as `unsupported`.
  */
-export function requestTelegramDownload(url: string, fileName: string): boolean {
+export function requestTelegramDownload(url: string, fileName: string): TelegramDownloadOutcome {
   const tg = getTelegramWebApp();
-  if (typeof tg?.downloadFile !== "function") return false;
-  if (!tg.isVersionAtLeast?.("8.0")) return false;
-  if (!url.startsWith("https:")) return false;
+  if (typeof tg?.downloadFile !== "function") return "unsupported";
+  if (!tg.isVersionAtLeast?.("8.0")) return "unsupported";
+  if (!url.startsWith("https:")) return "unsupported";
   try {
     tg.downloadFile({ url, file_name: fileName });
-    return true;
+    return "handed-off";
   } catch {
-    return false;
+    return "busy";
   }
 }
 

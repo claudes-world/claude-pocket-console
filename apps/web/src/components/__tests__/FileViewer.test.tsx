@@ -337,7 +337,7 @@ describe("FileViewer download (WORLD-375)", () => {
   }
 
   it("offers Telegram an absolute URL carrying the ticket, and stops there", async () => {
-    requestTelegramDownloadMock.mockReturnValue(true);
+    requestTelegramDownloadMock.mockReturnValue("handed-off");
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     await openFileWithDownloadReady();
 
@@ -354,8 +354,8 @@ describe("FileViewer download (WORLD-375)", () => {
     expect(clickSpy).not.toHaveBeenCalled();
   });
 
-  it("falls back to an anchor download when Telegram declines", async () => {
-    requestTelegramDownloadMock.mockReturnValue(false);
+  it("falls back to an anchor download only when Telegram is unsupported", async () => {
+    requestTelegramDownloadMock.mockReturnValue("unsupported");
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     await openFileWithDownloadReady();
 
@@ -369,8 +369,27 @@ describe("FileViewer download (WORLD-375)", () => {
     expect(anchor.href).toContain(`/api/files/download?ticket=${TICKET}`);
   });
 
+  it("does NOT fall back to the anchor when Telegram is busy (double-tap)", async () => {
+    // Regression guard for the codex #331 finding: a second tap while
+    // Telegram's own confirm popup is open makes downloadFile throw. Treating
+    // that as "no Telegram" would run the anchor path inside the WebView and
+    // paint the bytes inline as text — the exact bug WORLD-375 fixes.
+    requestTelegramDownloadMock.mockReturnValue("busy");
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await openFileWithDownloadReady();
+
+    fireEvent.click(screen.getByLabelText("Download file"));
+
+    await waitFor(() => {
+      expect(requestTelegramDownloadMock).toHaveBeenCalledTimes(1);
+    });
+    expect(clickSpy).not.toHaveBeenCalled();
+    // Telegram already has a dialog up; this is not an error state.
+    expect(screen.queryByText(/Download failed/)).not.toBeInTheDocument();
+  });
+
   it("surfaces an error and never downloads when the ticket is refused", async () => {
-    requestTelegramDownloadMock.mockReturnValue(true);
+    requestTelegramDownloadMock.mockReturnValue("handed-off");
     await openFileWithDownloadReady();
 
     fetchMock.mockImplementation(async (url: string) => {
