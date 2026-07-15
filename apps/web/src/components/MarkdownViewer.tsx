@@ -381,6 +381,15 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           -webkit-user-select: text;
           -webkit-touch-callout: default;
         }
+        /* -webkit-touch-callout is inherited, so the rule above would also
+           re-enable iOS's native long-press sheets on links and images. That is
+           a behaviour change this ticket never asked for, and it would fight
+           MarkdownLink, which deliberately routes taps through Telegram's
+           openLink. Hold those two at the ambient default; only text opts in. */
+        .md-content a,
+        .md-content img {
+          -webkit-touch-callout: none;
+        }
         .md-content * {
           max-width: 100%;
           box-sizing: border-box;
@@ -615,9 +624,14 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           gap: 6px;
           border-radius: 3px;
           width: 100%;
-          /* WebKit's UA sheet applies -webkit-user-select:none to <button>.
-             "all: unset" does not dependably restore it, so heading text needs
-             its own declaration to stay selectable like the body. */
+          /* Heading text should be as selectable as the body. The cascade may
+             already achieve this via "all: unset" above — measured true in
+             Blink — but WebKit has a long-standing quirk where native controls
+             resist inherited re-enabling of selection. Unverified there, and
+             re-asserting the value the cascade should already produce costs
+             nothing, so this stays until an on-device check says otherwise.
+             Tap-to-fold is unaffected: long-press on this button did nothing
+             before, so selecting instead is a gain, not a regression. */
           user-select: text;
           -webkit-user-select: text;
         }
