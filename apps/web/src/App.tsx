@@ -358,6 +358,34 @@ export function App() {
     }
   }, []);
 
+  // Telegram fullscreen chrome (the centered island + the Close / collapse /
+  // "⋯" buttons) floats OVER the top of the webview, stomping the app's tab
+  // bar and header (see on-device screenshot 2026-07-15). Pad the whole app
+  // below it. The offset is the device safe area PLUS Telegram's own content
+  // safe area — the band its buttons occupy. `env(safe-area-inset-top)` alone
+  // is NOT enough: Telegram's pills sit AT the device inset, so content padded
+  // only by the device inset still lands under the Close button. Both values
+  // are read straight off the WebApp object (CPC uses the raw WebApp, not the
+  // CSS-var-publishing SDK) and re-read on the change events, since they
+  // resolve asynchronously after requestFullscreen() and update on rotation /
+  // fullscreen toggle. Non-Telegram browsers report 0 → no padding.
+  const [topInset, setTopInset] = useState(0);
+  useEffect(() => {
+    const tg = getTelegramWebApp() as any;
+    if (!tg) return;
+    const readInset = () => {
+      const device = tg.safeAreaInset?.top ?? 0;
+      const content = tg.contentSafeAreaInset?.top ?? 0;
+      setTopInset(device + content);
+    };
+    readInset();
+    const events = ["safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"];
+    if (typeof tg.onEvent === "function") events.forEach((e) => tg.onEvent(e, readInset));
+    return () => {
+      if (typeof tg.offEvent === "function") events.forEach((e) => tg.offEvent(e, readInset));
+    };
+  }, []);
+
   // Telegram Login Widget callback (for fallback auth)
   useEffect(() => {
     if (authed) return;
@@ -475,7 +503,7 @@ export function App() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box", paddingTop: topInset, background: "var(--color-bg)" }}>
       {/* Dev mode banner */}
       {isDev && (
         <div style={{
