@@ -93,7 +93,13 @@ export function requestTelegramDownload(url: string, fileName: string): Telegram
   try {
     tg.downloadFile({ url, file_name: fileName });
     return "handed-off";
-  } catch {
+  } catch (err) {
+    // Deliberately not classified by error content — matching on message text
+    // would be brittle. But that means a throw which is genuinely "this client
+    // won't take this request" is reported as `busy` and does nothing visible.
+    // We cannot see inside Telegram's downloader, so leave a breadcrumb: if a
+    // tap ever appears to do nothing on-device, this is the only evidence.
+    console.debug("[cpc] Telegram declined downloadFile; treating as busy", err);
     return "busy";
   }
 }
