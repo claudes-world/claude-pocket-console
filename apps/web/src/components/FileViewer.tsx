@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { FiDownload } from "react-icons/fi";
-import { getAuthHeaders } from "../lib/telegram";
+import { getAuthHeaders, requestTelegramDownload } from "../lib/telegram";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BottomSheet } from "./BottomSheet";
 import { getFileIcon } from "./file-icons";
@@ -239,10 +239,20 @@ export function FileViewer({ onClose, initialFile, showHidden = false, sortMode 
         throw new Error("Download failed: missing ticket");
       }
 
-      // Use a hidden <a> element with download attribute to trigger the
-      // browser's native download. This works in Telegram WebView where
-      // window.open("about:blank") is blocked as a popup.
-      const url = `/api/files/download?ticket=${encodeURIComponent(data.ticket)}`;
+      // Absolute URL: Telegram's downloader runs outside this document and
+      // rejects anything that isn't a fully-qualified https URL.
+      const url = new URL(
+        `/api/files/download?ticket=${encodeURIComponent(data.ticket)}`,
+        window.location.href,
+      ).href;
+
+      // Prefer Telegram's native downloader. In its WebView an <a download>
+      // only navigates, and the WebView paints the bytes inline as uncopyable
+      // text rather than saving a file (WORLD-375).
+      if (requestTelegramDownload(url, fileName)) return;
+
+      // Fallback for desktop/browser, where <a download> does save the file.
+      // Preferred over window.open("about:blank"), which is popup-blocked.
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = fileName;

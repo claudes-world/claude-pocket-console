@@ -3,8 +3,13 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 // --- Mocks (must be declared before importing FileViewer) ---
 
+const { requestTelegramDownloadMock } = vi.hoisted(() => ({
+  requestTelegramDownloadMock: vi.fn(),
+}));
+
 vi.mock("../../lib/telegram", () => ({
   getAuthHeaders: () => ({ Authorization: "tma test" }),
+  requestTelegramDownload: requestTelegramDownloadMock,
 }));
 
 // Minimal stub for MarkdownViewer (heavy dependency tree)
@@ -286,5 +291,103 @@ describe("middleTruncatePath", () => {
     const path = `/${"a".repeat(58)}/`;
     expect(path).toHaveLength(60);
     expect(middleTruncatePath(path)).toBe(path);
+  });
+});
+
+describe("FileViewer download (WORLD-375)", () => {
+  const TICKET = "a".repeat(32);
+
+  // restoreAllMocks() does not clear a vi.fn(), so call counts would leak
+  // between these tests.
+  beforeEach(() => {
+    requestTelegramDownloadMock.mockReset();
+  });
+
+  /** Open README.md and mock the ticket endpoint, leaving the viewer on-screen. */
+  async function openFileWithDownloadReady() {
+    render(<FileViewer onClose={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("README.md")).toBeInTheDocument();
+    });
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/api/files/download-ticket")) {
+        return { ok: true, json: async () => ({ ticket: TICKET }) };
+      }
+      if (typeof url === "string" && url.includes("/api/files/read")) {
+        return {
+          ok: true,
+          json: async () => ({
+            content: "# Hello World",
+            path: "/home/claude/claudes-world/README.md",
+            name: "README.md",
+          }),
+        };
+      }
+      if (typeof url === "string" && url.includes("/api/terminal/dir-branch")) {
+        return makeDirBranchResponse();
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    fireEvent.click(screen.getByText("README.md"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Download file")).toBeInTheDocument();
+    });
+  }
+
+  it("offers Telegram an absolute URL carrying the ticket, and stops there", async () => {
+    requestTelegramDownloadMock.mockReturnValue(true);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await openFileWithDownloadReady();
+
+    fireEvent.click(screen.getByLabelText("Download file"));
+
+    await waitFor(() => {
+      expect(requestTelegramDownloadMock).toHaveBeenCalledTimes(1);
+    });
+    const [url, name] = requestTelegramDownloadMock.mock.calls[0];
+    // Absolute, not "/api/..." — Telegram's downloader runs outside this document.
+    expect(url).toMatch(new RegExp(`^https?://[^/]+/api/files/download\\?ticket=${TICKET}$`));
+    expect(name).toBe("README.md");
+    // Telegram took it, so the anchor fallback must not also fire.
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to an anchor download when Telegram declines", async () => {
+    requestTelegramDownloadMock.mockReturnValue(false);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await openFileWithDownloadReady();
+
+    fireEvent.click(screen.getByLabelText("Download file"));
+
+    await waitFor(() => {
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    });
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download).toBe("README.md");
+    expect(anchor.href).toContain(`/api/files/download?ticket=${TICKET}`);
+  });
+
+  it("surfaces an error and never downloads when the ticket is refused", async () => {
+    requestTelegramDownloadMock.mockReturnValue(true);
+    await openFileWithDownloadReady();
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/api/files/download-ticket")) {
+        return { ok: false, status: 403, json: async () => ({ error: "path not allowed" }) };
+      }
+      if (typeof url === "string" && url.includes("/api/terminal/dir-branch")) {
+        return makeDirBranchResponse();
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    fireEvent.click(screen.getByLabelText("Download file"));
+
+    await waitFor(() => {
+      expect(screen.getByText("path not allowed")).toBeInTheDocument();
+    });
+    expect(requestTelegramDownloadMock).not.toHaveBeenCalled();
   });
 });
