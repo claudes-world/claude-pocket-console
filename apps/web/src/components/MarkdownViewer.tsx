@@ -374,6 +374,21 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           overflow-wrap: break-word;
           word-break: break-word;
           max-width: 100%;
+          /* Telegram's WebView suppresses selection/callout by default to feel
+             native. The markdown body is read-mode content, so opt back in
+             explicitly — without this, long-press selects nothing. */
+          user-select: text;
+          -webkit-user-select: text;
+          -webkit-touch-callout: default;
+        }
+        /* -webkit-touch-callout is inherited, so the rule above would also
+           re-enable iOS's native long-press sheets on links and images. That is
+           a behaviour change this ticket never asked for, and it would fight
+           MarkdownLink, which deliberately routes taps through Telegram's
+           openLink. Hold those two at the ambient default; only text opts in. */
+        .md-content a,
+        .md-content img {
+          -webkit-touch-callout: none;
         }
         .md-content * {
           max-width: 100%;
@@ -609,6 +624,22 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           gap: 6px;
           border-radius: 3px;
           width: 100%;
+          /* Heading text should be as selectable as the body. "all: unset"
+             above may already achieve that — measured true in Blink — but
+             Blink cannot settle it: this only ever runs in WebKit (Telegram's
+             iOS WKWebView), whose UA sheet forces -webkit-user-select:none on
+             native controls in a way author declarations don't dependably
+             defeat. So this stays as an explicit hedge; where it is redundant
+             it is a proven no-op.
+
+             UNVERIFIED RISK — for the on-device pass, not a settled question:
+             making a tappable control selectable can let iOS's
+             press-and-hold-to-select heuristic engage on a short-but-not-
+             instant tap, swallow the click, and leave tap-to-fold needing a
+             second try. We have no iOS rig here, so this is named rather than
+             dismissed. If folding feels sticky on device, start here. */
+          user-select: text;
+          -webkit-user-select: text;
         }
         .md-content .cpc-fold-label {
           flex: 1 1 auto;
@@ -622,6 +653,9 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           color: var(--color-muted);
           font-size: 10px;
           transition: transform 0.2s ease;
+          /* aria-hidden decoration — keep it out of selected/copied text. */
+          user-select: none;
+          -webkit-user-select: none;
         }
         .md-content .cpc-fold-btn:hover .cpc-toggle-chevron {
           color: var(--color-accent-blue);
