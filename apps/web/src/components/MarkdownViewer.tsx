@@ -624,14 +624,20 @@ export function MarkdownViewer({ content, fileName: _fileName }: MarkdownViewerP
           gap: 6px;
           border-radius: 3px;
           width: 100%;
-          /* Heading text should be as selectable as the body. The cascade may
-             already achieve this via "all: unset" above — measured true in
-             Blink — but WebKit has a long-standing quirk where native controls
-             resist inherited re-enabling of selection. Unverified there, and
-             re-asserting the value the cascade should already produce costs
-             nothing, so this stays until an on-device check says otherwise.
-             Tap-to-fold is unaffected: long-press on this button did nothing
-             before, so selecting instead is a gain, not a regression. */
+          /* Heading text should be as selectable as the body. "all: unset"
+             above may already achieve that — measured true in Blink — but
+             Blink cannot settle it: this only ever runs in WebKit (Telegram's
+             iOS WKWebView), whose UA sheet forces -webkit-user-select:none on
+             native controls in a way author declarations don't dependably
+             defeat. So this stays as an explicit hedge; where it is redundant
+             it is a proven no-op.
+
+             UNVERIFIED RISK — for the on-device pass, not a settled question:
+             making a tappable control selectable can let iOS's
+             press-and-hold-to-select heuristic engage on a short-but-not-
+             instant tap, swallow the click, and leave tap-to-fold needing a
+             second try. We have no iOS rig here, so this is named rather than
+             dismissed. If folding feels sticky on device, start here. */
           user-select: text;
           -webkit-user-select: text;
         }
