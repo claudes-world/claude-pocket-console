@@ -619,6 +619,7 @@ export function App() {
           onTouchStart={(e) => e.stopPropagation()}
         >
           <button
+            type="button"
             data-testid="session-list-button"
             aria-label="Show all sessions in a list"
             onClick={() => { haptic.selection(); setSessionSwitcherOpen(true); }}

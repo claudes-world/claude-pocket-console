@@ -33,6 +33,7 @@ export function SessionSwitcherSheet({ sessions, active, onSelect, onClose }: Se
           return (
             <button
               key={s.name}
+              type="button"
               onClick={() => {
                 haptic.selection();
                 if (!isActive) onSelect(s.writable ? null : s.name);
