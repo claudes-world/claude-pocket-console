@@ -14,6 +14,7 @@ import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { CockpitPage } from "./components/CockpitPage";
 import { VaultExplorerPage } from "./components/VaultExplorerPage";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
+import { SessionSwitcherSheet } from "./components/SessionSwitcherSheet";
 import {
   buildLandingUrl,
   isCockpitRoute,
@@ -141,6 +142,8 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
+  const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const activeSessionName = activeSession ?? defaultSession ?? "";
   const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialRoute.file, sequence: 0 });
   // FileViewer is keyed by this request sequence. Keep the latest request in
   // a ref so callbacks retained by an unmounted viewer cannot publish a late
@@ -354,6 +357,34 @@ export function App() {
     }
   }, []);
 
+  // Telegram fullscreen chrome (the centered island + the Close / collapse /
+  // "⋯" buttons) floats OVER the top of the webview, stomping the app's tab
+  // bar and header (see on-device screenshot 2026-07-15). Pad the whole app
+  // below it. The offset is the device safe area PLUS Telegram's own content
+  // safe area — the band its buttons occupy. `env(safe-area-inset-top)` alone
+  // is NOT enough: Telegram's pills sit AT the device inset, so content padded
+  // only by the device inset still lands under the Close button. Both values
+  // are read straight off the WebApp object (CPC uses the raw WebApp, not the
+  // CSS-var-publishing SDK) and re-read on the change events, since they
+  // resolve asynchronously after requestFullscreen() and update on rotation /
+  // fullscreen toggle. Non-Telegram browsers report 0 → no padding.
+  const [topInset, setTopInset] = useState(0);
+  useEffect(() => {
+    const tg = getTelegramWebApp() as any;
+    if (!tg) return;
+    const readInset = () => {
+      const device = tg.safeAreaInset?.top ?? 0;
+      const content = tg.contentSafeAreaInset?.top ?? 0;
+      setTopInset(device + content);
+    };
+    readInset();
+    const events = ["safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"];
+    if (typeof tg.onEvent === "function") events.forEach((e) => tg.onEvent(e, readInset));
+    return () => {
+      if (typeof tg.offEvent === "function") events.forEach((e) => tg.offEvent(e, readInset));
+    };
+  }, []);
+
   // Telegram Login Widget callback (for fallback auth)
   useEffect(() => {
     if (authed) return;
@@ -471,7 +502,7 @@ export function App() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box", paddingTop: topInset, background: "var(--color-bg)" }}>
       {/* Dev mode banner */}
       {isDev && (
         <div style={{
@@ -568,18 +599,53 @@ export function App() {
         </div>
       )}
 
-      {/* Session picker — terminal tab only. Visibility + session list
-          (including the stale-deep-link escape hatch) are decided by
-          resolveSessionPickerProps — see its docstring for the round-2
-          (PR #299) fix: an earlier inline `sessionList.length > 0` guard
-          hid the picker entirely whenever /api/terminal/sessions failed
-          while a stale session was active, stranding the user. */}
+      {/* Session switcher row — terminal tab only. Liam's design (2026-07-15):
+          BOTH a horizontal sliding chip strip (quick one-tap select) AND a
+          list-view button on its left that opens the full session list
+          (SessionSwitcherSheet). Visibility + session list (including the
+          stale-deep-link escape hatch) are decided by resolveSessionPickerProps
+          — see its docstring for the round-2 (PR #299) fix: an earlier inline
+          `sessionList.length > 0` guard hid the picker entirely whenever
+          /api/terminal/sessions failed while a stale session was active,
+          stranding the user. */}
       {activeTab === "terminal" && sessionPicker.visible && (
-        <SessionPicker
-          sessions={sessionPicker.sessions}
-          active={activeSession ?? defaultSession ?? ""}
-          onSelect={onSelectSession}
-        />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            borderBottom: "1px solid var(--color-border)",
+            flexShrink: 0,
+          }}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            data-testid="session-list-button"
+            aria-label="Show all sessions in a list"
+            onClick={() => { haptic.selection(); setSessionSwitcherOpen(true); }}
+            style={{
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 13px",
+              background: "none",
+              border: "none",
+              borderRight: "1px solid var(--color-border)",
+              cursor: "pointer",
+              color: "var(--color-muted)",
+              fontSize: 15,
+              lineHeight: 1,
+            }}
+          >
+            <span aria-hidden="true">&#9776;</span>
+          </button>
+          <SessionPicker
+            sessions={sessionPicker.sessions}
+            active={activeSessionName}
+            onSelect={onSelectSession}
+          />
+        </div>
       )}
 
       {/* Content area — swipeable viewport */}
@@ -643,6 +709,16 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
+
+      {/* Terminal session switcher sheet — opened from the session bar */}
+      {sessionSwitcherOpen && (
+        <SessionSwitcherSheet
+          sessions={sessionPicker.sessions}
+          active={activeSessionName}
+          onSelect={onSelectSession}
+          onClose={() => setSessionSwitcherOpen(false)}
+        />
+      )}
 
       {/* Home screen prompt — rendered once, dismissed to localStorage */}
       {showHomeScreenPrompt && <HomeScreenPrompt onDismiss={handleHomeScreenDismiss} />}

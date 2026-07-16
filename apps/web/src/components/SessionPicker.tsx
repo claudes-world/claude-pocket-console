@@ -36,8 +36,12 @@ export function SessionPicker({ sessions, active, onSelect }: SessionPickerProps
         gap: 6,
         padding: "6px 12px",
         overflowX: "auto",
-        borderBottom: "1px solid var(--color-border)",
-        flexShrink: 0,
+        // Fills the row to the right of the list-view button (App.tsx owns the
+        // row's bottom border). flex:1 + minWidth:0 lets the strip scroll
+        // horizontally within the remaining width instead of pushing the button
+        // off-screen.
+        flex: 1,
+        minWidth: 0,
         // Momentum scrolling in the Telegram WebView
         WebkitOverflowScrolling: "touch",
       }}
