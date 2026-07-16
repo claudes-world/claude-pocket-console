@@ -102,4 +102,4 @@ Browser testing is not sufficient. You must verify:
 - Safe area insets are respected on devices with notches
 - Touch events do not leak to tab-swipe or other handlers
 
-Use `cpc-dev.claude.do` for testing before deploying to production.
+Use `cpc.claude.do/dev/` for testing before deploying to production.
