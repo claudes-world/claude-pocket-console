@@ -13,7 +13,7 @@ import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { CockpitPage } from "./components/CockpitPage";
 import { VaultExplorerPage } from "./components/VaultExplorerPage";
-import { type TmuxSessionInfo } from "./components/SessionPicker";
+import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
 import { SessionSwitcherSheet } from "./components/SessionSwitcherSheet";
 import {
   buildLandingUrl,
@@ -144,7 +144,6 @@ export function App() {
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const activeSessionName = activeSession ?? defaultSession ?? "";
-  const activeSessionInfo = sessionPicker.sessions.find((s) => s.name === activeSessionName);
   const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialRoute.file, sequence: 0 });
   // FileViewer is keyed by this request sequence. Keep the latest request in
   // a ref so callbacks retained by an unmounted viewer cannot publish a late
@@ -600,75 +599,52 @@ export function App() {
         </div>
       )}
 
-      {/* Session bar — terminal tab only. A single big-tap-target row showing
-          the active session; tapping opens the SessionSwitcherSheet (a
-          bottom-sheet picker with full-width rows). Replaces the old cramped
-          horizontal chip strip (SessionPicker). Visibility + session list
-          (including the stale-deep-link escape hatch) are still decided by
-          resolveSessionPickerProps — see its docstring for the round-2
-          (PR #299) fix: an earlier inline `sessionList.length > 0` guard
-          hid the picker entirely whenever /api/terminal/sessions failed
-          while a stale session was active, stranding the user. */}
+      {/* Session switcher row — terminal tab only. Liam's design (2026-07-15):
+          BOTH a horizontal sliding chip strip (quick one-tap select) AND a
+          list-view button on its left that opens the full session list
+          (SessionSwitcherSheet). Visibility + session list (including the
+          stale-deep-link escape hatch) are decided by resolveSessionPickerProps
+          — see its docstring for the round-2 (PR #299) fix: an earlier inline
+          `sessionList.length > 0` guard hid the picker entirely whenever
+          /api/terminal/sessions failed while a stale session was active,
+          stranding the user. */}
       {activeTab === "terminal" && sessionPicker.visible && (
-        <button
-          data-testid="session-bar"
-          onClick={() => { haptic.selection(); setSessionSwitcherOpen(true); }}
-          onTouchStart={(e) => e.stopPropagation()}
+        <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 8,
-            width: "100%",
-            padding: "9px 14px",
-            background: "none",
-            border: "none",
+            alignItems: "stretch",
             borderBottom: "1px solid var(--color-border)",
             flexShrink: 0,
-            cursor: "pointer",
-            textAlign: "left",
           }}
+          onTouchStart={(e) => e.stopPropagation()}
         >
-          <span
-            aria-hidden="true"
+          <button
+            data-testid="session-list-button"
+            aria-label="Show all sessions in a list"
+            onClick={() => { haptic.selection(); setSessionSwitcherOpen(true); }}
             style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              flexShrink: 0,
-              background: (activeSessionInfo?.alive ?? true)
-                ? "var(--color-accent-green)"
-                : "var(--color-subtle)",
-            }}
-          />
-          <span
-            style={{
-              flex: 1,
-              minWidth: 0,
-              fontFamily: "monospace",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--color-fg)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {activeSessionName || "default"}
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--color-muted)",
               flexShrink: 0,
               display: "inline-flex",
               alignItems: "center",
-              gap: 4,
+              justifyContent: "center",
+              padding: "0 13px",
+              background: "none",
+              border: "none",
+              borderRight: "1px solid var(--color-border)",
+              cursor: "pointer",
+              color: "var(--color-muted)",
+              fontSize: 15,
+              lineHeight: 1,
             }}
           >
-            {sessionPicker.sessions.length > 1 ? `${sessionPicker.sessions.length} terminals` : "switch"}
-            <span aria-hidden="true">&#9662;</span>
-          </span>
-        </button>
+            <span aria-hidden="true">&#9776;</span>
+          </button>
+          <SessionPicker
+            sessions={sessionPicker.sessions}
+            active={activeSessionName}
+            onSelect={onSelectSession}
+          />
+        </div>
       )}
 
       {/* Content area — swipeable viewport */}
