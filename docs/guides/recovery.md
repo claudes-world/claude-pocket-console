@@ -72,29 +72,28 @@ If the Telegram plugin is misbehaving (duplicate messages, missed messages):
 
 If the Telegram keyboard buttons disappear:
 
-```bash
-# Source credentials
-. ~/code/toolbox/hooks/common.sh
+Do NOT hand-roll the keyboard JSON. The Develop and Voice buttons carry a
+short-lived signed auth token in their URLs — a hardcoded copy has no token, so
+the app opens but the terminal cannot authenticate and shows "disconnected".
+Build the markup with the canonical helper instead:
 
-# Re-send the keyboard
+```bash
+# Source credentials + the canonical keyboard builder
+. ~/code/toolbox/hooks/common.sh
+. ~/code/toolbox/hooks/lib/launcher-keyboard.sh
+
+# Re-send the exact keyboard launcher-hook sends, with a fresh auth token
 curl -s -X POST "https://api.telegram.org/bot${BOTTOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
-  -d '{
-    "chat_id": "'${TELEGRAM_CHAT_ID}'",
-    "text": "Keyboard restored.",
-    "reply_markup": {
-      "keyboard": [
-        [
-          {"text": "Actions"},
-          {"text": "Develop", "web_app": {"url": "https://cpc-dev.claude.do"}},
-          {"text": "Voice", "web_app": {"url": "https://cpc.claude.do/#voice"}}
-        ]
-      ],
-      "resize_keyboard": true,
-      "is_persistent": true
-    }
-  }'
+  -d "$(jq -n \
+        --arg chat_id "$TELEGRAM_CHAT_ID" \
+        --arg text "Keyboard restored." \
+        --argjson reply_markup "$(build_launcher_reply_markup "$TELEGRAM_CHAT_ID" "$BOTTOKEN")" \
+        '{chat_id: $chat_id, text: $text, reply_markup: $reply_markup}')"
 ```
+
+`build_launcher_reply_markup` (in `~/code/toolbox/hooks/lib/launcher-keyboard.sh`)
+is the single source of truth for the button set and their URLs.
 
 Or simply start a new Claude Code session -- `launcher-hook` will restore
 the keyboard automatically.

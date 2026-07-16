@@ -110,7 +110,7 @@ Read what you need for your current task. Start with the closest AGENTS.md.
 |--------------------|----------------------------------------------|
 | Server port        | `38830`                                      |
 | Prod tunnel        | `https://cpc.claude.do`                      |
-| Dev tunnel         | `https://cpc-dev.claude.do`                  |
+| Dev slot           | `https://cpc.claude.do/dev/` (a PATH, not a subdomain) |
 | Bot token env      | `TELEGRAM_BOT_TOKEN` in `~/.secrets/cpc.env` |
 | OpenAI key         | `OPENAI_API_KEY` in `~/.secrets/openai.env`  |
 | Allowed users      | `ALLOWED_TELEGRAM_USERS` in `~/.secrets/cpc.env` |

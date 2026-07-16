@@ -82,5 +82,5 @@ if (tg?.safeAreaInset?.bottom) setBottomOffset(tg.safeAreaInset.bottom);
 const isDev = window.location.hostname.includes("cpc-dev");
 ```
 
-When running on `cpc-dev.claude.do`, a yellow "DEVELOPMENT" banner appears
+When running on `cpc.claude.do/dev/`, a yellow "DEVELOPMENT" banner appears
 at the top of the app.

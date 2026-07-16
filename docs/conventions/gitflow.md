@@ -33,6 +33,6 @@
 ## Deploy Flow
 
 1. Work on `dev` or `feat/*` branch
-2. Test via `cpc-dev.claude.do`
+2. Test via `cpc.claude.do/dev/`
 3. Merge to `main` when ready
 4. Use `/deploy` skill to build and ship
