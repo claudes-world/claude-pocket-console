@@ -16,13 +16,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *     with NO existence probe.
  *
  * Also: /restart-session and /resize-terminal remain default-session-only —
- * they ignore a `session` field entirely (never probe, never retarget).
+ * they ignore a `session` field entirely (never retarget).
+ *
+ * /restart-session (WORLD-415) finds the orchestrator by ROLE — the pane
+ * cw-launch tags `@cpc-role=orchestrator` — and never by position, because
+ * `renumber-windows` is on and indices are reassigned when a window dies. It
+ * respawns that pane if present, else cold-starts via cw-launch. Neither the
+ * role lookup nor the cold start ever touches a client-supplied name, and
+ * neither ever kills a pane it cannot identify.
  */
 
 const execFileCalls: { cmd: string; args: string[] }[] = [];
 const execCalls: string[] = [];
 /** Session names `tmux has-session` should report as existing. */
 let existingSessions = new Set<string>();
+/**
+ * Panes in the fake tmux session: [pane_id, @cpc-role]. An empty role is an
+ * untagged pane (an SSH tab, a split). Mirrors real tmux, where an unset pane
+ * option formats as the empty string.
+ */
+let sessionPanes: [string, string][] = [["%1", "orchestrator"]];
 
 const execFileMock = vi.fn((...fnArgs: any[]) => {
   const cmd = fnArgs[0] as string;
@@ -36,6 +49,47 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
       return { kill: () => {} } as any;
     }
   }
+  // Renders the requested -F fields per pane. Only the two formats the handler
+  // uses are modelled. An unset @cpc-role formats as "" (real tmux behaviour),
+  // which is what makes the "untagged panes must never be a candidate" tests
+  // meaningful.
+  // Models `if-shell -F -t <pane> '#{==:#{@cpc-role},X}' <then> <else>`: tmux
+  // evaluates the role AT DISPATCH TIME inside its own command queue. Crucially
+  // it re-reads sessionPanes now, so a role changed after the lookup is seen —
+  // that is the whole point of the atomic form. Exits 0 either way; the else
+  // branch prints its marker to stdout.
+  if (args[0] === "if-shell") {
+    const pane = args[args.indexOf("-t") + 1];
+    const cond = args[args.indexOf("-t") + 2] || "";
+    const thenCmd = args[args.indexOf("-t") + 3] || "";
+    const elseCmd = args[args.indexOf("-t") + 4] || "";
+    const want = cond.match(/^#\{==:#\{@cpc-role\},(.*)\}$/)?.[1];
+    const role = sessionPanes.find(([id]) => id === pane)?.[1];
+    if (role !== undefined && role === want) {
+      ifShellRan.push(thenCmd);
+      callback?.(null, { stdout: "", stderr: "" });
+    } else {
+      callback?.(null, { stdout: elseCmd.replace(/^display-message -p /, "") + "\n", stderr: "" });
+    }
+    return { kill: () => {} } as any;
+  }
+  if (args[0] === "list-panes") {
+    const format = args[args.indexOf("-F") + 1] || "";
+    const fIdx = args.indexOf("-f");
+    const filter = fIdx === -1 ? null : args[fIdx + 1] || "";
+    // Model tmux's `-f '#{==:#{@cpc-role},X}'`: an EXACT comparison of the raw
+    // option value. No trimming, no normalisation — a role of "orchestrator "
+    // is simply not equal to "orchestrator". That exactness is the whole point:
+    // client-side parsing kept smuggling near-misses through.
+    const match = filter?.match(/^#\{==:#\{@cpc-role\},(.*)\}$/);
+    const rows = sessionPanes
+      .filter(([, role]) => (match ? role === match[1] : true))
+      .map(([paneId, role]) =>
+        format.replace("#{@cpc-role}", role).replace("#{pane_id}", paneId),
+      );
+    callback?.(null, { stdout: rows.join("\n") + (rows.length ? "\n" : ""), stderr: "" });
+    return { kill: () => {} } as any;
+  }
   callback?.(null, { stdout: "", stderr: "" });
   return { kill: () => {} } as any;
 });
@@ -47,9 +101,48 @@ const execMock = vi.fn((...fnArgs: any[]) => {
   return { kill: () => {} } as any;
 });
 
+/**
+ * Cold start spawns the launcher detached. The fake launcher does what the real
+ * one does — makes the session exist — so `coldStartDetached`'s confirm poll
+ * can succeed. `unref` is asserted on: forgetting it would keep the request's
+ * event loop tied to a process that runs for up to 300s.
+ */
+/** `then` commands that if-shell actually dispatched. */
+const ifShellRan: string[] = [];
+const spawnCalls: { cmd: string; opts: any; unrefCalled: boolean }[] = [];
+const spawnMock = vi.fn((cmd: string, _args: string[], opts: any) => {
+  const record = { cmd, opts, unrefCalled: false };
+  spawnCalls.push(record);
+  const handlers: Record<string, ((arg?: any) => void)[]> = {};
+  const child: any = {
+    unref: () => { record.unrefCalled = true; },
+    once: (ev: string, fn: (arg?: any) => void) => { (handlers[ev] ||= []).push(fn); return child; },
+  };
+  // Real spawn signals success/failure ASYNCHRONOUSLY, via 'spawn'/'error' —
+  // it does not throw. Modelling that is what lets the missing-binary test
+  // prove we attach a listener instead of crashing the process.
+  queueMicrotask(() => {
+    if (launcherOutcome === "spawn-error") {
+      handlers["error"]?.forEach((fn) => fn(Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" })));
+      return;
+    }
+    if (launcherOutcome === "starts-orchestrator") {
+      existingSessions.add(TMUX_SESSION);
+      sessionPanes = [["%200", "orchestrator"]];
+    } else if (launcherOutcome === "noop-session-occupied") {
+      // cw-launch is attach-or-start: a live session means "nothing to do", so
+      // an occupied-but-orchestrator-less session gets NO new orchestrator.
+      existingSessions.add(TMUX_SESSION);
+    }
+    handlers["spawn"]?.forEach((fn) => fn());
+  });
+  return child;
+});
+let launcherOutcome: "starts-orchestrator" | "noop-session-occupied" | "fails" | "spawn-error" = "starts-orchestrator";
+
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-  return { ...actual, execFile: execFileMock, exec: execMock };
+  return { ...actual, execFile: execFileMock, exec: execMock, spawn: spawnMock };
 });
 
 vi.mock("../utils.js", async () => {
@@ -69,8 +162,13 @@ beforeEach(() => {
   execFileCalls.length = 0;
   execCalls.length = 0;
   existingSessions = new Set();
+  sessionPanes = [["%1", "orchestrator"]];
+  launcherOutcome = "starts-orchestrator";
+  spawnCalls.length = 0;
+  ifShellRan.length = 0;
   execFileMock.mockClear();
   execMock.mockClear();
+  spawnMock.mockClear();
 });
 
 async function post(path: string, body?: unknown) {
@@ -228,10 +326,210 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(execCalls.some((cmd) => cmd.includes(`resize-window -t ${TMUX_SESSION}`))).toBe(true);
   });
 
-  it("/restart-session never probes or retargets", async () => {
-    const { status } = await post("/restart-session", { session: "do-box--lane-a" });
+  it("/restart-session never retargets: a client session field is ignored entirely", async () => {
+    existingSessions.add(TMUX_SESSION);
+    const { status, body } = await post("/restart-session", { session: "do-box--lane-a" });
     expect(status).toBe(200);
-    expect(probeCalls()).toHaveLength(0);
-    expect(execCalls.some((cmd) => cmd.includes(`kill-session -t ${TMUX_SESSION}`))).toBe(true);
+    expect(body.path).toBe("respawned-tagged-pane");
+    // The probe is the default session's own liveness check — never the client's.
+    expect(probeCalls().map((c) => c.args)).toEqual([["has-session", "-t", `=${TMUX_SESSION}`]]);
+    expect(execFileCalls.some((c) => c.args.some((a) => a.includes("do-box--lane-a")))).toBe(false);
   });
+
+  it("/restart-session respawns the pane tagged @cpc-role=orchestrator, by pane id", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%9", ""], ["%183", "orchestrator"], ["%12", ""]];
+
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(200);
+    expect(body.path).toBe("respawned-tagged-pane");
+    expect(ifShellRan).toEqual(["respawn-pane -k -t %183"]);
+    // tmux does the exact match; we only ever receive pane ids.
+    expect(execFileCalls.find((c) => c.args[0] === "list-panes")?.args).toEqual([
+      "list-panes", "-s", "-t", `=${TMUX_SESSION}`,
+      "-F", "#{pane_id}", "-f", "#{==:#{@cpc-role},orchestrator}",
+    ]);
+  });
+
+  /**
+   * `@cpc-role` is a user-settable tmux option and its value can contain
+   * spaces (verified: `set-option -p @cpc-role "orchestrator x"` renders as
+   * `orchestrator x %229`). With a role-FIRST format the split yielded
+   * paneId="x". pane_id can never contain a space, so it must lead.
+   * A role that merely starts with "orchestrator" is not the role.
+   */
+  it.each([
+    ["a spaced value", "orchestrator x"],
+    ["a trailing space", "orchestrator "],   // codex r3 HIGH: line.trim() collapsed this into a match
+    ["a leading space", " orchestrator"],
+    ["a trailing tab", "orchestrator\t"],
+  ])("/restart-session does not treat %s as the orchestrator role", async (_label, role) => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%229", role]];
+
+    const { body } = await post("/restart-session");
+    // No exact-role pane => nothing to respawn => cold start, not a mis-parse.
+    expect(ifShellRan).toHaveLength(0);
+    expect(body.path).toBe("cold-started-fresh");
+  });
+
+  /**
+   * codex r3 MEDIUM. spawn() reports a missing/non-executable binary via an
+   * ASYNC 'error' event, not a throw. Unhandled, that is an uncaughtException
+   * and the whole CPC server dies — pressing Restart would kill the console
+   * itself. Verified against real node: spawn("/nonexistent") reaches
+   * uncaughtException with ENOENT. Must be a clean 500 for the one request.
+   */
+  it("/restart-session surfaces a launcher spawn error as a 500 instead of crashing the server", async () => {
+    launcherOutcome = "spawn-error";
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(500);
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/cannot launch/);
+    expect(body.error).toMatch(/ENOENT|spawn/);
+  }, 15_000);
+
+  /**
+   * The button must keep working, not work once. respawn-pane reuses the SAME
+   * pane, so its @cpc-role option survives (verified live: 5 consecutive presses
+   * each restarted the process, tag intact throughout). If a respawn ever
+   * dropped the tag, press 2 would find no candidate, cold-start, hit
+   * cw-launch's attach-or-start no-op, and 500 forever after.
+   */
+  it("/restart-session stays on the respawn path across repeated presses", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%183", "orchestrator"]];
+
+    for (let i = 0; i < 3; i++) {
+      const { status, body } = await post("/restart-session");
+      expect(status).toBe(200);
+      expect(body.path).toBe("respawned-tagged-pane");
+    }
+    expect(ifShellRan).toEqual([
+      "respawn-pane -k -t %183", "respawn-pane -k -t %183", "respawn-pane -k -t %183",
+    ]);
+    expect(spawnCalls).toHaveLength(0); // never falls through to a cold start
+  });
+
+  /**
+   * codex r4 HIGH — the fifth wrong-action bug. The role check goes stale:
+   * `respawn-pane -k -t %183` kills by pane id and never re-reads the tag, so a
+   * pane that stopped qualifying between lookup and respawn got killed anyway,
+   * ok:true. Verified live: revoking @cpc-role then respawning by id still
+   * killed the pane — the old comment's claim that tmux would error was false.
+   *
+   * `if-shell -F` re-evaluates the role inside tmux's own command queue, so it
+   * cannot go stale. It exits 0 either way, hence the else-branch marker: a
+   * silent refusal would otherwise be reported as a successful restart.
+   */
+  it("/restart-session does not kill a pane that stopped claiming the role after lookup", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%183", "orchestrator"]];
+
+    // The role is revoked after orchestratorPane() resolves but before respawn —
+    // the TOCTOU window. list-panes still reports %183; if-shell must not fire.
+    const original = execFileMock.getMockImplementation()!;
+    execFileMock.mockImplementation(((...a: any[]) => {
+      const out = original(...a);
+      if (a[1]?.[0] === "list-panes") sessionPanes = [["%183", "revoked"]];
+      return out;
+    }) as any);
+
+    const { status, body } = await post("/restart-session");
+    expect(ifShellRan).toHaveLength(0);            // never killed it
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/stopped claiming @cpc-role/);
+  });
+
+  it("/restart-session refuses to guess when two panes claim the role", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%1", "orchestrator"], ["%2", "orchestrator"]];
+
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/ambiguous: 2 panes claim/);
+    expect(ifShellRan).toHaveLength(0);
+    expect(spawnCalls).toHaveLength(0);
+  });
+
+  /**
+   * PR #335 rounds 1+2 — both wrong-kill bugs in one assertion. Positional
+   * targeting killed a bystander (the selected window; then the SSH tab that
+   * inherited slot 1 after the orchestrator's window died) while the
+   * orchestrator went unrestarted and the call still returned ok:true.
+   * renumber-windows is ON globally, so index is never identity: an untagged
+   * pane must NEVER be a respawn candidate, whatever slot it occupies.
+   */
+  it("/restart-session never kills an untagged pane — it cold-starts instead", async () => {
+    existingSessions.add(TMUX_SESSION);
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%77", ""]]; // orchestrator window died; only an SSH tab survives
+
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(200);
+    expect(ifShellRan).toHaveLength(0);
+    expect(body.path).toBe("cold-started-fresh");
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  /**
+   * WORLD-415 regression. The old handler killed the session and rebuilt the
+   * claude command inline; that copy drifted from cw-launch and silently
+   * restarted the orchestrator into a week-old session.
+   */
+  it("/restart-session never reconstructs a claude launch command", async () => {
+    existingSessions.add(TMUX_SESSION);
+    await post("/restart-session");
+    const issued = [...execCalls, ...execFileCalls.flatMap((c) => [c.cmd, ...c.args])].join(" ");
+    expect(issued).not.toContain("kill-session");
+    expect(issued).not.toContain("new-session");
+    expect(issued).not.toContain("claude-plugins-official");
+    expect(issued).not.toContain("--continue");
+  });
+
+  it("/restart-session cold-starts detached via the launcher when the session is gone", async () => {
+    // existingSessions empty → has-session fails → no pane can be tagged.
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(200);
+    expect(body.path).toBe("cold-started-fresh");
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0]?.cmd.endsWith("cw-launch")).toBe(true);
+    // Detached + unref'd, or the request stays tethered to cw-boot-confirm's
+    // 300s loop; and create-only — a cold start must never kill anything.
+    expect(spawnCalls[0]?.opts?.detached).toBe(true);
+    expect(spawnCalls[0]?.unrefCalled).toBe(true);
+    expect(ifShellRan).toHaveLength(0);
+    expect(execFileCalls.some((c) => ["respawn-pane", "kill-session", "kill-pane"].includes(c.args[0]!))).toBe(false);
+  });
+
+  // Deliberately outlasts COLD_START_CONFIRM_MS (5s): this test exercises the
+  // real confirm poll expiring, so it needs more headroom than vitest's default.
+  it("/restart-session reports 500 when the launcher never starts anything", async () => {
+    launcherOutcome = "fails";
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(500);
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/did not produce an orchestrator pane/);
+  }, 15_000);
+
+  /**
+   * Confirming a cold start on SESSION existence would report a phantom
+   * success here: cw-launch is attach-or-start, so an occupied session with no
+   * orchestrator makes it no-op and start nothing — while `has-session` says
+   * true the whole time. Observed live before the confirm was tightened:
+   * `{"path":"cold-started-fresh"}` with no orchestrator pane in existence.
+   * The confirm must check the TAGGED PANE, and this case must fail loudly.
+   */
+  it("/restart-session does not report a phantom cold start when the session is occupied but orchestrator-less", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%77", ""]];      // SSH tab holding the session open
+    launcherOutcome = "noop-session-occupied";
+
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/did not produce an orchestrator pane/);
+    // Never kills the bystander to force a cold start.
+    expect(ifShellRan).toHaveLength(0);
+    expect(execFileCalls.some((c) => ["respawn-pane", "kill-session", "kill-pane"].includes(c.args[0]!))).toBe(false);
+  }, 15_000);
 });
