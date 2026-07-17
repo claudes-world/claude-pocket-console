@@ -53,15 +53,34 @@ const tmuxTracer = getTracer('cpc-server-tmux');
 async function orchestratorPane(session: string): Promise<string | null> {
   const { stdout } = await execFileAsync(
     "tmux",
-    ["list-panes", "-s", "-t", `=${session}`, "-F", "#{@cpc-role} #{pane_id}"],
+    // pane_id FIRST: @cpc-role is a user-settable option whose value may contain
+    // spaces, so it has to be the trailing field or it shifts the parse. (With
+    // role first, `@cpc-role="orchestrator x"` yields paneId="x".) Pane ids never
+    // contain spaces, so token 0 is always unambiguous and the role is the rest.
+    ["list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_id} #{@cpc-role}"],
     { timeout: TMUX_TIMEOUT_MS },
   );
   const tagged = stdout
     .split("\n")
-    .map((line) => line.trim().split(" "))
-    .filter(([role, paneId]) => role === ORCHESTRATOR_ROLE && paneId)
-    .map(([, paneId]) => paneId!);
-  return tagged[0] ?? null;
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [paneId, ...role] = line.split(" ");
+      return { paneId, role: role.join(" ") };
+    })
+    .filter((p) => p.paneId && p.role === ORCHESTRATOR_ROLE);
+
+  // Ambiguity fails loud. Nothing legitimate produces two orchestrators in one
+  // session — cw-launch tags exactly one pane and splits do not inherit pane
+  // options (verified). If it happens anyway, something is wrong that we cannot
+  // reason about, and guessing is how this endpoint shipped three wrong-kills.
+  if (tagged.length > 1) {
+    throw new Error(
+      `ambiguous: ${tagged.length} panes claim @cpc-role=${ORCHESTRATOR_ROLE} in tmux session ${session}` +
+        ` (${tagged.map((p) => p.paneId).join(", ")}) — refusing to guess which is the orchestrator`,
+    );
+  }
+  return tagged[0]?.paneId ?? null;
 }
 
 /**

@@ -56,6 +56,9 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
   if (args[0] === "list-panes") {
     const format = args[args.indexOf("-F") + 1] || "";
     const rows = sessionPanes.map(([paneId, role]) =>
+      // Substitute verbatim, exactly as tmux does — including role values that
+      // contain spaces. Faithfulness here is the point: a role-first format
+      // mis-parses such a value, and this mock must be able to expose that.
       format
         .replace("#{@cpc-role}", role)
         .replace("#{pane_id}", paneId),
@@ -301,10 +304,38 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
       "respawn-pane", "-k", "-t", "%183",
     ]);
-    // Role lookup must be session-wide and ask for the role + pane id only.
+    // Session-wide, and pane_id FIRST — see the spaced-role test below.
     expect(execFileCalls.find((c) => c.args[0] === "list-panes")?.args).toEqual([
-      "list-panes", "-s", "-t", `=${TMUX_SESSION}`, "-F", "#{@cpc-role} #{pane_id}",
+      "list-panes", "-s", "-t", `=${TMUX_SESSION}`, "-F", "#{pane_id} #{@cpc-role}",
     ]);
+  });
+
+  /**
+   * `@cpc-role` is a user-settable tmux option and its value can contain
+   * spaces (verified: `set-option -p @cpc-role "orchestrator x"` renders as
+   * `orchestrator x %229`). With a role-FIRST format the split yielded
+   * paneId="x". pane_id can never contain a space, so it must lead.
+   * A role that merely starts with "orchestrator" is not the role.
+   */
+  it("/restart-session does not treat a spaced role value as the orchestrator", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%229", "orchestrator x"]];
+
+    const { body } = await post("/restart-session");
+    // No exact-role pane => nothing to respawn => cold start, not a mis-parse.
+    expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
+    expect(body.path).toBe("cold-started-fresh");
+  });
+
+  it("/restart-session refuses to guess when two panes claim the role", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%1", "orchestrator"], ["%2", "orchestrator"]];
+
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/ambiguous: 2 panes claim/);
+    expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
+    expect(spawnCalls).toHaveLength(0);
   });
 
   /**
