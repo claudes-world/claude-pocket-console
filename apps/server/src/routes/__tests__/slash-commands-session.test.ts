@@ -248,6 +248,14 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
       "respawn-pane", "-k", "-t", `${TMUX_SESSION}:1.1`,
     ]);
+    // Pin the lookup argv: without `-f #{pane_active}` a multi-pane session
+    // lists every pane and we would respawn whichever sorted first.
+    expect(execFileCalls.find((c) => c.args[0] === "list-panes")?.args).toEqual([
+      "list-panes",
+      "-t", `=${TMUX_SESSION}`,
+      "-F", "#{session_name}:#{window_index}.#{pane_index}",
+      "-f", "#{pane_active}",
+    ]);
   });
 
   /**
