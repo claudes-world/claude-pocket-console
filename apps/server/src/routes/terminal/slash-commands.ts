@@ -64,6 +64,12 @@ async function orchestratorPane(session: string): Promise<string | null> {
       // match, promoting a NON-orchestrator pane into a respawn candidate).
       // `#{==:...}` compares the raw value, so none of that is reachable, and
       // pane ids can't be mis-parsed.
+      //
+      // It also means the untrusted value never reaches our stdout at all, so
+      // it cannot inject. Verified against tmux 3.5a, with the value set to:
+      // `#{pane_id}` (renders literally — tmux does not re-expand option
+      // values), an embedded newline (no extra output line), and `#{==:1,1}`
+      // (no match). In every case only the genuinely-tagged pane came back.
       "-F", "#{pane_id}",
       "-f", `#{==:#{@cpc-role},${ORCHESTRATOR_ROLE}}`,
     ],
