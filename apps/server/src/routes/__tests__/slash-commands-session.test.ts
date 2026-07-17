@@ -368,6 +368,27 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(body.error).toMatch(/ENOENT|spawn/);
   }, 15_000);
 
+  /**
+   * The button must keep working, not work once. respawn-pane reuses the SAME
+   * pane, so its @cpc-role option survives (verified live: 5 consecutive presses
+   * each restarted the process, tag intact throughout). If a respawn ever
+   * dropped the tag, press 2 would find no candidate, cold-start, hit
+   * cw-launch's attach-or-start no-op, and 500 forever after.
+   */
+  it("/restart-session stays on the respawn path across repeated presses", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%183", "orchestrator"]];
+
+    for (let i = 0; i < 3; i++) {
+      const { status, body } = await post("/restart-session");
+      expect(status).toBe(200);
+      expect(body.path).toBe("respawned-tagged-pane");
+    }
+    expect(execFileCalls.filter((c) => c.args[0] === "respawn-pane").map((c) => c.args[3]))
+      .toEqual(["%183", "%183", "%183"]);
+    expect(spawnCalls).toHaveLength(0); // never falls through to a cold start
+  });
+
   it("/restart-session refuses to guess when two panes claim the role", async () => {
     existingSessions.add(TMUX_SESSION);
     sessionPanes = [["%1", "orchestrator"], ["%2", "orchestrator"]];
