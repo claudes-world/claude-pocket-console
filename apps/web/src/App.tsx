@@ -15,6 +15,7 @@ import { CockpitPage } from "./components/CockpitPage";
 import { VaultExplorerPage } from "./components/VaultExplorerPage";
 import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
 import { SessionSwitcherSheet } from "./components/SessionSwitcherSheet";
+import { VersionBadge } from "./components/VersionBadge";
 import {
   buildLandingUrl,
   isCockpitRoute,
@@ -368,14 +369,17 @@ export function App() {
   // CSS-var-publishing SDK) and re-read on the change events, since they
   // resolve asynchronously after requestFullscreen() and update on rotation /
   // fullscreen toggle. Non-Telegram browsers report 0 → no padding.
-  const [topInset, setTopInset] = useState(0);
+  // Kept as separate device/content values (not the sum) because VersionBadge
+  // positions inside the CONTENT band specifically (top: device, height:
+  // content) — see WORLD-416 §3.1.
+  const [topInsets, setTopInsets] = useState({ device: 0, content: 0 });
   useEffect(() => {
     const tg = getTelegramWebApp() as any;
     if (!tg) return;
     const readInset = () => {
       const device = tg.safeAreaInset?.top ?? 0;
       const content = tg.contentSafeAreaInset?.top ?? 0;
-      setTopInset(device + content);
+      setTopInsets({ device, content });
     };
     readInset();
     const events = ["safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"];
@@ -502,7 +506,7 @@ export function App() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box", paddingTop: topInset, background: "var(--color-bg)" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box", paddingTop: topInsets.device + topInsets.content, background: "var(--color-bg)", position: "relative" }}>
       {/* Dev mode banner */}
       {isDev && (
         <div style={{
@@ -581,23 +585,19 @@ export function App() {
         </span>
       </header>
 
-      {/* CPC branch indicator — terminal tab only */}
-      {activeTab === "terminal" && cpcBranch && (
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--color-muted)",
-            padding: "3px 14px",
-            borderBottom: "1px solid var(--color-border)",
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-          }}
-        >
-          <span>Claude Pocket Console: {cpcBranch}</span>
-          <span style={{ marginLeft: "auto", color: "var(--color-subtle)" }}>{__APP_VERSION__}</span>
-        </div>
-      )}
+      {/* Branch + version — floats in the Telegram fullscreen chrome band
+          (between the native Close and ⋯ pills, WORLD-416 §3.1); outside
+          fullscreen it renders the pre-v2 in-flow row right here instead.
+          The band variant is position:absolute against the root container,
+          so this mount point only determines the fallback row's flow slot. */}
+      <VersionBadge
+        branch={cpcBranch}
+        version={__APP_VERSION__}
+        deviceInset={topInsets.device}
+        contentInset={topInsets.content}
+        isDev={isDev}
+        fallbackVisible={activeTab === "terminal"}
+      />
 
       {/* Session switcher row — terminal tab only. Liam's design (2026-07-15):
           BOTH a horizontal sliding chip strip (quick one-tap select) AND a
@@ -615,9 +615,18 @@ export function App() {
             alignItems: "stretch",
             borderBottom: "1px solid var(--color-border)",
             flexShrink: 0,
+            position: "relative",
           }}
           onTouchStart={(e) => e.stopPropagation()}
         >
+          <SessionPicker
+            sessions={sessionPicker.sessions}
+            active={activeSessionName}
+            onSelect={onSelectSession}
+          />
+          {/* Trigger on the RIGHT end (WORLD-416 §3.2): thumb-reachable for
+              one-hand use, and it reads as "expand ▾" for the panel that
+              will open directly below it. */}
           <button
             type="button"
             data-testid="session-list-button"
@@ -629,9 +638,10 @@ export function App() {
               alignItems: "center",
               justifyContent: "center",
               padding: "0 13px",
+              minWidth: 44,
               background: "none",
               border: "none",
-              borderRight: "1px solid var(--color-border)",
+              borderLeft: "1px solid var(--color-border)",
               cursor: "pointer",
               color: "var(--color-muted)",
               fontSize: 15,
@@ -640,10 +650,21 @@ export function App() {
           >
             <span aria-hidden="true">&#9776;</span>
           </button>
-          <SessionPicker
-            sessions={sessionPicker.sessions}
-            active={activeSessionName}
-            onSelect={onSelectSession}
+          {/* Grabber affordance — the universal "this pulls" glyph, pointing
+              at the swipe-down-to-open gesture this row gains in v2. */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 20,
+              height: 3,
+              borderRadius: 2,
+              background: "var(--color-subtle)",
+              pointerEvents: "none",
+            }}
           />
         </div>
       )}
