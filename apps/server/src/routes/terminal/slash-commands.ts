@@ -15,33 +15,55 @@ const LAUNCHER_TIMEOUT_MS = 30_000;
 // The canonical orchestrator launcher (attach-or-start). CPC must never
 // reconstruct the claude command itself: the previous hardcoded copy silently
 // drifted from cw-launch (wrong cwd, retired channel plugin, no WOS_* env) and
-// shipped restarts into a stale session for weeks (WORLD-415). Only the
-// launcher's own definition is authoritative. Absolute by default because the
-// systemd unit's PATH does not include claudes-world/bin.
+// shipped restarts into a stale session for weeks (WORLD-415). Absolute by
+// default because the systemd unit's PATH does not include claudes-world/bin.
+//
+// Scope, precisely: this launcher is authoritative for the COLD-START branch
+// only. The respawn branch replays the pane's creation-time command, so an
+// edit to cw-launch does not reach a session that is already running — only a
+// full kill picks it up. That is still strictly better than the old code,
+// which rebuilt a known-stale command every time.
 const CW_LAUNCH = process.env.CW_LAUNCH_BIN || "/home/claude/claudes-world/bin/cw-launch";
 
 const tmuxTracer = getTracer('cpc-server-tmux');
 
 /**
- * Resolve a session to its active pane as an explicit `session:window.pane`
- * target. `respawn-pane` rejects a bare session name, and base-index /
- * pane-base-index are user config (both are 1 on this host, but reading them
- * back beats assuming), so ask tmux for the real indices.
+ * Resolve the orchestrator's pane to an explicit `session:window.pane` target.
+ * `respawn-pane` rejects a bare session name, so a concrete target is required.
+ *
+ * The pane we want is the one cw-launch created: the session's FIRST window,
+ * first pane. Do NOT use the *active* pane — `list-panes -t "=<session>"`
+ * without `-s` treats the target as a WINDOW and returns whichever window is
+ * currently selected. If anyone has a second window open in this session (an
+ * SSH tab, a split) and left it selected, that resolves to their pane, and
+ * `respawn-pane -k` would kill THEIR process while reporting success and
+ * leaving the orchestrator untouched. `-s` lists the whole session instead;
+ * sort by (window, pane) so the result never depends on what a human last
+ * clicked, nor on base-index / pane-base-index.
  */
-async function activePaneTarget(session: string): Promise<string> {
+async function orchestratorPaneTarget(session: string): Promise<string> {
   const { stdout } = await execFileAsync(
     "tmux",
     [
       "list-panes",
+      "-s",
       "-t", `=${session}`,
-      "-F", "#{session_name}:#{window_index}.#{pane_index}",
-      "-f", "#{pane_active}",
+      "-F", "#{window_index} #{pane_index} #{session_name}:#{window_index}.#{pane_index}",
     ],
     { timeout: TMUX_TIMEOUT_MS },
   );
-  const target = stdout.split("\n")[0]?.trim();
-  if (!target) throw new Error(`no active pane in tmux session ${session}`);
-  return target;
+  const panes = stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [windowIndex, paneIndex, target] = line.split(" ");
+      return { windowIndex: Number(windowIndex), paneIndex: Number(paneIndex), target };
+    })
+    .filter((p) => Number.isFinite(p.windowIndex) && Number.isFinite(p.paneIndex) && p.target);
+  if (panes.length === 0) throw new Error(`no panes in tmux session ${session}`);
+  panes.sort((a, b) => a.windowIndex - b.windowIndex || a.paneIndex - b.paneIndex);
+  return panes[0]!.target!;
 }
 
 async function tracedTmux<T>(
@@ -244,7 +266,7 @@ app.post("/restart-session", async (c) => {
   try {
     await tracedTmux('tmux.restart-session', TMUX_SESSION, 'restart-session', async () => {
       if (await tmuxSessionExists(TMUX_SESSION)) {
-        await execFileAsync("tmux", ["respawn-pane", "-k", "-t", await activePaneTarget(TMUX_SESSION)], {
+        await execFileAsync("tmux", ["respawn-pane", "-k", "-t", await orchestratorPaneTarget(TMUX_SESSION)], {
           timeout: TMUX_TIMEOUT_MS,
         });
         return;

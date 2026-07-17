@@ -26,6 +26,10 @@ const execFileCalls: { cmd: string; args: string[] }[] = [];
 const execCalls: string[] = [];
 /** Session names `tmux has-session` should report as existing. */
 let existingSessions = new Set<string>();
+/** [window_index, pane_index] pairs the fake tmux session contains. */
+let sessionPanes: [number, number][] = [[1, 1]];
+/** Which window the fake session currently has selected. */
+let selectedWindow = 1;
 
 const execFileMock = vi.fn((...fnArgs: any[]) => {
   const cmd = fnArgs[0] as string;
@@ -39,11 +43,19 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
       return { kill: () => {} } as any;
     }
   }
-  // Mirrors real tmux: `list-panes -F '#{session_name}:#{window_index}.#{pane_index}'`
-  // prints one target line per matching pane (base-index is 1 on this host).
+  // Models real tmux (verified live, 3.5a): WITHOUT `-s`, `-t` is a WINDOW
+  // target and list-panes reports only the session's *currently selected*
+  // window — so a handler that omits `-s` resolves to whatever window a human
+  // last clicked. WITH `-s` it reports every pane in the session, in window
+  // order. `sessionPanes` is "window_index pane_index" pairs; the selected
+  // window is `selectedWindow`.
   if (args[0] === "list-panes") {
-    const target = (args[args.indexOf("-t") + 1] || "").replace(/^=/, "");
-    callback?.(null, { stdout: `${target}:1.1\n`, stderr: "" });
+    const session = (args[args.indexOf("-t") + 1] || "").replace(/^=/, "");
+    const sessionWide = args.includes("-s");
+    const rows = sessionPanes
+      .filter(([w]) => sessionWide || w === selectedWindow)
+      .map(([w, p]) => `${w} ${p} ${session}:${w}.${p}`);
+    callback?.(null, { stdout: rows.join("\n") + (rows.length ? "\n" : ""), stderr: "" });
     return { kill: () => {} } as any;
   }
   callback?.(null, { stdout: "", stderr: "" });
@@ -79,6 +91,8 @@ beforeEach(() => {
   execFileCalls.length = 0;
   execCalls.length = 0;
   existingSessions = new Set();
+  sessionPanes = [[1, 1]];
+  selectedWindow = 1;
   execFileMock.mockClear();
   execMock.mockClear();
 });
@@ -248,14 +262,41 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
       "respawn-pane", "-k", "-t", `${TMUX_SESSION}:1.1`,
     ]);
-    // Pin the lookup argv: without `-f #{pane_active}` a multi-pane session
-    // lists every pane and we would respawn whichever sorted first.
+    // Pin the lookup argv: `-s` is load-bearing (see the multi-window test).
     expect(execFileCalls.find((c) => c.args[0] === "list-panes")?.args).toEqual([
       "list-panes",
+      "-s",
       "-t", `=${TMUX_SESSION}`,
-      "-F", "#{session_name}:#{window_index}.#{pane_index}",
-      "-f", "#{pane_active}",
+      "-F", "#{window_index} #{pane_index} #{session_name}:#{window_index}.#{pane_index}",
     ]);
+  });
+
+  /**
+   * Regression for the pane-resolution bug (codex, PR #335 round 1). Without
+   * `-s`, tmux resolves `-t <session>` as a WINDOW target and reports only the
+   * selected window — so with an SSH tab open and focused, Restart respawned
+   * THAT pane: it killed an unrelated process, left the orchestrator running
+   * untouched, and still returned ok:true.
+   */
+  it("/restart-session respawns the orchestrator's pane even when another window is selected", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [[1, 1], [2, 1]]; // window 2 = someone's SSH tab
+    selectedWindow = 2;
+
+    const { status } = await post("/restart-session");
+    expect(status).toBe(200);
+    expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
+      "respawn-pane", "-k", "-t", `${TMUX_SESSION}:1.1`,
+    ]);
+  });
+
+  it("/restart-session picks the lowest window/pane regardless of tmux's listing order", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [[3, 2], [1, 2], [1, 1]];
+    selectedWindow = 3;
+
+    await post("/restart-session");
+    expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args?.[3]).toBe(`${TMUX_SESSION}:1.1`);
   });
 
   /**
