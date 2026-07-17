@@ -95,7 +95,16 @@ async function orchestratorPane(session: string): Promise<string | null> {
  * take the respawn branch, and never re-run boot-confirm. Unrecoverable without
  * SSH. So: detach, let boot-confirm finish on its own, and only wait long enough
  * to confirm the session actually came up. cw-launch is idempotent, so a racing
- * second press is harmless.
+ * second press is harmless (verified: two concurrent presses => one create, one
+ * no-op, one session, one tagged pane).
+ *
+ * Known limitation: detaching escapes the process group, not the cgroup, and
+ * cpc.service runs KillMode=control-group. So `systemctl restart cpc.service`
+ * inside boot-confirm's window SIGTERMs it mid-loop, leaving a session whose
+ * boot gates were never dismissed. The tmux server has its own cgroup, so the
+ * session itself survives. Narrow — it needs a CPC restart during a cold start —
+ * and escaping the cgroup properly would mean systemd-run --scope, which is not
+ * worth it here.
  */
 async function coldStartDetached(session: string): Promise<void> {
   const child = spawn(CW_LAUNCH, [], { detached: true, stdio: "ignore" });
