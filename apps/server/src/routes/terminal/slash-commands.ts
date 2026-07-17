@@ -7,7 +7,42 @@ import { SpanStatusCode } from "@opentelemetry/api";
 
 const execFileAsync = promisify(execFile);
 
+const TMUX_TIMEOUT_MS = 5_000;
+// cw-launch creates the session and then execs cw-boot-confirm, which waits on
+// the fresh agent's boot dialog — slower than a plain tmux call.
+const LAUNCHER_TIMEOUT_MS = 30_000;
+
+// The canonical orchestrator launcher (attach-or-start). CPC must never
+// reconstruct the claude command itself: the previous hardcoded copy silently
+// drifted from cw-launch (wrong cwd, retired channel plugin, no WOS_* env) and
+// shipped restarts into a stale session for weeks (WORLD-415). Only the
+// launcher's own definition is authoritative. Absolute by default because the
+// systemd unit's PATH does not include claudes-world/bin.
+const CW_LAUNCH = process.env.CW_LAUNCH_BIN || "/home/claude/claudes-world/bin/cw-launch";
+
 const tmuxTracer = getTracer('cpc-server-tmux');
+
+/**
+ * Resolve a session to its active pane as an explicit `session:window.pane`
+ * target. `respawn-pane` rejects a bare session name, and base-index /
+ * pane-base-index are user config (both are 1 on this host, but reading them
+ * back beats assuming), so ask tmux for the real indices.
+ */
+async function activePaneTarget(session: string): Promise<string> {
+  const { stdout } = await execFileAsync(
+    "tmux",
+    [
+      "list-panes",
+      "-t", `=${session}`,
+      "-F", "#{session_name}:#{window_index}.#{pane_index}",
+      "-f", "#{pane_active}",
+    ],
+    { timeout: TMUX_TIMEOUT_MS },
+  );
+  const target = stdout.split("\n")[0]?.trim();
+  if (!target) throw new Error(`no active pane in tmux session ${session}`);
+  return target;
+}
 
 async function tracedTmux<T>(
   spanName: string,
@@ -66,9 +101,11 @@ const RAW_KEY_TOKEN = /^[A-Za-z][A-Za-z0-9_-]*$/;
  * session, by contrast, must exist before we send keys anywhere near it.
  *
  * NOT wired into /restart-session or /resize-terminal: those stay
- * default-session-only by design (restart recreates the orchestrator
- * launch command; resize has the window-size latch side effect) — the
- * palette never offers them for other sessions.
+ * default-session-only by design (restart respawns the orchestrator's own
+ * pane, and falls back to the orchestrator-specific cw-launch; resize has
+ * the window-size latch side effect) — the palette never offers them for
+ * other sessions, and the UI hides them while a non-default session is
+ * being viewed (ActionBar.tsx, `restrictedSession`).
  */
 async function resolvePaletteTarget(c: any, body: any): Promise<{ session: string } | { response: Response }> {
   const target = resolveTargetSession(body?.session);
@@ -206,14 +243,13 @@ app.post("/reload-plugins", async (c) => {
 app.post("/restart-session", async (c) => {
   try {
     await tracedTmux('tmux.restart-session', TMUX_SESSION, 'restart-session', async () => {
-      // Kill existing tmux session, then recreate using the same command as the cw alias
-      await execAsync(`tmux kill-session -t ${TMUX_SESSION} 2>/dev/null || true`, { shell: "/bin/bash" });
-      // Match the cw alias exactly: tmux new-session with the full claude command
-      const cmd = [
-        `tmux new-session -d -s ${TMUX_SESSION}`,
-        `"cd ~/claudes-world && TZ=America/New_York claude --dangerously-skip-permissions --continue --channels plugin:telegram@claude-plugins-official"`,
-      ].join(" ");
-      await execAsync(cmd, { shell: "/bin/bash" });
+      if (await tmuxSessionExists(TMUX_SESSION)) {
+        await execFileAsync("tmux", ["respawn-pane", "-k", "-t", await activePaneTarget(TMUX_SESSION)], {
+          timeout: TMUX_TIMEOUT_MS,
+        });
+        return;
+      }
+      await execFileAsync(CW_LAUNCH, [], { timeout: LAUNCHER_TIMEOUT_MS });
     });
     return c.json({ ok: true, action: "restart-session" });
   } catch (err: any) {

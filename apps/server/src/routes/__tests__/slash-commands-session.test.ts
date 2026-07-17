@@ -16,7 +16,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *     with NO existence probe.
  *
  * Also: /restart-session and /resize-terminal remain default-session-only —
- * they ignore a `session` field entirely (never probe, never retarget).
+ * they ignore a `session` field entirely (never retarget). /restart-session
+ * does probe the DEFAULT session, to pick between respawning its live pane
+ * and cold-starting via cw-launch (WORLD-415); that probe never touches a
+ * client-supplied name.
  */
 
 const execFileCalls: { cmd: string; args: string[] }[] = [];
@@ -35,6 +38,13 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
       callback?.(new Error(`can't find session: ${target}`));
       return { kill: () => {} } as any;
     }
+  }
+  // Mirrors real tmux: `list-panes -F '#{session_name}:#{window_index}.#{pane_index}'`
+  // prints one target line per matching pane (base-index is 1 on this host).
+  if (args[0] === "list-panes") {
+    const target = (args[args.indexOf("-t") + 1] || "").replace(/^=/, "");
+    callback?.(null, { stdout: `${target}:1.1\n`, stderr: "" });
+    return { kill: () => {} } as any;
   }
   callback?.(null, { stdout: "", stderr: "" });
   return { kill: () => {} } as any;
@@ -228,10 +238,39 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(execCalls.some((cmd) => cmd.includes(`resize-window -t ${TMUX_SESSION}`))).toBe(true);
   });
 
-  it("/restart-session never probes or retargets", async () => {
+  it("/restart-session never retargets, and respawns the default session's own pane", async () => {
+    existingSessions.add(TMUX_SESSION);
     const { status } = await post("/restart-session", { session: "do-box--lane-a" });
     expect(status).toBe(200);
-    expect(probeCalls()).toHaveLength(0);
-    expect(execCalls.some((cmd) => cmd.includes(`kill-session -t ${TMUX_SESSION}`))).toBe(true);
+    // The probe is the default session's own liveness check — never the client's.
+    expect(probeCalls().map((c) => c.args)).toEqual([["has-session", "-t", `=${TMUX_SESSION}`]]);
+    expect(execFileCalls.some((c) => c.args.some((a) => a.includes("do-box--lane-a")))).toBe(false);
+    expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
+      "respawn-pane", "-k", "-t", `${TMUX_SESSION}:1.1`,
+    ]);
+  });
+
+  /**
+   * WORLD-415 regression. The old handler killed the session and rebuilt the
+   * claude command inline; that copy drifted from cw-launch and silently
+   * restarted the orchestrator into a week-old session. Respawning the pane
+   * re-runs the pane's OWN start command, so CPC never holds launch config.
+   */
+  it("/restart-session never reconstructs a claude launch command", async () => {
+    existingSessions.add(TMUX_SESSION);
+    await post("/restart-session");
+    const issued = [...execCalls, ...execFileCalls.flatMap((c) => [c.cmd, ...c.args])].join(" ");
+    expect(issued).not.toContain("kill-session");
+    expect(issued).not.toContain("new-session");
+    expect(issued).not.toContain("claude-plugins-official");
+    expect(issued).not.toContain("--continue");
+  });
+
+  it("/restart-session falls back to the canonical launcher when the session is gone", async () => {
+    // existingSessions is empty → `has-session` fails → nothing to respawn.
+    const { status } = await post("/restart-session");
+    expect(status).toBe(200);
+    expect(execFileCalls.some((c) => c.cmd.endsWith("cw-launch"))).toBe(true);
+    expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
   });
 });
