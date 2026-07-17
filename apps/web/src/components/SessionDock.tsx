@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { haptic } from "../lib/haptic";
 import type { TmuxSessionInfo } from "../lib/session-meta";
 import { nextDockState, mayReconcileRoster, type DockState } from "../lib/dock-state";
 import {
   createProgressAnimator,
+  EASE_SETTLE,
   EASE_SHEET,
   REDUCED_MOTION_FADE_MS,
   TAP_CLOSE_MS,
@@ -11,6 +13,7 @@ import {
   type ProgressAnimator,
 } from "../lib/dock-motion";
 import { useFlipMorph, type FlipTargets } from "../lib/useFlipMorph";
+import { useDockDrag, settleDuration } from "../lib/useDockDrag";
 import { SessionListRow } from "./SessionListRow";
 import { getTelegramWebApp } from "../lib/telegram";
 
@@ -21,9 +24,10 @@ import { getTelegramWebApp } from "../lib/telegram";
  * SessionSwitcherSheet (bottom sheet): the terminal stays visible, dimmed,
  * beneath the panel.
  *
- * PR-C scope: tap-only open/close (trigger tap, scrim tap, row select).
- * The swipe-to-scrub gesture (useDockDrag) lands in PR-D and drives the
- * same progress writer.
+ * Open/close paths: trigger tap, scrim tap, row select, row-background tap,
+ * and the drag gesture (useDockDrag) — a vertical scrub on the switcher row
+ * opens, on the open panel closes, both driving the same single-rAF
+ * progress writer the tap animations use.
  *
  * Select semantics are SessionPicker's, preserved exactly (PR #299
  * escape-hatch): `onSelect(s.writable ? null : s.name)` — null is the
@@ -117,11 +121,36 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
   // "opening"/"closing" both animate; this dedupes begin() across the
   // toggle-mid-settle reversals (begin once per mounted episode).
   const morphActive = useRef(false);
+  const panelHeightRef = useRef(0);
+  // Set by a drag release: the settle animates the REMAINING distance at
+  // (roughly) the release velocity, with the ease-out-quint curve (§2.2).
+  const dragSettleMs = useRef<number | null>(null);
+  const prevStateRef = useRef<DockState>("closed");
+
+  const beginMorph = useCallback((atP: 0 | 1) => {
+    // One layout pass, at gesture start (§2.4): size the window first so
+    // Last rects are final.
+    const wrap = panelWrapEl.current;
+    if (wrap) {
+      const natural = PANEL_TOP_PAD + displayedRef.current.length * ROW_HEIGHT + PANEL_BOTTOM_ZONE;
+      const h = Math.min(natural, Math.round(window.innerHeight * PANEL_MAX_VH));
+      wrap.style.height = `${h}px`;
+      panelHeightRef.current = h;
+    }
+    const { fadeOnly } = flip.begin();
+    fadeOnlyRef.current = fadeOnly;
+    morphActive.current = true;
+    animator.current!.set(atP);
+  }, [flip]);
 
   const settleTo = useCallback((target: 1 | 0) => {
-    const fade = fadeOnlyRef.current;
-    const duration = fade ? REDUCED_MOTION_FADE_MS : target === 1 ? TAP_OPEN_MS : TAP_CLOSE_MS;
-    animator.current!.animate(target, duration, EASE_SHEET, () => {
+    const fromDrag = dragSettleMs.current;
+    dragSettleMs.current = null;
+    const duration = fadeOnlyRef.current
+      ? REDUCED_MOTION_FADE_MS
+      : fromDrag ?? (target === 1 ? TAP_OPEN_MS : TAP_CLOSE_MS);
+    const ease = fromDrag && !fadeOnlyRef.current ? EASE_SETTLE : EASE_SHEET;
+    animator.current!.animate(target, duration, ease, () => {
       const settled = nextDockState(stateRef.current, "settled");
       if (target === 1) {
         flip.end(true);
@@ -138,43 +167,35 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
 
   // Mount-then-measure: when the panel enters the DOM for an open, size the
   // reveal window, run the FLIP measurement pass, then animate. Runs on
-  // state edges only — reversals mid-settle just re-target the animator.
+  // state edges only — reversals mid-settle just re-target the animator,
+  // and a drag-claim mid-settle freezes it at the current p (interruptible).
   // A close that starts from settled-open needs a FRESH morph episode (the
   // open-settle already tore the last one down to drop will-change and the
   // clones): re-measure — hidden chips still have valid rects — and stamp
   // p=1 styles before animating down.
   useLayoutEffect(() => {
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
     if (state === "opening") {
-      if (!morphActive.current) {
-        // One layout pass, at gesture start (§2.4): size the window first
-        // so Last rects are final.
-        const wrap = panelWrapEl.current;
-        if (wrap) {
-          const natural = PANEL_TOP_PAD + displayed.length * ROW_HEIGHT + PANEL_BOTTOM_ZONE;
-          const h = Math.min(natural, Math.round(window.innerHeight * PANEL_MAX_VH));
-          wrap.style.height = `${h}px`;
-        }
-        const { fadeOnly } = flip.begin();
-        fadeOnlyRef.current = fadeOnly;
-        morphActive.current = true;
-        animator.current!.set(0);
-      }
+      if (!morphActive.current) beginMorph(0);
       settleTo(1);
     } else if (state === "closing") {
-      if (!morphActive.current) {
-        const { fadeOnly } = flip.begin();
-        fadeOnlyRef.current = fadeOnly;
-        morphActive.current = true;
-        animator.current!.set(1);
-      }
+      if (!morphActive.current) beginMorph(1);
       settleTo(0);
+    } else if (state === "dragging") {
+      animator.current!.cancel();
+      // Claimed from settled closed/open: start a fresh morph episode at
+      // the anchor's progress. Claimed mid-settle: the episode is live —
+      // the cancel above froze it at the grab point.
+      if (!morphActive.current) beginMorph(prev === "open" ? 1 : 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   // Telegram would minimize on a downward swipe over the open panel's list —
-  // same protection the retired BottomSheet had. (The gesture-scoped
-  // disable/enable lifecycle is PR-D's.)
+  // held for the whole mounted episode (open, dragging, and both settles),
+  // re-enabled on settle-closed. The drag hook additionally disables at
+  // claim time, before this effect can run.
   useEffect(() => {
     if (!mounted) return;
     const tg = getTelegramWebApp() as any;
@@ -191,6 +212,95 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
     setState((s) => nextDockState(s, "close"));
   }, []);
 
+  const openFromRowTap = useCallback((e: React.MouseEvent) => {
+    // Plain tap on the row's background (not a chip / not the trigger).
+    if (e.target !== e.currentTarget) return;
+    haptic.selection();
+    setState((s) => nextDockState(s, "open"));
+  }, []);
+
+  // ---- the drag gesture (§2.2) ----
+  const rootEl = useRef<HTMLDivElement | null>(null);
+  const grabZoneEl = useRef<HTMLDivElement | null>(null);
+
+  const claimDrag = useCallback((anchor: "closed" | "open") => {
+    // Synchronously mount the panel + run the measurement pass so the very
+    // first scrub frame has real geometry to write.
+    flushSync(() => setState((s) => nextDockState(s, "drag-claim")));
+    return {
+      heightPx: panelHeightRef.current || 1,
+      startP: animator.current!.p,
+      anchor,
+    };
+  }, []);
+
+  const dragFrame = useCallback((p: number, overshootPx: number) => {
+    animator.current!.set(p);
+    const wrap = panelWrapEl.current;
+    if (wrap) wrap.style.transform = overshootPx ? `translateY(${overshootPx}px)` : "";
+  }, []);
+
+  const dragRelease = useCallback((r: { target: 0 | 1; velocity: number; p: number }) => {
+    const wrap = panelWrapEl.current;
+    if (wrap && wrap.style.transform) {
+      // Let the rubber-band overshoot relax on its own short curve.
+      wrap.style.transition = "transform 160ms ease-out";
+      wrap.style.transform = "";
+      setTimeout(() => {
+        if (wrap) wrap.style.transition = "";
+      }, 200);
+    }
+    const remaining = Math.abs(r.target - r.p) * (panelHeightRef.current || 1);
+    dragSettleMs.current = settleDuration(remaining, r.velocity);
+    setState((s) => nextDockState(s, r.target === 1 ? "drag-release-open" : "drag-release-close"));
+  }, []);
+
+  const disableSwipesNow = useCallback(() => {
+    (getTelegramWebApp() as any)?.disableVerticalSwipes?.();
+  }, []);
+
+  const claimHaptic = useCallback(() => haptic.impact("light"), []);
+
+  // Open gesture: swipe down anywhere on the switcher row (chips, gaps, or
+  // trigger). The strip's native horizontal scroll vetoes the claim.
+  useDockDrag(rootEl, {
+    direction: "down",
+    getScrollDelta: () => chipStripEl.current?.scrollLeft ?? 0,
+    onClaim: () => claimDrag("closed"),
+    onFrame: dragFrame,
+    onRelease: dragRelease,
+    onClaimHaptic: claimHaptic,
+    onThresholdHaptic: claimHaptic,
+    disableVerticalSwipes: disableSwipesNow,
+  });
+
+  // Close gesture: swipe up on the open panel. At-top handoff (§2.2): the
+  // internally-scrolled list keeps its scroll — the close-drag claims only
+  // when the list can't scroll (or from the bottom grabber zone, which is
+  // always a handle).
+  useDockDrag(
+    panelWrapEl,
+    {
+      direction: "up",
+      canClaim: (startTarget) => {
+        if (grabZoneEl.current && startTarget instanceof Node && grabZoneEl.current.contains(startTarget)) {
+          return true;
+        }
+        const list = listEl.current;
+        if (!list) return true;
+        if (list.scrollTop > 0) return false;
+        return list.scrollHeight - list.clientHeight <= 1;
+      },
+      onClaim: () => claimDrag("open"),
+      onFrame: dragFrame,
+      onRelease: dragRelease,
+      onClaimHaptic: claimHaptic,
+      onThresholdHaptic: claimHaptic,
+      disableVerticalSwipes: disableSwipesNow,
+    },
+    mounted,
+  );
+
   const handleSelect = useCallback((s: TmuxSessionInfo) => {
     haptic.selection();
     if (s.name !== active) onSelect(s.writable ? null : s.name);
@@ -201,6 +311,7 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
 
   return (
     <div
+      ref={rootEl}
       style={{
         display: "flex",
         alignItems: "stretch",
@@ -211,11 +322,16 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
         background: "var(--color-bg)",
       }}
       onTouchStart={(e) => e.stopPropagation()}
+      onClick={openFromRowTap}
     >
-      {/* Chip strip — scrolls x, left-anchored (absorbed SessionPicker). */}
+      {/* Chip strip — scrolls x, left-anchored (absorbed SessionPicker).
+          touch-action: pan-x is the gesture's CSS foundation (§2.2): the
+          browser may own horizontal panning natively, but vertical moves
+          stay cancelable by JS so the scrub can claim them. */}
       <div
         ref={chipStripEl}
         data-testid="session-picker"
+        onClick={openFromRowTap}
         style={{
           display: "flex",
           gap: 6,
@@ -224,6 +340,7 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
           flex: 1,
           minWidth: 0,
           WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x",
         }}
       >
         {displayed.map((s) => {
@@ -300,6 +417,7 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
           borderLeft: "1px solid var(--color-border)",
           cursor: "pointer",
           color: "var(--color-muted)",
+          touchAction: "none",
         }}
       >
         <span
@@ -421,8 +539,9 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
                   />
                 ))}
               </div>
-              {/* Bottom grabber — mirrors the row's, affords swipe-up-close. */}
-              <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 9px", flexShrink: 0 }}>
+              {/* Bottom grabber — mirrors the row's, affords swipe-up-close;
+                  always a valid close-drag handle even when the list scrolls. */}
+              <div ref={grabZoneEl} style={{ display: "flex", justifyContent: "center", padding: "6px 0 9px", flexShrink: 0, touchAction: "none" }}>
                 <div aria-hidden="true" style={{ width: 20, height: 3, borderRadius: 2, background: "var(--color-subtle)" }} />
               </div>
             </div>
