@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveSessionPickerProps } from "../session-picker";
-import type { TmuxSessionInfo } from "../../components/SessionPicker";
+import type { TmuxSessionInfo } from "../session-meta";
 
 const mkSession = (overrides: Partial<TmuxSessionInfo> = {}): TmuxSessionInfo => ({
   name: "default",

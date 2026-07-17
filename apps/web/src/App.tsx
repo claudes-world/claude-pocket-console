@@ -13,8 +13,8 @@ import { PrTicker } from "./components/PrTicker";
 import { HomeScreenPrompt } from "./components/HomeScreenPrompt";
 import { CockpitPage } from "./components/CockpitPage";
 import { VaultExplorerPage } from "./components/VaultExplorerPage";
-import { SessionPicker, type TmuxSessionInfo } from "./components/SessionPicker";
-import { SessionSwitcherSheet } from "./components/SessionSwitcherSheet";
+import { SessionDock } from "./components/SessionDock";
+import type { TmuxSessionInfo } from "./lib/session-meta";
 import { VersionBadge } from "./components/VersionBadge";
 import {
   buildLandingUrl,
@@ -143,7 +143,6 @@ export function App() {
   // same session), so the pessimistic default is safe either way.
   const paletteSession = activeSession !== null && activeSession !== defaultSession ? activeSession : null;
   const sessionPicker = resolveSessionPickerProps(sessionList, activeSession, defaultSession);
-  const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const activeSessionName = activeSession ?? defaultSession ?? "";
   const [fileOpenRequest, setFileOpenRequest] = useState({ path: initialRoute.file, sequence: 0 });
   // FileViewer is keyed by this request sequence. Keep the latest request in
@@ -599,74 +598,21 @@ export function App() {
         fallbackVisible={activeTab === "terminal"}
       />
 
-      {/* Session switcher row — terminal tab only. Liam's design (2026-07-15):
-          BOTH a horizontal sliding chip strip (quick one-tap select) AND a
-          list-view button on its left that opens the full session list
-          (SessionSwitcherSheet). Visibility + session list (including the
+      {/* Session dock — terminal tab only (WORLD-416 v2): chip strip +
+          right-end trigger; the row morphs in place into the anchored
+          session panel (SessionDock replaces the retired
+          SessionSwitcherSheet). Visibility + session list (including the
           stale-deep-link escape hatch) are decided by resolveSessionPickerProps
           — see its docstring for the round-2 (PR #299) fix: an earlier inline
           `sessionList.length > 0` guard hid the picker entirely whenever
           /api/terminal/sessions failed while a stale session was active,
           stranding the user. */}
       {activeTab === "terminal" && sessionPicker.visible && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "stretch",
-            borderBottom: "1px solid var(--color-border)",
-            flexShrink: 0,
-            position: "relative",
-          }}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          <SessionPicker
-            sessions={sessionPicker.sessions}
-            active={activeSessionName}
-            onSelect={onSelectSession}
-          />
-          {/* Trigger on the RIGHT end (WORLD-416 §3.2): thumb-reachable for
-              one-hand use, and it reads as "expand ▾" for the panel that
-              will open directly below it. */}
-          <button
-            type="button"
-            data-testid="session-list-button"
-            aria-label="Show all sessions in a list"
-            onClick={() => { haptic.selection(); setSessionSwitcherOpen(true); }}
-            style={{
-              flexShrink: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "0 13px",
-              minWidth: 44,
-              background: "none",
-              border: "none",
-              borderLeft: "1px solid var(--color-border)",
-              cursor: "pointer",
-              color: "var(--color-muted)",
-              fontSize: 15,
-              lineHeight: 1,
-            }}
-          >
-            <span aria-hidden="true">&#9776;</span>
-          </button>
-          {/* Grabber affordance — the universal "this pulls" glyph, pointing
-              at the swipe-down-to-open gesture this row gains in v2. */}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: 20,
-              height: 3,
-              borderRadius: 2,
-              background: "var(--color-subtle)",
-              pointerEvents: "none",
-            }}
-          />
-        </div>
+        <SessionDock
+          sessions={sessionPicker.sessions}
+          active={activeSessionName}
+          onSelect={onSelectSession}
+        />
       )}
 
       {/* Content area — swipeable viewport */}
@@ -730,16 +676,6 @@ export function App() {
           currentFolder={currentFolder}
         />
       </div>
-
-      {/* Terminal session switcher sheet — opened from the session bar */}
-      {sessionSwitcherOpen && (
-        <SessionSwitcherSheet
-          sessions={sessionPicker.sessions}
-          active={activeSessionName}
-          onSelect={onSelectSession}
-          onClose={() => setSessionSwitcherOpen(false)}
-        />
-      )}
 
       {/* Home screen prompt — rendered once, dismissed to localStorage */}
       {showHomeScreenPrompt && <HomeScreenPrompt onDismiss={handleHomeScreenDismiss} />}

@@ -1,4 +1,4 @@
-import type { TmuxSessionInfo } from "../components/SessionPicker";
+import type { TmuxSessionInfo } from "./session-meta";
 
 export interface SessionPickerVisibility {
   /** Whether the picker should render at all. */

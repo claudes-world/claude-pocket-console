@@ -44,7 +44,7 @@ vi.mock("../components/action-bar", () => ({
 vi.mock("../components/VoiceRecorder", () => ({ VoiceRecorder: () => <div>Voice</div> }));
 vi.mock("../components/PrTicker", () => ({ PrTicker: () => <div>PRs</div> }));
 vi.mock("../components/HomeScreenPrompt", () => ({ HomeScreenPrompt: () => null }));
-vi.mock("../components/SessionPicker", () => ({ SessionPicker: () => null }));
+vi.mock("../components/SessionDock", () => ({ SessionDock: () => null }));
 vi.mock("../debug/DebugOverlay", () => ({ DebugOverlay: () => null }));
 vi.mock("../lib/haptic", () => ({
   haptic: { selection: vi.fn() },
