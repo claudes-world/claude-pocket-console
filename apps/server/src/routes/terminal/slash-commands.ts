@@ -23,7 +23,15 @@ const COLD_START_POLL_MS = 250;
 // Two separate wrong-kill bugs came from positional targeting (PR #335 rounds
 // 1+2) — each killed a bystander pane, left the orchestrator running, and still
 // reported ok:true. Role lookup fails LOUD instead: no tagged pane means no
-// candidate, so we never -k something we cannot prove is the orchestrator.
+// candidate, so nothing gets -k'd on a guess.
+//
+// Trust model, stated plainly rather than overclaimed: the tag is a DESIGNATED
+// MARKER, not proof. @cpc-role is a mutable tmux option, so anything carrying it
+// is treated as the orchestrator. That grants nobody new power — setting a pane
+// option needs local access to this tmux server, and whoever has that can
+// `kill-pane` directly. The tag defends against ACCIDENTS (renumbering,
+// selection, splits, SSH tabs), which is what actually bit us, not against an
+// adversary who already owns the socket.
 const ORCHESTRATOR_ROLE = "orchestrator";
 
 // The canonical orchestrator launcher (attach-or-start). CPC must never
@@ -158,8 +166,13 @@ async function respawnIfStillOrchestrator(pane: string): Promise<void> {
 }
 
 /**
- * COLD START — create-only, never destructive. Reached only when no pane claims
- * the orchestrator role, i.e. there is nothing qualifying to kill.
+ * COLD START — create-only, never destructive. Reached when no pane claimed the
+ * role AT CHECK TIME. Not the same as "no pane claims it now": one could get
+ * tagged between that check and this call (a concurrent cw-launch). Harmless —
+ * cw-launch is attach-or-start, so it no-ops, and the confirm poll then finds
+ * the pane the other launcher tagged. It matters only that this path never
+ * kills anything, which holds unconditionally: it issues no destructive command
+ * at all, whatever raced ahead of it.
  *
  * Detached on purpose. cw-launch ends with `exec cw-boot-confirm`, which polls
  * for up to 300s dismissing boot dialogs and injecting the kickoff. Holding the
