@@ -5,7 +5,7 @@ import "./Links.css";
 
 interface LinkItem {
   title: string;
-  url: string;
+  url?: string;
   icon?: string;
   description?: string;
   /**
@@ -58,6 +58,12 @@ interface AppItem {
 }
 
 const LINKS: LinkItem[] = [
+  {
+    title: "Vault Explorer",
+    icon: "🗂️",
+    description: "Read-only second-brain structure + health",
+    internalRoute: "#/vault",
+  },
   {
     title: "Fleet Cockpit",
     url: "https://cockpit.claude.do",
@@ -162,11 +168,13 @@ export function Links({ onClose, onOpenFile }: LinksProps) {
       <div style={{ flex: 1, overflow: "auto" }}>
         <ReadingList onOpenFile={onOpenFile} />
         {LINKS.map((link) => {
-          const useInternalRoute = Boolean(link.internalRoute && cockpitProxyAvailable);
-          const href = useInternalRoute ? link.internalRoute! : link.url;
+          const useInternalRoute = Boolean(
+            link.internalRoute && (link.internalRoute === "#/vault" || cockpitProxyAvailable),
+          );
+          const href = useInternalRoute ? link.internalRoute! : (link.url ?? "#");
           return (
           <a
-            key={link.url}
+            key={link.internalRoute ?? link.url}
             href={href}
             // In-app links navigate the webview itself (see openInApp);
             // everything else keeps the external-tab behavior. rel stays on
@@ -183,7 +191,7 @@ export function Links({ onClose, onOpenFile }: LinksProps) {
               e.preventDefault();
               if (useInternalRoute) {
                 window.location.hash = link.internalRoute!.slice(1);
-              } else {
+              } else if (link.url) {
                 openInApp(link.url);
               }
             } : undefined}
