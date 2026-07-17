@@ -94,6 +94,60 @@ async function orchestratorPane(session: string): Promise<string | null> {
   return tagged[0]?.paneId ?? null;
 }
 
+/** tmux pane ids are `%<n>`. Validated before being interpolated into a tmux
+ *  command STRING below (they come from tmux, not a client — this is a fence,
+ *  not a fix for a known hole). */
+const PANE_ID_RE = /^%\d+$/;
+/** Printed by the else-branch when the role no longer matches at respawn time. */
+const ROLE_CHANGED_MARKER = "cpc-role-changed";
+
+/**
+ * Respawn the pane ONLY if it still claims the role, re-checked inside tmux's
+ * own command queue so there is no window between the check and the kill.
+ *
+ * The obvious `respawn-pane -k -t %183` is wrong, and an earlier comment here
+ * claimed a safety property that does not exist: a stale pane id does NOT make
+ * tmux error, because respawn-pane never looks at the tag. Verified — revoking
+ * @cpc-role and then respawning by id killed the pane anyway. That is a fifth
+ * way to kill something that no longer qualifies and still return ok:true
+ * (codex round 4 HIGH), and it is the same false-proxy shape as the rest: an
+ * authorization decision that goes stale before the action it authorizes.
+ *
+ * `if-shell -F` evaluates the format and dispatches within one command queue,
+ * so the role is true at the instant of the respawn. It exits 0 either way, so
+ * the else-branch prints a marker — otherwise a refusal would read as success.
+ *
+ * KNOWN GAP, accepted deliberately (codex round 4 MEDIUM): a successful respawn
+ * proves tmux started the command, not that it stayed up. If the replayed
+ * command dies immediately we still report respawned-tagged-pane. cw-launch's
+ * `... || <fresh>` fallback covers the first command failing but not the
+ * fallback itself. A stabilization window (re-check the pane is present, still
+ * tagged, and not #{pane_dead} after ~a second) would close it without waiting
+ * for a full boot — deliberately NOT added here: it changes the endpoint's
+ * timing and is worth a decision rather than a silent addition. Flagged
+ * in-thread; the failure it leaves needs a human either way.
+ */
+async function respawnIfStillOrchestrator(pane: string): Promise<void> {
+  if (!PANE_ID_RE.test(pane)) throw new Error(`refusing to respawn a non-pane-id target: ${pane}`);
+  const { stdout } = await execFileAsync(
+    "tmux",
+    [
+      "if-shell",
+      "-F",
+      "-t", pane,
+      `#{==:#{@cpc-role},${ORCHESTRATOR_ROLE}}`,
+      `respawn-pane -k -t ${pane}`,
+      `display-message -p ${ROLE_CHANGED_MARKER}`,
+    ],
+    { timeout: TMUX_TIMEOUT_MS },
+  );
+  if (stdout.includes(ROLE_CHANGED_MARKER)) {
+    throw new Error(
+      `${pane} stopped claiming @cpc-role=${ORCHESTRATOR_ROLE} before the respawn — refusing to kill it`,
+    );
+  }
+}
+
 /**
  * COLD START — create-only, never destructive. Reached only when no pane claims
  * the orchestrator role, i.e. there is nothing qualifying to kill.
@@ -366,18 +420,7 @@ app.post("/restart-session", async (c) => {
         : null;
 
       if (pane) {
-        // Re-runs the pane's own creation-time command, keeping its cwd, its
-        // WOS_* env and any attached viewers.
-        //
-        // Two accepted gaps here (codex round 3). The lookup and the respawn are
-        // separate tmux calls, so the tag could in principle change in between —
-        // tmux would then error and surface a 500, which is the safe direction.
-        // And a successful respawn proves tmux ACCEPTED the command, not that
-        // the new process stayed up; cw-launch's own `... || <fresh>` fallback
-        // covers the realistic failure, and polling for liveness here would mean
-        // guessing how long a boot takes. Both are reported honestly rather than
-        // papered over.
-        await execFileAsync("tmux", ["respawn-pane", "-k", "-t", pane], { timeout: TMUX_TIMEOUT_MS });
+        await respawnIfStillOrchestrator(pane);
         return "respawned-tagged-pane" as const;
       }
 

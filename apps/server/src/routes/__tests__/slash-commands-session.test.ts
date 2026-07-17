@@ -53,6 +53,26 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
   // uses are modelled. An unset @cpc-role formats as "" (real tmux behaviour),
   // which is what makes the "untagged panes must never be a candidate" tests
   // meaningful.
+  // Models `if-shell -F -t <pane> '#{==:#{@cpc-role},X}' <then> <else>`: tmux
+  // evaluates the role AT DISPATCH TIME inside its own command queue. Crucially
+  // it re-reads sessionPanes now, so a role changed after the lookup is seen —
+  // that is the whole point of the atomic form. Exits 0 either way; the else
+  // branch prints its marker to stdout.
+  if (args[0] === "if-shell") {
+    const pane = args[args.indexOf("-t") + 1];
+    const cond = args[args.indexOf("-t") + 2] || "";
+    const thenCmd = args[args.indexOf("-t") + 3] || "";
+    const elseCmd = args[args.indexOf("-t") + 4] || "";
+    const want = cond.match(/^#\{==:#\{@cpc-role\},(.*)\}$/)?.[1];
+    const role = sessionPanes.find(([id]) => id === pane)?.[1];
+    if (role !== undefined && role === want) {
+      ifShellRan.push(thenCmd);
+      callback?.(null, { stdout: "", stderr: "" });
+    } else {
+      callback?.(null, { stdout: elseCmd.replace(/^display-message -p /, "") + "\n", stderr: "" });
+    }
+    return { kill: () => {} } as any;
+  }
   if (args[0] === "list-panes") {
     const format = args[args.indexOf("-F") + 1] || "";
     const fIdx = args.indexOf("-f");
@@ -87,6 +107,8 @@ const execMock = vi.fn((...fnArgs: any[]) => {
  * can succeed. `unref` is asserted on: forgetting it would keep the request's
  * event loop tied to a process that runs for up to 300s.
  */
+/** `then` commands that if-shell actually dispatched. */
+const ifShellRan: string[] = [];
 const spawnCalls: { cmd: string; opts: any; unrefCalled: boolean }[] = [];
 const spawnMock = vi.fn((cmd: string, _args: string[], opts: any) => {
   const record = { cmd, opts, unrefCalled: false };
@@ -143,6 +165,7 @@ beforeEach(() => {
   sessionPanes = [["%1", "orchestrator"]];
   launcherOutcome = "starts-orchestrator";
   spawnCalls.length = 0;
+  ifShellRan.length = 0;
   execFileMock.mockClear();
   execMock.mockClear();
   spawnMock.mockClear();
@@ -320,9 +343,7 @@ describe("default-session-only endpoints ignore session fields", () => {
     const { status, body } = await post("/restart-session");
     expect(status).toBe(200);
     expect(body.path).toBe("respawned-tagged-pane");
-    expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
-      "respawn-pane", "-k", "-t", "%183",
-    ]);
+    expect(ifShellRan).toEqual(["respawn-pane -k -t %183"]);
     // tmux does the exact match; we only ever receive pane ids.
     expect(execFileCalls.find((c) => c.args[0] === "list-panes")?.args).toEqual([
       "list-panes", "-s", "-t", `=${TMUX_SESSION}`,
@@ -348,7 +369,7 @@ describe("default-session-only endpoints ignore session fields", () => {
 
     const { body } = await post("/restart-session");
     // No exact-role pane => nothing to respawn => cold start, not a mis-parse.
-    expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
+    expect(ifShellRan).toHaveLength(0);
     expect(body.path).toBe("cold-started-fresh");
   });
 
@@ -384,9 +405,40 @@ describe("default-session-only endpoints ignore session fields", () => {
       expect(status).toBe(200);
       expect(body.path).toBe("respawned-tagged-pane");
     }
-    expect(execFileCalls.filter((c) => c.args[0] === "respawn-pane").map((c) => c.args[3]))
-      .toEqual(["%183", "%183", "%183"]);
+    expect(ifShellRan).toEqual([
+      "respawn-pane -k -t %183", "respawn-pane -k -t %183", "respawn-pane -k -t %183",
+    ]);
     expect(spawnCalls).toHaveLength(0); // never falls through to a cold start
+  });
+
+  /**
+   * codex r4 HIGH — the fifth wrong-action bug. The role check goes stale:
+   * `respawn-pane -k -t %183` kills by pane id and never re-reads the tag, so a
+   * pane that stopped qualifying between lookup and respawn got killed anyway,
+   * ok:true. Verified live: revoking @cpc-role then respawning by id still
+   * killed the pane — the old comment's claim that tmux would error was false.
+   *
+   * `if-shell -F` re-evaluates the role inside tmux's own command queue, so it
+   * cannot go stale. It exits 0 either way, hence the else-branch marker: a
+   * silent refusal would otherwise be reported as a successful restart.
+   */
+  it("/restart-session does not kill a pane that stopped claiming the role after lookup", async () => {
+    existingSessions.add(TMUX_SESSION);
+    sessionPanes = [["%183", "orchestrator"]];
+
+    // The role is revoked after orchestratorPane() resolves but before respawn —
+    // the TOCTOU window. list-panes still reports %183; if-shell must not fire.
+    const original = execFileMock.getMockImplementation()!;
+    execFileMock.mockImplementation(((...a: any[]) => {
+      const out = original(...a);
+      if (a[1]?.[0] === "list-panes") sessionPanes = [["%183", "revoked"]];
+      return out;
+    }) as any);
+
+    const { status, body } = await post("/restart-session");
+    expect(ifShellRan).toHaveLength(0);            // never killed it
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/stopped claiming @cpc-role/);
   });
 
   it("/restart-session refuses to guess when two panes claim the role", async () => {
@@ -396,7 +448,7 @@ describe("default-session-only endpoints ignore session fields", () => {
     const { status, body } = await post("/restart-session");
     expect(status).toBe(500);
     expect(body.error).toMatch(/ambiguous: 2 panes claim/);
-    expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
+    expect(ifShellRan).toHaveLength(0);
     expect(spawnCalls).toHaveLength(0);
   });
 
@@ -415,7 +467,7 @@ describe("default-session-only endpoints ignore session fields", () => {
 
     const { status, body } = await post("/restart-session");
     expect(status).toBe(200);
-    expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
+    expect(ifShellRan).toHaveLength(0);
     expect(body.path).toBe("cold-started-fresh");
     expect(spawnCalls).toHaveLength(1);
   });
@@ -446,6 +498,7 @@ describe("default-session-only endpoints ignore session fields", () => {
     // 300s loop; and create-only — a cold start must never kill anything.
     expect(spawnCalls[0]?.opts?.detached).toBe(true);
     expect(spawnCalls[0]?.unrefCalled).toBe(true);
+    expect(ifShellRan).toHaveLength(0);
     expect(execFileCalls.some((c) => ["respawn-pane", "kill-session", "kill-pane"].includes(c.args[0]!))).toBe(false);
   });
 
@@ -476,6 +529,7 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(status).toBe(500);
     expect(body.error).toMatch(/did not produce an orchestrator pane/);
     // Never kills the bystander to force a cold start.
+    expect(ifShellRan).toHaveLength(0);
     expect(execFileCalls.some((c) => ["respawn-pane", "kill-session", "kill-pane"].includes(c.args[0]!))).toBe(false);
   }, 15_000);
 });
