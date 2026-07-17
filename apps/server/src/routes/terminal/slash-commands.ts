@@ -53,22 +53,27 @@ const tmuxTracer = getTracer('cpc-server-tmux');
 async function orchestratorPane(session: string): Promise<string | null> {
   const { stdout } = await execFileAsync(
     "tmux",
-    // pane_id FIRST: @cpc-role is a user-settable option whose value may contain
-    // spaces, so it has to be the trailing field or it shifts the parse. (With
-    // role first, `@cpc-role="orchestrator x"` yields paneId="x".) Pane ids never
-    // contain spaces, so token 0 is always unambiguous and the role is the rest.
-    ["list-panes", "-s", "-t", `=${session}`, "-F", "#{pane_id} #{@cpc-role}"],
+    [
+      "list-panes",
+      "-s",
+      "-t", `=${session}`,
+      // Let tmux do the comparison and hand back nothing but pane ids. Parsing
+      // the role here kept getting it wrong: @cpc-role is a user-settable value,
+      // so it could contain spaces (shifting a role-first split) or trailing
+      // whitespace (which a line-level trim() silently collapsed into an exact
+      // match, promoting a NON-orchestrator pane into a respawn candidate).
+      // `#{==:...}` compares the raw value, so none of that is reachable, and
+      // pane ids can't be mis-parsed.
+      "-F", "#{pane_id}",
+      "-f", `#{==:#{@cpc-role},${ORCHESTRATOR_ROLE}}`,
+    ],
     { timeout: TMUX_TIMEOUT_MS },
   );
   const tagged = stdout
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      const [paneId, ...role] = line.split(" ");
-      return { paneId, role: role.join(" ") };
-    })
-    .filter((p) => p.paneId && p.role === ORCHESTRATOR_ROLE);
+    .map((paneId) => ({ paneId }));
 
   // Ambiguity fails loud. Nothing legitimate produces two orchestrators in one
   // session — cw-launch tags exactly one pane and splits do not inherit pane
@@ -95,8 +100,11 @@ async function orchestratorPane(session: string): Promise<string | null> {
  * take the respawn branch, and never re-run boot-confirm. Unrecoverable without
  * SSH. So: detach, let boot-confirm finish on its own, and only wait long enough
  * to confirm the session actually came up. cw-launch is idempotent, so a racing
- * second press is harmless (verified: two concurrent presses => one create, one
- * no-op, one session, one tagged pane).
+ * second press does no damage (verified: two concurrent presses => one create,
+ * one no-op, one session, one tagged pane). It is not perfectly accurate,
+ * though: both requests observe the winner's pane, so both report
+ * "cold-started-fresh" while only one press caused it. Mis-attribution in a
+ * status string, not a mis-action — accepted.
  *
  * Known limitation: detaching escapes the process group, not the cgroup, and
  * cpc.service runs KillMode=control-group. So `systemctl restart cpc.service`
@@ -107,8 +115,21 @@ async function orchestratorPane(session: string): Promise<string | null> {
  * worth it here.
  */
 async function coldStartDetached(session: string): Promise<void> {
-  const child = spawn(CW_LAUNCH, [], { detached: true, stdio: "ignore" });
-  child.unref();
+  // spawn() reports a missing/non-executable binary ASYNCHRONOUSLY, via an
+  // 'error' event — it does not throw here. With no listener attached that
+  // event is an unhandled 'error', which by EventEmitter's contract becomes an
+  // uncaughtException and takes the WHOLE CPC server down — so a misconfigured
+  // CW_LAUNCH would turn Restart into "kill the console Liam is holding".
+  // Verified: `spawn("/nonexistent")` reaches uncaughtException with ENOENT.
+  // Wait for 'spawn' (success) or 'error' (clean 500) before unref'ing.
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(CW_LAUNCH, [], { detached: true, stdio: "ignore" });
+    child.once("error", (err) => reject(new Error(`cannot launch ${CW_LAUNCH}: ${err.message}`)));
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
 
   // Confirm on the TAGGED PANE, never on the session. The session existing does
   // not mean the orchestrator is running — that false proxy is the whole bug
@@ -341,6 +362,15 @@ app.post("/restart-session", async (c) => {
       if (pane) {
         // Re-runs the pane's own creation-time command, keeping its cwd, its
         // WOS_* env and any attached viewers.
+        //
+        // Two accepted gaps here (codex round 3). The lookup and the respawn are
+        // separate tmux calls, so the tag could in principle change in between —
+        // tmux would then error and surface a 500, which is the safe direction.
+        // And a successful respawn proves tmux ACCEPTED the command, not that
+        // the new process stayed up; cw-launch's own `... || <fresh>` fallback
+        // covers the realistic failure, and polling for liveness here would mean
+        // guessing how long a boot takes. Both are reported honestly rather than
+        // papered over.
         await execFileAsync("tmux", ["respawn-pane", "-k", "-t", pane], { timeout: TMUX_TIMEOUT_MS });
         return "respawned-tagged-pane" as const;
       }

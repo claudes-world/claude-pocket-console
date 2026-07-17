@@ -55,14 +55,18 @@ const execFileMock = vi.fn((...fnArgs: any[]) => {
   // meaningful.
   if (args[0] === "list-panes") {
     const format = args[args.indexOf("-F") + 1] || "";
-    const rows = sessionPanes.map(([paneId, role]) =>
-      // Substitute verbatim, exactly as tmux does — including role values that
-      // contain spaces. Faithfulness here is the point: a role-first format
-      // mis-parses such a value, and this mock must be able to expose that.
-      format
-        .replace("#{@cpc-role}", role)
-        .replace("#{pane_id}", paneId),
-    );
+    const fIdx = args.indexOf("-f");
+    const filter = fIdx === -1 ? null : args[fIdx + 1] || "";
+    // Model tmux's `-f '#{==:#{@cpc-role},X}'`: an EXACT comparison of the raw
+    // option value. No trimming, no normalisation — a role of "orchestrator "
+    // is simply not equal to "orchestrator". That exactness is the whole point:
+    // client-side parsing kept smuggling near-misses through.
+    const match = filter?.match(/^#\{==:#\{@cpc-role\},(.*)\}$/);
+    const rows = sessionPanes
+      .filter(([, role]) => (match ? role === match[1] : true))
+      .map(([paneId, role]) =>
+        format.replace("#{@cpc-role}", role).replace("#{pane_id}", paneId),
+      );
     callback?.(null, { stdout: rows.join("\n") + (rows.length ? "\n" : ""), stderr: "" });
     return { kill: () => {} } as any;
   }
@@ -87,17 +91,32 @@ const spawnCalls: { cmd: string; opts: any; unrefCalled: boolean }[] = [];
 const spawnMock = vi.fn((cmd: string, _args: string[], opts: any) => {
   const record = { cmd, opts, unrefCalled: false };
   spawnCalls.push(record);
-  if (launcherOutcome === "starts-orchestrator") {
-    existingSessions.add(TMUX_SESSION);
-    sessionPanes = [["%200", "orchestrator"]];
-  } else if (launcherOutcome === "noop-session-occupied") {
-    // cw-launch is attach-or-start: a live session means "nothing to do", so an
-    // occupied-but-orchestrator-less session gets NO new orchestrator.
-    existingSessions.add(TMUX_SESSION);
-  }
-  return { unref: () => { record.unrefCalled = true; } } as any;
+  const handlers: Record<string, ((arg?: any) => void)[]> = {};
+  const child: any = {
+    unref: () => { record.unrefCalled = true; },
+    once: (ev: string, fn: (arg?: any) => void) => { (handlers[ev] ||= []).push(fn); return child; },
+  };
+  // Real spawn signals success/failure ASYNCHRONOUSLY, via 'spawn'/'error' —
+  // it does not throw. Modelling that is what lets the missing-binary test
+  // prove we attach a listener instead of crashing the process.
+  queueMicrotask(() => {
+    if (launcherOutcome === "spawn-error") {
+      handlers["error"]?.forEach((fn) => fn(Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" })));
+      return;
+    }
+    if (launcherOutcome === "starts-orchestrator") {
+      existingSessions.add(TMUX_SESSION);
+      sessionPanes = [["%200", "orchestrator"]];
+    } else if (launcherOutcome === "noop-session-occupied") {
+      // cw-launch is attach-or-start: a live session means "nothing to do", so
+      // an occupied-but-orchestrator-less session gets NO new orchestrator.
+      existingSessions.add(TMUX_SESSION);
+    }
+    handlers["spawn"]?.forEach((fn) => fn());
+  });
+  return child;
 });
-let launcherOutcome: "starts-orchestrator" | "noop-session-occupied" | "fails" = "starts-orchestrator";
+let launcherOutcome: "starts-orchestrator" | "noop-session-occupied" | "fails" | "spawn-error" = "starts-orchestrator";
 
 vi.mock("node:child_process", async () => {
   const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
@@ -304,9 +323,10 @@ describe("default-session-only endpoints ignore session fields", () => {
     expect(execFileCalls.find((c) => c.args[0] === "respawn-pane")?.args).toEqual([
       "respawn-pane", "-k", "-t", "%183",
     ]);
-    // Session-wide, and pane_id FIRST — see the spaced-role test below.
+    // tmux does the exact match; we only ever receive pane ids.
     expect(execFileCalls.find((c) => c.args[0] === "list-panes")?.args).toEqual([
-      "list-panes", "-s", "-t", `=${TMUX_SESSION}`, "-F", "#{pane_id} #{@cpc-role}",
+      "list-panes", "-s", "-t", `=${TMUX_SESSION}`,
+      "-F", "#{pane_id}", "-f", "#{==:#{@cpc-role},orchestrator}",
     ]);
   });
 
@@ -317,15 +337,36 @@ describe("default-session-only endpoints ignore session fields", () => {
    * paneId="x". pane_id can never contain a space, so it must lead.
    * A role that merely starts with "orchestrator" is not the role.
    */
-  it("/restart-session does not treat a spaced role value as the orchestrator", async () => {
+  it.each([
+    ["a spaced value", "orchestrator x"],
+    ["a trailing space", "orchestrator "],   // codex r3 HIGH: line.trim() collapsed this into a match
+    ["a leading space", " orchestrator"],
+    ["a trailing tab", "orchestrator\t"],
+  ])("/restart-session does not treat %s as the orchestrator role", async (_label, role) => {
     existingSessions.add(TMUX_SESSION);
-    sessionPanes = [["%229", "orchestrator x"]];
+    sessionPanes = [["%229", role]];
 
     const { body } = await post("/restart-session");
     // No exact-role pane => nothing to respawn => cold start, not a mis-parse.
     expect(execFileCalls.some((c) => c.args[0] === "respawn-pane")).toBe(false);
     expect(body.path).toBe("cold-started-fresh");
   });
+
+  /**
+   * codex r3 MEDIUM. spawn() reports a missing/non-executable binary via an
+   * ASYNC 'error' event, not a throw. Unhandled, that is an uncaughtException
+   * and the whole CPC server dies — pressing Restart would kill the console
+   * itself. Verified against real node: spawn("/nonexistent") reaches
+   * uncaughtException with ENOENT. Must be a clean 500 for the one request.
+   */
+  it("/restart-session surfaces a launcher spawn error as a 500 instead of crashing the server", async () => {
+    launcherOutcome = "spawn-error";
+    const { status, body } = await post("/restart-session");
+    expect(status).toBe(500);
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/cannot launch/);
+    expect(body.error).toMatch(/ENOENT|spawn/);
+  }, 15_000);
 
   it("/restart-session refuses to guess when two panes claim the role", async () => {
     existingSessions.add(TMUX_SESSION);
