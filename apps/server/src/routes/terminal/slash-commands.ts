@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { execAsync, resolveTargetSession, sendToTmux, tmuxSessionExists, TMUX_SESSION } from "../utils.js";
 import { getTracer } from "../../lib/otel.js";
@@ -8,9 +8,23 @@ import { SpanStatusCode } from "@opentelemetry/api";
 const execFileAsync = promisify(execFile);
 
 const TMUX_TIMEOUT_MS = 5_000;
-// cw-launch creates the session and then execs cw-boot-confirm, which waits on
-// the fresh agent's boot dialog — slower than a plain tmux call.
-const LAUNCHER_TIMEOUT_MS = 30_000;
+// How long to wait for a detached cold start to make the session appear.
+// cw-launch's `tmux new-session -d` returns near-instantly; we are NOT waiting
+// for the agent to finish booting (see COLD START below).
+const COLD_START_CONFIRM_MS = 5_000;
+const COLD_START_POLL_MS = 250;
+
+// The pane option cw-launch stamps on the orchestrator's pane at creation
+// (claudes-world abb7d11). This is the ONLY sanctioned way to find that pane.
+//
+// Never target it positionally. `renumber-windows` is on globally on this host,
+// so when a window dies the next one is promoted into its index: `session:1.1`
+// means "whatever currently occupies slot 1", not "the pane cw-launch created".
+// Two separate wrong-kill bugs came from positional targeting (PR #335 rounds
+// 1+2) — each killed a bystander pane, left the orchestrator running, and still
+// reported ok:true. Role lookup fails LOUD instead: no tagged pane means no
+// candidate, so we never -k something we cannot prove is the orchestrator.
+const ORCHESTRATOR_ROLE = "orchestrator";
 
 // The canonical orchestrator launcher (attach-or-start). CPC must never
 // reconstruct the claude command itself: the previous hardcoded copy silently
@@ -28,42 +42,67 @@ const CW_LAUNCH = process.env.CW_LAUNCH_BIN || "/home/claude/claudes-world/bin/c
 const tmuxTracer = getTracer('cpc-server-tmux');
 
 /**
- * Resolve the orchestrator's pane to an explicit `session:window.pane` target.
- * `respawn-pane` rejects a bare session name, so a concrete target is required.
+ * Find the orchestrator's pane by ROLE. Returns its unique pane id (`%183`),
+ * or null when no pane claims the role — which means the orchestrator is not
+ * running, whatever the session's own liveness says. A session outlives its
+ * windows: an SSH tab alone keeps it alive after the agent's window is gone.
  *
- * The pane we want is the one cw-launch created: the session's FIRST window,
- * first pane. Do NOT use the *active* pane — `list-panes -t "=<session>"`
- * without `-s` treats the target as a WINDOW and returns whichever window is
- * currently selected. If anyone has a second window open in this session (an
- * SSH tab, a split) and left it selected, that resolves to their pane, and
- * `respawn-pane -k` would kill THEIR process while reporting success and
- * leaving the orchestrator untouched. `-s` lists the whole session instead;
- * sort by (window, pane) so the result never depends on what a human last
- * clicked, nor on base-index / pane-base-index.
+ * Pane ids are used deliberately: they are stable for a pane's whole life and
+ * are never reused or renumbered, unlike `session:window.pane`.
  */
-async function orchestratorPaneTarget(session: string): Promise<string> {
+async function orchestratorPane(session: string): Promise<string | null> {
   const { stdout } = await execFileAsync(
     "tmux",
-    [
-      "list-panes",
-      "-s",
-      "-t", `=${session}`,
-      "-F", "#{window_index} #{pane_index} #{session_name}:#{window_index}.#{pane_index}",
-    ],
+    ["list-panes", "-s", "-t", `=${session}`, "-F", "#{@cpc-role} #{pane_id}"],
     { timeout: TMUX_TIMEOUT_MS },
   );
-  const panes = stdout
+  const tagged = stdout
     .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [windowIndex, paneIndex, target] = line.split(" ");
-      return { windowIndex: Number(windowIndex), paneIndex: Number(paneIndex), target };
-    })
-    .filter((p) => Number.isFinite(p.windowIndex) && Number.isFinite(p.paneIndex) && p.target);
-  if (panes.length === 0) throw new Error(`no panes in tmux session ${session}`);
-  panes.sort((a, b) => a.windowIndex - b.windowIndex || a.paneIndex - b.paneIndex);
-  return panes[0]!.target!;
+    .map((line) => line.trim().split(" "))
+    .filter(([role, paneId]) => role === ORCHESTRATOR_ROLE && paneId)
+    .map(([, paneId]) => paneId!);
+  return tagged[0] ?? null;
+}
+
+/**
+ * COLD START — create-only, never destructive. Reached only when no pane claims
+ * the orchestrator role, i.e. there is nothing qualifying to kill.
+ *
+ * Detached on purpose. cw-launch ends with `exec cw-boot-confirm`, which polls
+ * for up to 300s dismissing boot dialogs and injecting the kickoff. Holding the
+ * HTTP request open for that is untenable, and killing it on a timeout is worse:
+ * `tmux new-session -d` has already succeeded by then, so we would strand a
+ * half-booted session behind a dialog — and a retry would find the session live,
+ * take the respawn branch, and never re-run boot-confirm. Unrecoverable without
+ * SSH. So: detach, let boot-confirm finish on its own, and only wait long enough
+ * to confirm the session actually came up. cw-launch is idempotent, so a racing
+ * second press is harmless.
+ */
+async function coldStartDetached(session: string): Promise<void> {
+  const child = spawn(CW_LAUNCH, [], { detached: true, stdio: "ignore" });
+  child.unref();
+
+  // Confirm on the TAGGED PANE, never on the session. The session existing does
+  // not mean the orchestrator is running — that false proxy is the whole bug
+  // this endpoint keeps re-learning. It bites here specifically: cw-launch is
+  // attach-or-start, so if the session is alive but the orchestrator's window
+  // died (an SSH tab holding it open), cw-launch no-ops and starts nothing. A
+  // session-existence check would call that success and report a cold start
+  // that never happened.
+  const deadline = Date.now() + COLD_START_CONFIRM_MS;
+  while (Date.now() < deadline) {
+    if ((await tmuxSessionExists(session)) && (await orchestratorPane(session))) return;
+    await new Promise((resolve) => setTimeout(resolve, COLD_START_POLL_MS));
+  }
+  // Honest failure. The common cause is the case above: an occupied session
+  // with no orchestrator. cw-launch cannot fix that without killing the
+  // session, and a restart must never kill panes it cannot identify — so this
+  // needs a human, and says so rather than reporting a phantom success.
+  throw new Error(
+    `cold start did not produce an orchestrator pane in tmux session ${session}` +
+      ` (if the session is alive but has no @cpc-role=${ORCHESTRATOR_ROLE} pane,` +
+      ` cw-launch will no-op — recover it manually)`,
+  );
 }
 
 async function tracedTmux<T>(
@@ -264,16 +303,27 @@ app.post("/reload-plugins", async (c) => {
 
 app.post("/restart-session", async (c) => {
   try {
-    await tracedTmux('tmux.restart-session', TMUX_SESSION, 'restart-session', async () => {
-      if (await tmuxSessionExists(TMUX_SESSION)) {
-        await execFileAsync("tmux", ["respawn-pane", "-k", "-t", await orchestratorPaneTarget(TMUX_SESSION)], {
-          timeout: TMUX_TIMEOUT_MS,
-        });
-        return;
+    const path = await tracedTmux('tmux.restart-session', TMUX_SESSION, 'restart-session', async () => {
+      // Ask for the role-tagged pane, not the session: the session can outlive
+      // the orchestrator's own window, so its liveness proves nothing here.
+      const pane = (await tmuxSessionExists(TMUX_SESSION))
+        ? await orchestratorPane(TMUX_SESSION)
+        : null;
+
+      if (pane) {
+        // Re-runs the pane's own creation-time command, keeping its cwd, its
+        // WOS_* env and any attached viewers.
+        await execFileAsync("tmux", ["respawn-pane", "-k", "-t", pane], { timeout: TMUX_TIMEOUT_MS });
+        return "respawned-tagged-pane" as const;
       }
-      await execFileAsync(CW_LAUNCH, [], { timeout: LAUNCHER_TIMEOUT_MS });
+
+      await coldStartDetached(TMUX_SESSION);
+      return "cold-started-fresh" as const;
     });
-    return c.json({ ok: true, action: "restart-session" });
+    // Report WHICH path ran: the two outcomes differ enough that the UI must
+    // not present them identically — a cold start is a brand-new session, not
+    // a resumed one.
+    return c.json({ ok: true, action: "restart-session", path });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
   }
