@@ -47,8 +47,10 @@ const tmuxTracer = getTracer('cpc-server-tmux');
  * running, whatever the session's own liveness says. A session outlives its
  * windows: an SSH tab alone keeps it alive after the agent's window is gone.
  *
- * Pane ids are used deliberately: they are stable for a pane's whole life and
- * are never reused or renumbered, unlike `session:window.pane`.
+ * Pane ids are used deliberately: unlike `session:window.pane` they are stable
+ * for a pane's whole life and are not reused. Verified on tmux 3.5a — the
+ * counter is monotonic (killing %260 gave the next pane %261, not %260), and a
+ * respawn keeps the id (%259 -> %259). Stated because the design leans on it.
  */
 async function orchestratorPane(session: string): Promise<string | null> {
   const { stdout } = await execFileAsync(
