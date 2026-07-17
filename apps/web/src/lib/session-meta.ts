@@ -44,3 +44,75 @@ export function harnessOf(session: TmuxSessionInfo): "claude" | "codex" | null {
   if (session.command === "codex") return "codex";
   return null;
 }
+
+// ---- host color system (§3.4) ----
+//
+// Deterministic, defined in exactly one place. Known hosts are pinned;
+// unknown hosts hash (FNV-1a) into the four remaining accents. Green and
+// red are EXCLUDED everywhere: they carry alive-state and error semantics.
+
+const PINNED_HOST_COLORS: Record<string, string> = {
+  // today's box
+  "do-box": "var(--color-accent-blue)",
+  // the next host — the do-box-successor ops profile already exists
+  "do-box-successor": "var(--color-accent-purple)",
+};
+
+const HASHED_HOST_COLORS = [
+  "var(--color-accent-cyan)",
+  "var(--color-accent-yellow)",
+  "var(--color-accent-pink)",
+  "var(--color-accent-orange)",
+];
+
+/** 32-bit FNV-1a — tiny, stable, good enough spread for hostnames. */
+export function fnv1a(text: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/** The host's CSS color (a `var(--color-accent-*)` expression). */
+export function hostColor(host: string): string {
+  return PINNED_HOST_COLORS[host] ?? HASHED_HOST_COLORS[fnv1a(host) % HASHED_HOST_COLORS.length];
+}
+
+/** `group › topic` — the tg badge text (§3.3). Null when unbound. */
+export function formatTgBadge(session: TmuxSessionInfo): string | null {
+  const tg = session.tg;
+  if (!tg) return null;
+  return `${tg.group} › ${tg.topic}`;
+}
+
+/** Distinct known hosts across a roster. Rails/grouping appear at 2+
+ *  (suppress-until-two-hosts, auto-appear after — §3.4). */
+export function distinctHosts(sessions: TmuxSessionInfo[]): string[] {
+  const hosts = new Set<string>();
+  for (const s of sessions) if (s.host) hosts.add(s.host);
+  return [...hosts];
+}
+
+/** Rows grouped by host, preserving the incoming (server) order within and
+ *  across groups by first appearance. Sessions with no host land in one
+ *  trailing null-host group. */
+export function groupByHost(
+  sessions: TmuxSessionInfo[],
+): { host: string | null; sessions: TmuxSessionInfo[] }[] {
+  const groups: { host: string | null; sessions: TmuxSessionInfo[] }[] = [];
+  const byHost = new Map<string | null, TmuxSessionInfo[]>();
+  for (const s of sessions) {
+    const key = s.host ?? null;
+    let list = byHost.get(key);
+    if (!list) {
+      byHost.set(key, (list = []));
+      groups.push({ host: key, sessions: list });
+    }
+    list.push(s);
+  }
+  // Hostless rows trail known hosts (only relevant mid-migration).
+  groups.sort((a, b) => Number(a.host === null) - Number(b.host === null));
+  return groups;
+}

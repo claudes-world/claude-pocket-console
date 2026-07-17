@@ -128,6 +128,43 @@ describe("SessionDock", () => {
       .toBeLessThan(strip.textContent!.indexOf("claudes-world"));
   });
 
+  it("rich rows: harness glyphs, tg badges, rails suppressed while single-host", async () => {
+    const rich = [
+      session("claudes-world", {
+        writable: true,
+        host: "do-box",
+        harness: "claude",
+        tg: null,
+      }),
+      session("do-box--lane-a", {
+        host: "do-box",
+        harness: "codex",
+        tg: { agent: "pm-dobot", group: "do-box", topic: "lane-a" },
+      }),
+    ];
+    render(<SessionDock sessions={rich} active="claudes-world" onSelect={vi.fn()} />);
+    await openDock();
+    const rows = screen.getAllByTestId("session-row");
+    expect(rows[0].querySelector('[aria-label="claude harness"]')?.textContent).toBe("✳");
+    expect(rows[1].querySelector('[aria-label="codex harness"]')?.textContent).toBe("⌬");
+    expect(screen.getByTestId("tg-badge").textContent).toBe("do-box › lane-a");
+    // single host: no rails, no group labels — rings only
+    expect(screen.queryByTestId("host-rail")).toBeNull();
+    expect(screen.queryByTestId("host-group-label")).toBeNull();
+  });
+
+  it("rich rows: two hosts turn on rails and host group labels", async () => {
+    const rich = [
+      session("a", { host: "do-box" }),
+      session("b", { host: "next-box" }),
+    ];
+    render(<SessionDock sessions={rich} active="a" onSelect={vi.fn()} />);
+    await openDock();
+    expect(screen.getAllByTestId("host-rail")).toHaveLength(2);
+    const labels = screen.getAllByTestId("host-group-label").map((l) => l.textContent);
+    expect(labels).toEqual(["do-box", "next-box"]);
+  });
+
   it("reduced motion: opens with no transform styles on rows or furniture", async () => {
     const mql = (matches: boolean) => ({
       matches,

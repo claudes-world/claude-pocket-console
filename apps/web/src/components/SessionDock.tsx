@@ -16,6 +16,7 @@ import { useFlipMorph, type FlipTargets } from "../lib/useFlipMorph";
 import { useDockDrag, settleDuration } from "../lib/useDockDrag";
 import { SessionListRow } from "./SessionListRow";
 import { getTelegramWebApp } from "../lib/telegram";
+import { distinctHosts, groupByHost, hostColor } from "../lib/session-meta";
 
 /**
  * The session dock (WORLD-416 §2–3): the terminal tab's switcher row —
@@ -39,10 +40,12 @@ import { getTelegramWebApp } from "../lib/telegram";
  * is the classic jank bug) and reconciles on settle-closed.
  */
 
-/** Panel height budget: rows + top breathing room + bottom grabber zone. */
+/** Panel height budget: rows + top breathing room + bottom grabber zone
+ *  (+ host section labels when the roster spans hosts). */
 const ROW_HEIGHT = 52;
 const PANEL_TOP_PAD = 6;
 const PANEL_BOTTOM_ZONE = 18;
+const GROUP_LABEL_HEIGHT = 20;
 const PANEL_MAX_VH = 0.45;
 
 interface SessionDockProps {
@@ -100,6 +103,17 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
   const displayedRef = useRef(displayed);
   displayedRef.current = displayed;
 
+  // Host grouping (§3.3/§3.4): rows band together by host once a second
+  // host exists; single-host rosters render flat (rails suppressed, rings
+  // stay). The FLIP stagger order follows the grouped visual order.
+  const groups = groupByHost(displayed);
+  const multiHost = distinctHosts(displayed).length > 1;
+  const flatNames = groups.flatMap((g) => g.sessions.map((s) => s.name));
+  const flatNamesRef = useRef(flatNames);
+  flatNamesRef.current = flatNames;
+  const groupLabelCountRef = useRef(0);
+  groupLabelCountRef.current = multiHost ? groups.length : 0;
+
   const flip = useFlipMorph((): FlipTargets => ({
     chipButtons: chipButtons.current,
     chipLabels: chipLabels.current,
@@ -108,7 +122,7 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
     rowFurniture: new Map(
       [...rowFurniture.current].map(([name, per]) => [name, [...per.values()]]),
     ),
-    rowOrder: displayedRef.current.map((s) => s.name),
+    rowOrder: flatNamesRef.current,
     panel: panelEl.current,
     panelWrap: panelWrapEl.current,
     scrim: scrimEl.current,
@@ -132,7 +146,11 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
     // Last rects are final.
     const wrap = panelWrapEl.current;
     if (wrap) {
-      const natural = PANEL_TOP_PAD + displayedRef.current.length * ROW_HEIGHT + PANEL_BOTTOM_ZONE;
+      const natural =
+        PANEL_TOP_PAD
+        + displayedRef.current.length * ROW_HEIGHT
+        + groupLabelCountRef.current * GROUP_LABEL_HEIGHT
+        + PANEL_BOTTOM_ZONE;
       const h = Math.min(natural, Math.round(window.innerHeight * PANEL_MAX_VH));
       wrap.style.height = `${h}px`;
       panelHeightRef.current = h;
@@ -386,6 +404,8 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
                     flexShrink: 0,
                     background: s.alive ? "var(--color-accent-green)" : "var(--color-subtle)",
                     display: "inline-block",
+                    // host identity ring (§3.2) — 1.5px, never green/red
+                    boxShadow: s.host ? `0 0 0 1.5px ${hostColor(s.host)}` : undefined,
                   }}
                 />
                 {s.name}
@@ -528,15 +548,37 @@ export function SessionDock({ sessions, active, onSelect }: SessionDockProps) {
                   flexDirection: "column",
                 }}
               >
-                {displayed.map((s) => (
-                  <SessionListRow
-                    key={s.name}
-                    session={s}
-                    isActive={s.name === active}
-                    onSelect={handleSelect}
-                    registerLabel={registerLabel}
-                    registerFurniture={registerFurniture}
-                  />
+                {groups.map((g) => (
+                  <div key={g.host ?? "(no host)"} style={{ display: "flex", flexDirection: "column" }}>
+                    {multiHost && (
+                      <div
+                        data-testid="host-group-label"
+                        style={{
+                          height: GROUP_LABEL_HEIGHT,
+                          padding: "6px 14px 0",
+                          boxSizing: "border-box",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          color: g.host ? hostColor(g.host) : "var(--color-muted)",
+                        }}
+                      >
+                        {g.host ?? "other"}
+                      </div>
+                    )}
+                    {g.sessions.map((s) => (
+                      <SessionListRow
+                        key={s.name}
+                        session={s}
+                        isActive={s.name === active}
+                        multiHost={multiHost}
+                        onSelect={handleSelect}
+                        registerLabel={registerLabel}
+                        registerFurniture={registerFurniture}
+                      />
+                    ))}
+                  </div>
                 ))}
               </div>
               {/* Bottom grabber — mirrors the row's, affords swipe-up-close;
