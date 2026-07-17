@@ -117,6 +117,13 @@ const ROLE_CHANGED_MARKER = "cpc-role-changed";
  * so the role is true at the instant of the respawn. It exits 0 either way, so
  * the else-branch prints a marker — otherwise a refusal would read as success.
  *
+ * The marker survives the way this actually runs: `display-message -p` writes to
+ * the invoking tmux CLI's stdout, NOT to an attached client, so it works from
+ * cpc.service where no client exists. Verified with `env -u TMUX` against a
+ * detached session — revoked: marker printed, pane untouched; valid: restarted,
+ * stdout empty. Worth stating because if it HAD needed a client, every refusal
+ * would have silently reported a successful restart.
+ *
  * KNOWN GAP, accepted deliberately (codex round 4 MEDIUM): a successful respawn
  * proves tmux started the command, not that it stayed up. If the replayed
  * command dies immediately we still report respawned-tagged-pane. cw-launch's
