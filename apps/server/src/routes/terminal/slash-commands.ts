@@ -168,11 +168,23 @@ async function respawnIfStillOrchestrator(pane: string): Promise<void> {
  * half-booted session behind a dialog — and a retry would find the session live,
  * take the respawn branch, and never re-run boot-confirm. Unrecoverable without
  * SSH. So: detach, let boot-confirm finish on its own, and only wait long enough
- * to confirm the session actually came up. cw-launch is idempotent, so a racing
- * second press does no damage (verified: two concurrent presses => one create,
- * one no-op, one session, one tagged pane). It is not perfectly accurate,
- * though: both requests observe the winner's pane, so both report
- * "cold-started-fresh" while only one press caused it. Mis-attribution in a
+ * to confirm the session actually came up.
+ *
+ * A racing second press does no damage, but NOT via the mechanism you would
+ * assume. Under a true simultaneous race both launchers pass cw-launch's
+ * `has-session` guard before either creates, so the loser does NOT take the
+ * graceful "already running" branch — it hits `duplicate session` from tmux and
+ * dies on `set -e`, exit 1. That is invisible here on purpose: the launcher is
+ * spawned detached and its exit status is never read; success is judged solely
+ * by the tagged pane appearing. Verified over 5 forced races — every trial left
+ * exactly one session and exactly one tagged pane.
+ *
+ * (An earlier comment here claimed "one create, one no-op". That was wrong: the
+ * probe behind it wasn't actually racing, so the second launcher ran after the
+ * first had finished. Caught in review.)
+ *
+ * Both requests then observe the winner's pane and both report
+ * "cold-started-fresh" though only one press caused it. Mis-attribution in a
  * status string, not a mis-action — accepted.
  *
  * Known limitation: detaching escapes the process group, not the cgroup, and
